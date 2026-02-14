@@ -1,0 +1,36 @@
+{
+  "name": "play-time-admin-panel",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "create-admin": "node scripts/create-admin-user.js",
+    "update-user-role": "node scripts/update-user-role.js",
+    "list-users": "node scripts/list-users.js",
+    "initialize-sports": "node scripts/initialize-sports.js"
+  },
+  "dependencies": {
+    "firebase": "^10.13.0",
+    "jspdf": "^4.0.0",
+    "razorpay": "^2.9.6",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-router-dom": "^7.11.0",
+    "recharts": "^3.6.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/container-queries": "^0.1.1",
+    "@tailwindcss/forms": "^0.5.11",
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "autoprefixer": "^10.4.23",
+    "firebase-admin": "^13.6.0",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.19",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}

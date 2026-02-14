@@ -1,0 +1,113 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function userExists() {
+      return firestore.exists(/databases/(default)/documents/users/$(request.auth.uid));
+    }
+    
+    function getUserRole() {
+      return userExists() ? 
+             firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role : 
+             null;
+    }
+    
+    function isSuperAdmin() {
+      return isAuthenticated() && 
+             userExists() &&
+             getUserRole() == 'super_admin';
+    }
+    
+    function isVenueManager() {
+      return isAuthenticated() && 
+             userExists() &&
+             getUserRole() == 'venue_manager';
+    }
+    
+    // Venue images - allow any venueId including 'new'
+    match /venues/{venueId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      // Allow write for authenticated users
+      // Simplified: allow any authenticated user to upload venue images
+      // Role checking can be done at application level if needed
+      allow write: if isAuthenticated();
+    }
+    
+    // User avatars
+    match /users/{userId}/avatar/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (userId == request.auth.uid || isSuperAdmin());
+    }
+    
+    // Post images (Social Feed)
+    match /posts/{postId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated(); // Users can upload their own post images
+    }
+    
+    // Team images (TeamUp feature)
+    match /teams/{teamId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated(); // Team members can upload team images
+    }
+    
+    // Marketing campaign images (Super Admin only)
+    match /marketing/{campaignId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isSuperAdmin();
+    }
+    
+    // Tournament images (Super Admin only)
+    match /tournaments/{tournamentId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isSuperAdmin();
+    }
+    
+    // Product images (Marketplace - Super Admin only)
+    match /products/{productId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isSuperAdmin();
+    }
+    
+    // Temporary product images (for new products before ID is assigned)
+    match /products/temp/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isSuperAdmin();
+    }
+    
+    // Temporary venue images (for new venues before ID is assigned)
+    match /venues/temp/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
+    }
+    
+    // Expense receipts
+    match /expenses/{expenseId}/{allPaths=**} {
+      allow read: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
+      allow write: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
+    }
+    
+    // Staff avatars
+    match /staff/{staffId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
+    }
+    
+    // App Settings (Logo, etc. - Super Admin only)
+    match /app-settings/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isSuperAdmin();
+    }
+    
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+

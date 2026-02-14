@@ -1,29 +1,22 @@
-# Dependencies
-node_modules/
-__pycache__/
-*.pyc
-.venv/
-venv/
-env/
+# Ignore everything at repo root except the admin panel and .gitignore
+*
+!.gitignore
+!play-time-admin-panel/
+!play-time-admin-panel/**
 
-# Build / output
-dist/
-build/
-*.egg-info/
-.eggs/
-
-# IDE / OS
-.idea/
-.vscode/
-*.swp
-.DS_Store
-Thumbs.db
-
-# Env and secrets
-.env
-.env.local
-*.pem
-
-# Logs and cache
-*.log
-.cache/
+# Inside admin panel: ignore dependencies, build, env, secrets
+play-time-admin-panel/node_modules/
+play-time-admin-panel/dist/
+play-time-admin-panel/.env
+play-time-admin-panel/.env.local
+play-time-admin-panel/.git.adminpanel.bak
+play-time-admin-panel/*.json
+!play-time-admin-panel/package.json
+!play-time-admin-panel/package-lock.json
+!play-time-admin-panel/metadata.json
+!play-time-admin-panel/firestore.rules
+!play-time-admin-panel/firestore.indexes.json
+!play-time-admin-panel/tsconfig.json
+play-time-admin-panel/*.jks
+play-time-admin-panel/keystore/
+play-time-admin-panel/*-firebase-adminsdk-*.json

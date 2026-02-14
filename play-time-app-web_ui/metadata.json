@@ -1,8 +1,0 @@
-{
-  "name": "Play Time",
-  "description": "A premium sports venue booking and community app with a sleek dark forest theme.",
-  "requestFramePermissions": [
-    "geolocation",
-    "camera"
-  ]
-}
