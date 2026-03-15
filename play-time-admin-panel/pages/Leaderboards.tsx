@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { leaderboardsCollection } from '../services/firebase';
 import { serverTimestamp } from 'firebase/firestore';
 import { useToast } from '../contexts/ToastContext';
-import LeaderboardFormModal from '../components/LeaderboardFormModal';
+import LeaderboardFormModal from '../components/modals/LeaderboardFormModal';
 
 const Leaderboards: React.FC = () => {
   const { user } = useAuth();
@@ -92,8 +92,8 @@ const Leaderboards: React.FC = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-black text-white mb-2">Leaderboards</h1>
-          <p className="text-gray-400 text-sm">Manage community leaderboards</p>
+          <h1 className="text-3xl font-black text-slate-900 dark:text-white mb-2">Leaderboards</h1>
+          <p className="text-slate-500 dark:text-gray-400 text-sm">Manage community leaderboards</p>
         </div>
         <button
           onClick={handleCreateLeaderboard}
@@ -108,7 +108,7 @@ const Leaderboards: React.FC = () => {
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}
-          className="px-4 py-2 border border-gray-700 bg-surface-dark text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+          className="px-4 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-surface-dark text-slate-900 dark:text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
         >
           {types.map((type) => (
             <option key={type} value={type}>
@@ -120,7 +120,7 @@ const Leaderboards: React.FC = () => {
         <select
           value={sportFilter}
           onChange={(e) => setSportFilter(e.target.value)}
-          className="px-4 py-2 border border-gray-700 bg-surface-dark text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+          className="px-4 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-surface-dark text-slate-900 dark:text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
         >
           {sports.map((sport) => (
             <option key={sport} value={sport}>
@@ -136,7 +136,7 @@ const Leaderboards: React.FC = () => {
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
       ) : filteredLeaderboards.length === 0 ? (
-        <div className="text-center py-12 bg-surface-dark rounded-2xl border border-gray-800">
+        <div className="text-center py-12 bg-white dark:bg-surface-dark rounded-2xl border border-gray-200 dark:border-gray-800">
           <p className="text-gray-400">No leaderboards found</p>
         </div>
       ) : (
@@ -144,11 +144,11 @@ const Leaderboards: React.FC = () => {
           {filteredLeaderboards.map((leaderboard) => (
             <div
               key={leaderboard.id}
-              className="bg-surface-dark rounded-2xl p-6 border border-gray-800 hover:border-primary/30 transition-colors"
+              className="bg-white dark:bg-surface-dark rounded-2xl p-6 border border-gray-200 dark:border-gray-800 hover:border-primary/30 transition-colors"
             >
               <div className="flex justify-between items-start mb-4">
                 <div>
-                  <h3 className="text-lg font-black text-white mb-1">
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white mb-1">
                     {leaderboard.sport} - {leaderboard.type}
                   </h3>
                   {leaderboard.venueName && (
@@ -163,11 +163,11 @@ const Leaderboards: React.FC = () => {
               <div className="space-y-2 mb-4">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500">Total Entries:</span>
-                  <span className="text-white font-black">{leaderboard.entries?.length || 0}</span>
+                  <span className="text-slate-900 dark:text-white font-black">{leaderboard.entries?.length || 0}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500">Total Votes:</span>
-                  <span className="text-white font-black">{leaderboard.totalVotes || 0}</span>
+                  <span className="text-slate-900 dark:text-white font-black">{leaderboard.totalVotes || 0}</span>
                 </div>
               </div>
 
@@ -179,7 +179,7 @@ const Leaderboards: React.FC = () => {
                     <div key={entry.userId} className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-2">
                         <span className="text-primary font-black">#{entry.rank}</span>
-                        <span className="text-white">{entry.userName || 'Unknown'}</span>
+                        <span className="text-slate-900 dark:text-white">{entry.userName || 'Unknown'}</span>
                       </div>
                       <span className="text-primary font-black">{entry.score}</span>
                     </div>

@@ -11,7 +11,7 @@ import { venuesCollection, usersCollection } from '../services/firebase';
 import { formatCurrency, formatNumber, formatPercentage } from '../utils/formatUtils';
 import { getRelativeTime, getToday, getWeekStart, getWeekEnd, getMonthStart, getMonthEnd, formatDate } from '../utils/dateUtils';
 import { exportBookingsToPDF, exportUsersToCSV } from '../utils/exportUtils';
-import DateRangePicker from '../components/DateRangePicker';
+import DateRangePicker from '../components/shared/DateRangePicker';
 import { serverTimestamp } from 'firebase/firestore';
 // Chart imports available for future enhancements
 // import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend } from 'recharts';
@@ -203,7 +203,7 @@ const CRM: React.FC = () => {
       });
     } catch (error: any) {
       console.error('Error approving venue:', error);
-      alert('Failed to approve venue: ' + error.message);
+      showError('Failed to approve venue: ' + error.message);
     } finally {
       setProcessing(null);
     }
@@ -220,7 +220,7 @@ const CRM: React.FC = () => {
       });
     } catch (error: any) {
       console.error('Error rejecting venue:', error);
-      alert('Failed to reject venue: ' + error.message);
+      showError('Failed to reject venue: ' + error.message);
     } finally {
       setProcessing(null);
     }
@@ -231,7 +231,7 @@ const CRM: React.FC = () => {
       <div className="p-8 flex items-center justify-center h-full">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
-          <p className="text-gray-600 font-medium">Loading CRM data...</p>
+          <p className="text-gray-600 dark:text-slate-400 font-medium">Loading CRM data...</p>
         </div>
       </div>
     );
@@ -254,7 +254,7 @@ const CRM: React.FC = () => {
               className={`flex items-center gap-2 px-6 py-4 text-sm font-black uppercase tracking-widest border-b-2 transition-colors ${
                 activeTab === tab.id
                   ? 'border-primary text-primary'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'
               }`}
             >
               <span className="material-symbols-outlined text-lg">{tab.icon}</span>
@@ -272,7 +272,7 @@ const CRM: React.FC = () => {
               {activeTab === 'reports' && 'Reports & Analytics'}
               {activeTab === 'support' && 'Support & Disputes'}
             </h3>
-            <p className="text-gray-500 font-medium">
+            <p className="text-gray-500 dark:text-slate-400 font-medium">
               {activeTab === 'overview' && 'Platform performance, onboarding queues, and administrative tasks.'}
               {activeTab === 'customers' && 'Customer segmentation, lifetime value, and engagement metrics.'}
               {activeTab === 'reports' && 'Comprehensive reports and analytics for business insights.'}
@@ -294,7 +294,7 @@ const CRM: React.FC = () => {
                   className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${
                     dateRangeType === type
                       ? 'bg-primary text-white shadow-md'
-                      : 'text-gray-600 hover:bg-gray-50'
+                      : 'text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700'
                   }`}
                 >
                   {type === 'today' ? 'Today' : type === 'week' ? 'Week' : type === 'month' ? 'Month' : 'Custom'}
@@ -320,7 +320,7 @@ const CRM: React.FC = () => {
                       showError('Failed to export PDF. Please try again.');
                     }
                   }}
-                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-t-xl flex items-center gap-2"
+                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700 rounded-t-xl flex items-center gap-2"
                 >
                   <span className="material-symbols-outlined text-lg">picture_as_pdf</span>
                   Bookings Report (PDF)
@@ -334,7 +334,7 @@ const CRM: React.FC = () => {
                       showError('Failed to export CSV. Please try again.');
                     }
                   }}
-                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700 flex items-center gap-2"
                 >
                   <span className="material-symbols-outlined text-lg">description</span>
                   Users List (CSV)
@@ -343,14 +343,18 @@ const CRM: React.FC = () => {
                   onClick={() => {
                     try {
                       // Export financial report as CSV
+                      const esc = (v: any) => {
+                        const s = String(v ?? '');
+                        return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+                      };
                       const csvContent = [
                         ['Metric', 'Value'],
-                        ['Total Revenue', formatCurrency(crmStats.totalRevenue)],
-                        ['Total Bookings', crmStats.totalBookings],
-                        ['Active Venues', crmStats.activeVenues],
-                        ['Open Disputes', crmStats.openDisputes],
+                        ['Total Revenue', crmStats.totalRevenue || 0],
+                        ['Total Bookings', crmStats.totalBookings || 0],
+                        ['Active Venues', crmStats.activeVenues || 0],
+                        ['Open Disputes', crmStats.openDisputes || 0],
                         ['Period', `${formatDate(dateRange.start)} to ${formatDate(dateRange.end)}`]
-                      ].map(row => row.join(',')).join('\n');
+                      ].map(row => row.map(esc).join(',')).join('\n');
                       
                       const blob = new Blob([csvContent], { type: 'text/csv' });
                       const url = window.URL.createObjectURL(blob);
@@ -364,7 +368,7 @@ const CRM: React.FC = () => {
                       showError('Failed to export CSV. Please try again.');
                     }
                   }}
-                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-b-xl flex items-center gap-2"
+                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700 rounded-b-xl flex items-center gap-2"
                 >
                   <span className="material-symbols-outlined text-lg">table_chart</span>
                   Financial Report (CSV)
@@ -421,7 +425,7 @@ const CRM: React.FC = () => {
                 <span className={`material-symbols-outlined text-7xl ${s.color}`}>{s.icon}</span>
               </div>
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">{s.label}</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-slate-500">{s.label}</p>
                 <h4 className="text-3xl font-black text-gray-900 dark:text-gray-100 mt-1 tracking-tight">{s.val}</h4>
               </div>
               <div className={`flex items-center gap-1 text-[10px] font-black uppercase tracking-widest ${s.trend === 'up' ? 'text-green-600' : 'text-red-500'}`}>
@@ -437,9 +441,9 @@ const CRM: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-xl font-black text-gray-900 dark:text-gray-100 uppercase tracking-tight">Revenue Analytics</h3>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Monthly breakdown by sport category</p>
+                <p className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest mt-1">Monthly breakdown by sport category</p>
               </div>
-              <select className="bg-gray-50 border-none text-[10px] font-black uppercase tracking-widest rounded-xl px-4 py-2 focus:ring-1 focus:ring-primary text-gray-700 shadow-inner">
+              <select className="bg-gray-50 dark:bg-slate-700 border-none text-[10px] font-black uppercase tracking-widest rounded-xl px-4 py-2 focus:ring-1 focus:ring-primary text-gray-700 dark:text-slate-200 shadow-inner">
                 <option>Last 6 Months</option>
               </select>
             </div>
@@ -448,7 +452,7 @@ const CRM: React.FC = () => {
               <div className="h-64 flex items-end justify-between gap-4 w-full pt-4">
                 {revenueByMonth.map((month, i) => (
                   <div key={month.month} className="flex flex-col items-center gap-3 flex-1 group">
-                    <div className="w-full bg-gray-50 rounded-2xl relative h-full flex items-end overflow-hidden shadow-inner border border-gray-100/50 min-h-[40px]">
+                    <div className="w-full bg-gray-50 dark:bg-slate-700 rounded-2xl relative h-full flex items-end overflow-hidden shadow-inner border border-gray-100/50 dark:border-slate-600 min-h-[40px]">
                       <div 
                         className="w-full bg-primary/80 group-hover:bg-primary transition-all duration-700 shadow-lg rounded-t-2xl" 
                         style={{ height: `${month.percentage}%` }}
@@ -456,31 +460,31 @@ const CRM: React.FC = () => {
                       ></div>
                     </div>
                     <div className="text-center">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 block">{month.month}</span>
-                      <span className="text-[9px] font-bold text-gray-500">{formatCurrency(month.revenue)}</span>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-slate-500 block">{month.month}</span>
+                      <span className="text-[9px] font-bold text-gray-500 dark:text-slate-400">{formatCurrency(month.revenue)}</span>
                     </div>
                   </div>
                 ))}
               </div>
               
               {/* Revenue by Sport */}
-              <div className="pt-6 border-t border-gray-100">
-                <h4 className="text-sm font-black text-gray-900 uppercase tracking-widest mb-4">Revenue by Sport</h4>
+              <div className="pt-6 border-t border-gray-100 dark:border-slate-700">
+                <h4 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest mb-4">Revenue by Sport</h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {revenueBySport.slice(0, 8).map((item, i) => {
                     const totalRevenue = revenueBySport.reduce((sum, s) => sum + s.revenue, 0);
                     const percentage = totalRevenue > 0 ? (item.revenue / totalRevenue) * 100 : 0;
                     return (
-                      <div key={item.sport} className="p-3 bg-gray-50 rounded-xl">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">{item.sport}</p>
-                        <p className="text-sm font-black text-gray-900">{formatCurrency(item.revenue)}</p>
-                        <div className="mt-2 h-1 bg-gray-200 rounded-full overflow-hidden">
-                          <div 
+                      <div key={item.sport} className="p-3 bg-gray-50 dark:bg-slate-700 rounded-xl">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-slate-500 mb-1">{item.sport}</p>
+                        <p className="text-sm font-black text-gray-900 dark:text-white">{formatCurrency(item.revenue)}</p>
+                        <div className="mt-2 h-1 bg-gray-200 dark:bg-slate-600 rounded-full overflow-hidden">
+                          <div
                             className="h-full bg-primary transition-all"
                             style={{ width: `${percentage}%` }}
                           ></div>
                         </div>
-                        <p className="text-[9px] text-gray-500 mt-1">{percentage.toFixed(1)}%</p>
+                        <p className="text-[9px] text-gray-500 dark:text-slate-400 mt-1">{percentage.toFixed(1)}%</p>
                       </div>
                     );
                   })}
@@ -489,9 +493,9 @@ const CRM: React.FC = () => {
             </div>
           </div>
 
-          <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-8 flex flex-col gap-6">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-8 flex flex-col gap-6">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-black text-gray-900 flex items-center gap-2 uppercase tracking-tight">
+              <h3 className="text-lg font-black text-gray-900 dark:text-white flex items-center gap-2 uppercase tracking-tight">
                 <span className="material-symbols-outlined text-orange-500">pending_actions</span>
                 Approvals
               </h3>
@@ -503,22 +507,22 @@ const CRM: React.FC = () => {
             </div>
             <div className="flex-1 space-y-6 overflow-y-auto pr-2 no-scrollbar">
               {pendingApprovals.length === 0 ? (
-                <div className="text-center py-8 text-gray-400">
+                <div className="text-center py-8 text-gray-400 dark:text-slate-500">
                   <span className="material-symbols-outlined text-4xl mb-2 block">check_circle</span>
                   <p className="text-sm font-medium">No pending approvals</p>
                 </div>
               ) : (
                 pendingApprovals.map((item) => (
-                  <div key={item.id} className="p-4 bg-gray-50/50 border border-gray-100 rounded-2xl flex flex-col gap-4 group hover:bg-gray-50 transition-colors shadow-sm">
+                  <div key={item.id} className="p-4 bg-gray-50/50 dark:bg-slate-700/50 border border-gray-100 dark:border-slate-600 rounded-2xl flex flex-col gap-4 group hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors shadow-sm">
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-4">
-                        <div 
-                          className="size-11 rounded-xl bg-cover bg-center border border-gray-200" 
+                        <div
+                          className="size-11 rounded-xl bg-cover bg-center border border-gray-200 dark:border-slate-600"
                           style={{ backgroundImage: `url(${item.imageUrl})` }}
                         ></div>
                         <div>
-                          <p className="text-sm font-black text-gray-900">{item.name}</p>
-                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                          <p className="text-sm font-black text-gray-900 dark:text-white">{item.name}</p>
+                          <p className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest">
                             New Venue • {item.sportsText}
                           </p>
                         </div>
@@ -529,7 +533,7 @@ const CRM: React.FC = () => {
                       <button
                         onClick={() => handleRejectVenue(item.id)}
                         disabled={processing === item.id}
-                        className="flex-1 py-2 bg-white border border-gray-200 rounded-xl text-[10px] font-black uppercase tracking-widest text-gray-500 hover:bg-gray-100 transition-colors disabled:opacity-50"
+                        className="flex-1 py-2 bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest text-gray-500 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
                       >
                         Reject
                       </button>
@@ -673,10 +677,10 @@ const CustomerInsightsSection: React.FC<{
           { label: 'Members', value: customerSegments.members.toLocaleString(), icon: 'card_membership', color: 'text-purple-500' },
           { label: 'Avg. Customer Value', value: formatCurrency(avgCustomerValue), icon: 'trending_up', color: 'text-orange-500' }
         ].map((metric, i) => (
-          <div key={i} className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
-            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">{metric.label}</p>
+          <div key={i} className="bg-white dark:bg-slate-800 rounded-3xl p-6 border border-gray-100 dark:border-slate-700 shadow-sm">
+            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-slate-500 mb-2">{metric.label}</p>
             <div className="flex items-center justify-between">
-              <h3 className="text-2xl font-black text-gray-900">{metric.value}</h3>
+              <h3 className="text-2xl font-black text-gray-900 dark:text-white">{metric.value}</h3>
               <span className={`material-symbols-outlined ${metric.color} text-3xl`}>{metric.icon}</span>
             </div>
           </div>
@@ -684,34 +688,34 @@ const CustomerInsightsSection: React.FC<{
       </div>
 
       {/* Top Customers */}
-      <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-8">
-        <h3 className="text-xl font-black text-gray-900 uppercase tracking-tight mb-6">Top Customers</h3>
+      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-8">
+        <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight mb-6">Top Customers</h3>
         <div className="space-y-4">
           {topCustomers.length === 0 ? (
-            <div className="text-center py-12 text-gray-400">
+            <div className="text-center py-12 text-gray-400 dark:text-slate-500">
               <span className="material-symbols-outlined text-5xl mb-3 block">person_off</span>
               <p className="text-sm font-medium">No customer data for this period</p>
             </div>
           ) : (
             topCustomers.map((customer, index) => (
-              <div key={customer.user.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl hover:bg-gray-100 transition-colors">
+              <div key={customer.user.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700 rounded-2xl hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors">
                 <div className="flex items-center gap-4">
                   <div className="size-12 rounded-full bg-primary/10 flex items-center justify-center">
                     <span className="text-lg font-black text-primary">{index + 1}</span>
                   </div>
                   <div>
-                    <p className="text-sm font-black text-gray-900">{customer.user.name || 'Unknown User'}</p>
-                    <p className="text-xs text-gray-500">{customer.user.email}</p>
+                    <p className="text-sm font-black text-gray-900 dark:text-white">{customer.user.name || 'Unknown User'}</p>
+                    <p className="text-xs text-gray-500 dark:text-slate-400">{customer.user.email}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-8">
                   <div className="text-right">
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Revenue</p>
-                    <p className="text-sm font-black text-gray-900">{formatCurrency(customer.revenue)}</p>
+                    <p className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest">Revenue</p>
+                    <p className="text-sm font-black text-gray-900 dark:text-white">{formatCurrency(customer.revenue)}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Bookings</p>
-                    <p className="text-sm font-black text-gray-900">{customer.bookings}</p>
+                    <p className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest">Bookings</p>
+                    <p className="text-sm font-black text-gray-900 dark:text-white">{customer.bookings}</p>
                   </div>
                 </div>
               </div>
@@ -761,7 +765,7 @@ const ReportsSection: React.FC<{
   return (
     <div className="space-y-8">
       {/* Report Type Selector */}
-      <div className="flex items-center gap-3 bg-white rounded-2xl p-2 border border-gray-100">
+      <div className="flex items-center gap-3 bg-white dark:bg-slate-800 rounded-2xl p-2 border border-gray-100 dark:border-slate-700">
         {[
           { id: 'financial', label: 'Financial', icon: 'payments' },
           { id: 'booking', label: 'Bookings', icon: 'book_online' },
@@ -774,7 +778,7 @@ const ReportsSection: React.FC<{
             className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-black uppercase tracking-widest transition-all ${
               selectedReport === report.id
                 ? 'bg-primary text-white shadow-md'
-                : 'text-gray-600 hover:bg-gray-50'
+                : 'text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700'
             }`}
           >
             <span className="material-symbols-outlined text-lg">{report.icon}</span>
@@ -785,8 +789,8 @@ const ReportsSection: React.FC<{
 
       {/* Financial Report */}
       {selectedReport === 'financial' && (
-        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-8">
-          <h3 className="text-xl font-black text-gray-900 uppercase tracking-tight mb-6">Financial Report</h3>
+        <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-8">
+          <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight mb-6">Financial Report</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             {[
               { label: 'Total Revenue', value: formatCurrency(financialData.totalRevenue), icon: 'trending_up', color: 'text-green-600' },
@@ -796,10 +800,10 @@ const ReportsSection: React.FC<{
               { label: 'Total Bookings', value: financialData.totalBookings.toLocaleString(), icon: 'book_online', color: 'text-primary' },
               { label: 'Avg Booking Value', value: formatCurrency(financialData.averageBookingValue), icon: 'analytics', color: 'text-indigo-600' }
             ].map((metric, i) => (
-              <div key={i} className="p-4 bg-gray-50 rounded-2xl">
-                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">{metric.label}</p>
+              <div key={i} className="p-4 bg-gray-50 dark:bg-slate-700 rounded-2xl">
+                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-slate-500 mb-2">{metric.label}</p>
                 <div className="flex items-center justify-between">
-                  <p className="text-xl font-black text-gray-900">{metric.value}</p>
+                  <p className="text-xl font-black text-gray-900 dark:text-white">{metric.value}</p>
                   <span className={`material-symbols-outlined ${metric.color} text-2xl`}>{metric.icon}</span>
                 </div>
               </div>
@@ -810,8 +814,8 @@ const ReportsSection: React.FC<{
 
       {/* Booking Report */}
       {selectedReport === 'booking' && (
-        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-8 space-y-8">
-          <h3 className="text-xl font-black text-gray-900 uppercase tracking-tight">Booking Report</h3>
+        <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-8 space-y-8">
+          <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight">Booking Report</h3>
           
           {/* Booking Statistics */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -831,10 +835,10 @@ const ReportsSection: React.FC<{
                 { label: 'Cancelled', value: cancelled.length.toLocaleString(), icon: 'cancel', color: 'text-red-500' },
                 { label: 'Total Revenue', value: formatCurrency(totalRevenue), icon: 'payments', color: 'text-purple-500' }
               ].map((metric, i) => (
-                <div key={i} className="p-4 bg-gray-50 rounded-2xl">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">{metric.label}</p>
+                <div key={i} className="p-4 bg-gray-50 dark:bg-slate-700 rounded-2xl">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-slate-500 mb-2">{metric.label}</p>
                   <div className="flex items-center justify-between">
-                    <p className="text-xl font-black text-gray-900">{metric.value}</p>
+                    <p className="text-xl font-black text-gray-900 dark:text-white">{metric.value}</p>
                     <span className={`material-symbols-outlined ${metric.color} text-2xl`}>{metric.icon}</span>
                   </div>
                 </div>
@@ -844,7 +848,7 @@ const ReportsSection: React.FC<{
 
           {/* Bookings by Sport */}
           <div>
-            <h4 className="text-lg font-black text-gray-900 uppercase tracking-tight mb-4">Bookings by Sport</h4>
+            <h4 className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-tight mb-4">Bookings by Sport</h4>
             <div className="space-y-3">
               {(() => {
                 const periodBookings = bookings.filter(b => {
@@ -862,12 +866,12 @@ const ReportsSection: React.FC<{
                 return Array.from(sportMap.entries())
                   .sort((a, b) => b[1].revenue - a[1].revenue)
                   .map(([sport, data]) => (
-                    <div key={sport} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
+                    <div key={sport} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700 rounded-2xl">
                       <div>
-                        <p className="text-sm font-black text-gray-900">{sport}</p>
-                        <p className="text-xs text-gray-500">{data.count} bookings</p>
+                        <p className="text-sm font-black text-gray-900 dark:text-white">{sport}</p>
+                        <p className="text-xs text-gray-500 dark:text-slate-400">{data.count} bookings</p>
                       </div>
-                      <p className="text-sm font-black text-gray-900">{formatCurrency(data.revenue)}</p>
+                      <p className="text-sm font-black text-gray-900 dark:text-white">{formatCurrency(data.revenue)}</p>
                     </div>
                   ));
               })()}
@@ -878,8 +882,8 @@ const ReportsSection: React.FC<{
 
       {/* User Report */}
       {selectedReport === 'user' && (
-        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-8 space-y-8">
-          <h3 className="text-xl font-black text-gray-900 uppercase tracking-tight">User Report</h3>
+        <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-8 space-y-8">
+          <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight">User Report</h3>
           
           {/* User Statistics */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -902,10 +906,10 @@ const ReportsSection: React.FC<{
                 { label: 'New Users', value: newUsers.length.toLocaleString(), icon: 'person_add', color: 'text-purple-500' },
                 { label: 'Inactive Users', value: (users.length - activeUsers.size).toLocaleString(), icon: 'person_off', color: 'text-gray-500' }
               ].map((metric, i) => (
-                <div key={i} className="p-4 bg-gray-50 rounded-2xl">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">{metric.label}</p>
+                <div key={i} className="p-4 bg-gray-50 dark:bg-slate-700 rounded-2xl">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-slate-500 mb-2">{metric.label}</p>
                   <div className="flex items-center justify-between">
-                    <p className="text-xl font-black text-gray-900">{metric.value}</p>
+                    <p className="text-xl font-black text-gray-900 dark:text-white">{metric.value}</p>
                     <span className={`material-symbols-outlined ${metric.color} text-2xl`}>{metric.icon}</span>
                   </div>
                 </div>
@@ -915,9 +919,9 @@ const ReportsSection: React.FC<{
 
           {/* User Growth Chart */}
           <div>
-            <h4 className="text-lg font-black text-gray-900 uppercase tracking-tight mb-4">User Growth</h4>
-            <div className="h-64 flex items-center justify-center bg-gray-50 rounded-2xl">
-              <p className="text-sm text-gray-500">Chart visualization coming soon...</p>
+            <h4 className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-tight mb-4">User Growth</h4>
+            <div className="h-64 flex items-center justify-center bg-gray-50 dark:bg-slate-700 rounded-2xl">
+              <p className="text-sm text-gray-500 dark:text-slate-400">Chart visualization coming soon...</p>
             </div>
           </div>
         </div>
@@ -925,8 +929,8 @@ const ReportsSection: React.FC<{
 
       {/* Venue Report */}
       {selectedReport === 'venue' && (
-        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-8 space-y-8">
-          <h3 className="text-xl font-black text-gray-900 uppercase tracking-tight">Venue Performance Report</h3>
+        <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-8 space-y-8">
+          <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight">Venue Performance Report</h3>
           
           {/* Venue Statistics */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -936,10 +940,10 @@ const ReportsSection: React.FC<{
               { label: 'Pending Venues', value: venues.filter(v => v.status === 'Pending').length.toLocaleString(), icon: 'pending', color: 'text-orange-500' },
               { label: 'Inactive Venues', value: venues.filter(v => v.status === 'Inactive').length.toLocaleString(), icon: 'cancel', color: 'text-red-500' }
             ].map((metric, i) => (
-              <div key={i} className="p-4 bg-gray-50 rounded-2xl">
-                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">{metric.label}</p>
+              <div key={i} className="p-4 bg-gray-50 dark:bg-slate-700 rounded-2xl">
+                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-slate-500 mb-2">{metric.label}</p>
                 <div className="flex items-center justify-between">
-                  <p className="text-xl font-black text-gray-900">{metric.value}</p>
+                  <p className="text-xl font-black text-gray-900 dark:text-white">{metric.value}</p>
                   <span className={`material-symbols-outlined ${metric.color} text-2xl`}>{metric.icon}</span>
                 </div>
               </div>
@@ -948,7 +952,7 @@ const ReportsSection: React.FC<{
 
           {/* Top Performing Venues */}
           <div>
-            <h4 className="text-lg font-black text-gray-900 uppercase tracking-tight mb-4">Top Performing Venues</h4>
+            <h4 className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-tight mb-4">Top Performing Venues</h4>
             <div className="space-y-3">
               {(() => {
                 const venueMap = new Map<string, { venue: any; bookings: number; revenue: number }>();
@@ -971,17 +975,17 @@ const ReportsSection: React.FC<{
                   .sort((a, b) => b.revenue - a.revenue)
                   .slice(0, 10)
                   .map((data, index) => (
-                    <div key={data.venue.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl hover:bg-gray-100 transition-colors">
+                    <div key={data.venue.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700 rounded-2xl hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors">
                       <div className="flex items-center gap-4">
                         <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center">
                           <span className="text-sm font-black text-primary">{index + 1}</span>
                         </div>
                         <div>
-                          <p className="text-sm font-black text-gray-900">{data.venue.name}</p>
-                          <p className="text-xs text-gray-500">{data.bookings} bookings</p>
+                          <p className="text-sm font-black text-gray-900 dark:text-white">{data.venue.name}</p>
+                          <p className="text-xs text-gray-500 dark:text-slate-400">{data.bookings} bookings</p>
                         </div>
                       </div>
-                      <p className="text-sm font-black text-gray-900">{formatCurrency(data.revenue)}</p>
+                      <p className="text-sm font-black text-gray-900 dark:text-white">{formatCurrency(data.revenue)}</p>
                     </div>
                   ));
               })()}
@@ -1018,10 +1022,10 @@ const SupportSection: React.FC<{
           { label: 'Resolved', value: supportStats.resolved.toLocaleString(), icon: 'check_circle', color: 'text-green-500' },
           { label: 'Critical', value: supportStats.critical.toLocaleString(), icon: 'warning', color: 'text-red-500' }
         ].map((metric, i) => (
-          <div key={i} className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
-            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">{metric.label}</p>
+          <div key={i} className="bg-white dark:bg-slate-800 rounded-3xl p-6 border border-gray-100 dark:border-slate-700 shadow-sm">
+            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-slate-500 mb-2">{metric.label}</p>
             <div className="flex items-center justify-between">
-              <h3 className="text-2xl font-black text-gray-900">{metric.value}</h3>
+              <h3 className="text-2xl font-black text-gray-900 dark:text-white">{metric.value}</h3>
               <span className={`material-symbols-outlined ${metric.color} text-3xl`}>{metric.icon}</span>
             </div>
           </div>
@@ -1029,13 +1033,13 @@ const SupportSection: React.FC<{
       </div>
 
       {/* Recent Tickets */}
-      <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-8">
-        <h3 className="text-xl font-black text-gray-900 uppercase tracking-tight mb-6">Recent Support Tickets</h3>
+      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-8">
+        <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight mb-6">Recent Support Tickets</h3>
         <div className="space-y-4">
           {tickets.slice(0, 10).map(ticket => {
             const user = users.find(u => u.id === ticket.userId);
             return (
-              <div key={ticket.id} className="p-4 bg-gray-50 rounded-2xl hover:bg-gray-100 transition-colors">
+              <div key={ticket.id} className="p-4 bg-gray-50 dark:bg-slate-700 rounded-2xl hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
@@ -1047,8 +1051,8 @@ const SupportSection: React.FC<{
                       {ticket.priority}
                     </div>
                     <div>
-                      <p className="text-sm font-black text-gray-900">{ticket.subject}</p>
-                      <p className="text-xs text-gray-500">{user?.name || 'Unknown User'} • {ticket.type}</p>
+                      <p className="text-sm font-black text-gray-900 dark:text-white">{ticket.subject}</p>
+                      <p className="text-xs text-gray-500 dark:text-slate-400">{user?.name || 'Unknown User'} • {ticket.type}</p>
                     </div>
                   </div>
                   <div className="text-right">

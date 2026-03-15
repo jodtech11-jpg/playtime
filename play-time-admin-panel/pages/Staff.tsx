@@ -8,7 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
 import { formatCurrency, getStatusColor } from '../utils/formatUtils';
 import { formatDate, getRelativeTime } from '../utils/dateUtils';
-import StaffFormModal from '../components/StaffFormModal';
+import StaffFormModal from '../components/modals/StaffFormModal';
 import { serverTimestamp } from 'firebase/firestore';
 
 const Staff: React.FC = () => {

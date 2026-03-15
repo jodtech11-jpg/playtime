@@ -1,11 +1,15 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { useLandingPage } from '../hooks/useLandingPage';
+import { useCmsPages } from '../hooks/useCmsPages';
 import { useScrollAnimation } from '../hooks/useScrollAnimation';
 
 const Landing: React.FC = () => {
   const navigate = useNavigate();
+  const { error: authError, clearError } = useAuth();
   const { content, loading } = useLandingPage(true);
+  const { pages: cmsPages } = useCmsPages({ activeOnly: true, realtime: true });
 
   // Scroll animations
   const heroAnimation = useScrollAnimation(0.1, true);
@@ -50,9 +54,20 @@ const Landing: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen mesh-gradient text-slate-900 dark:text-slate-100 selection:bg-primary/30 scroll-smooth">
+    <div className={`min-h-screen mesh-gradient text-slate-900 dark:text-slate-100 selection:bg-primary/30 scroll-smooth ${authError ? 'pt-32' : ''}`}>
+      {/* Auth error banner (e.g. user profile not found) */}
+      {authError && (
+        <div className="fixed top-0 left-0 right-0 z-[60] bg-red-600 text-white px-4 py-3 flex items-center justify-center gap-2 shadow-lg">
+          <span className="material-symbols-outlined">error</span>
+          <p className="text-sm font-bold">{authError}</p>
+          <a href="#/login" className="underline font-black ml-2 hover:no-underline">Sign in</a>
+          <button type="button" onClick={clearError} className="p-1 rounded hover:bg-white/20 ml-2" aria-label="Dismiss">
+            <span className="material-symbols-outlined text-lg">close</span>
+          </button>
+        </div>
+      )}
       {/* Navigation */}
-      <nav className="fixed top-0 w-full z-50 glass border-b border-white/20 dark:border-white/5">
+      <nav className={`fixed w-full z-50 glass border-b border-white/20 dark:border-white/5 ${authError ? 'top-12' : 'top-0'}`}>
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3 group cursor-pointer" onClick={() => navigate('/')}>
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/20 group-hover:scale-110 transition-transform duration-300">
@@ -300,7 +315,16 @@ const Landing: React.FC = () => {
             © 2026 Play Time Global. All rights reserved.
           </div>
 
-          <div className="flex gap-8 text-xs font-black uppercase tracking-widest">
+          <div className="flex flex-wrap items-center justify-center gap-6 text-xs font-black uppercase tracking-widest">
+            {cmsPages.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => navigate(`/page/${p.slug}`)}
+                className="hover:text-primary transition-colors"
+              >
+                {p.title}
+              </button>
+            ))}
             <a href="#" className="hover:text-primary transition-colors">Twitter</a>
             <a href="#" className="hover:text-primary transition-colors">LinkedIn</a>
             <a href="#" className="hover:text-primary transition-colors">Contact</a>

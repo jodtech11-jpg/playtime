@@ -131,20 +131,22 @@ export const useBookings = (options: UseBookingsOptions = {}) => {
         unsubscribe();
       }
     };
-  }, [user?.id, options.venueId, options.status, options.sport, options.limit, options.realtime, isVenueManager, managedVenues.join(',')]);
+  }, [user?.id, options.venueId, options.status, options.sport, options.limit, options.realtime, isVenueManager, managedVenues.join(','), options.dateRange?.start?.getTime(), options.dateRange?.end?.getTime()]);
 
   return { bookings, loading, error };
 };
 
 // Hook for today's bookings
 export const useTodaysBookings = () => {
+  // Recompute when the calendar date changes (e.g. app left open past midnight)
+  const todayStr = new Date().toDateString();
   const dateRange = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     return { start: today, end: tomorrow };
-  }, []); // Empty deps - only calculate once per day (could be enhanced to recalculate daily)
+  }, [todayStr]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return useBookings({
     dateRange,

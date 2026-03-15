@@ -32,6 +32,23 @@ See [Documentation README](./docs/README.md) for complete documentation index.
    npm run dev
    ```
 
+## 🚢 Production
+
+- **Build**: `npm run build` → output in `dist/`
+- **Preview build locally**: `npm run preview` or `npm run preview:prod`
+- **Deploy to Firebase**: `npm run deploy` (full) or `npm run deploy:hosting` (app only)
+
+See **[PRODUCTION_COMMANDS.md](./PRODUCTION_COMMANDS.md)** for full production and deploy commands.
+
+## 🔄 CI/CD (GitHub Actions)
+
+From the **repository root** (Playtime):
+
+- **CI** (`.github/workflows/ci.yml`): On every push/PR to `main` or `develop`, runs:
+  - **Admin**: `npm ci` and `npm run build` in `play-time-admin-panel`
+  - **Mobile**: `flutter pub get`, `flutter analyze`, `flutter test` in `play_time_mobile`
+- **Deploy** (`.github/workflows/deploy.yml`): On push to `main`, builds the admin panel and deploys to Firebase Hosting. Requires repo secrets: `FIREBASE_TOKEN` (from `firebase login:ci`) and all `VITE_FIREBASE_*` vars (same as `.env.example`). Add them in GitHub → Settings → Secrets and variables → Actions.
+
 ## 📋 Project Status
 
 See [Implementation Progress](./docs/planning/IMPLEMENTATION_PROGRESS.md) for current status.
@@ -41,9 +58,12 @@ See [Implementation Progress](./docs/planning/IMPLEMENTATION_PROGRESS.md) for cu
 ```
 play-time-admin-panel/
 ├── components/          # React components
+│   ├── layout/          # Sidebar, Header, ProtectedRoute, ErrorBoundary, Toast
+│   ├── modals/          # All modal/dialog components
+│   └── shared/         # DatePicker, ImageUpload, GoogleMapPicker, LoadingSpinner
 ├── contexts/            # React contexts (Auth, Toast, etc.)
 ├── hooks/               # Custom React hooks
-├── pages/               # Page components
+├── pages/               # Page components (routes)
 ├── services/            # Service layer (Firebase, APIs)
 ├── utils/               # Utility functions
 ├── config/              # Configuration files
@@ -53,12 +73,15 @@ play-time-admin-panel/
 │   ├── implementations/ # Feature implementation docs
 │   ├── guides/          # Setup and how-to guides
 │   ├── planning/        # Planning and progress docs
-│   └── firebase/        # Firebase-specific docs
+│   ├── firebase/        # Firebase-specific docs
+│   └── from-root/       # Legacy copies moved from root
 ├── firestore.rules      # Firestore security rules
 ├── firestore.indexes.json # Firestore indexes
 ├── storage.rules        # Storage security rules
 └── firebase.json        # Firebase configuration
 ```
+
+See **[FILE_ORGANIZATION.md](./FILE_ORGANIZATION.md)** for a full map of where to put and find files.
 
 ## 🔑 Key Features
 
@@ -72,9 +95,19 @@ play-time-admin-panel/
 - ✅ Push Notifications (FCM)
 - ✅ WhatsApp Integration
 - ✅ Advanced Analytics
-- ✅ Export Functionality (CSV, PDF)
+- ✅ Export Functionality (CSV, PDF) — Bookings, Users, Memberships, CRM, Financials; exports are **download-only** (generated in the browser, no server storage).
 - ✅ Invoice PDF Generation
 - ✅ Image Upload & Management
+
+## ⌨️ Keyboard shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| **Ctrl+N** / **Cmd+N** | New booking (on Bookings page) |
+| **Ctrl+S** / **Cmd+S** | Save form (in User form modal when open) |
+| **Escape** | Close modal (User form modal) |
+
+*More shortcuts may be added in modals (e.g. save with Ctrl+S).*
 
 ## 📖 Documentation Quick Links
 

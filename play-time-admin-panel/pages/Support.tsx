@@ -5,9 +5,9 @@ import { supportTicketsCollection } from '../services/firebase';
 import { SupportTicket } from '../types';
 import { getRelativeTime } from '../utils/dateUtils';
 import { serverTimestamp } from 'firebase/firestore';
-import TicketDetailModal from '../components/TicketDetailModal';
-import ArchiveModal from '../components/ArchiveModal';
-import HelpCenterDocsModal from '../components/HelpCenterDocsModal';
+import TicketDetailModal from '../components/modals/TicketDetailModal';
+import ArchiveModal from '../components/modals/ArchiveModal';
+import HelpCenterDocsModal from '../components/modals/HelpCenterDocsModal';
 
 const Support: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'Open' | 'In Progress' | 'Resolved' | 'Closed' | 'All'>('All');

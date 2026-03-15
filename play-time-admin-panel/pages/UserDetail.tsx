@@ -10,15 +10,17 @@ import { useVenues } from '../hooks/useVenues';
 import { usersCollection } from '../services/firebase';
 import { User } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { getStatusColor, formatCurrency } from '../utils/formatUtils';
 import { formatDate, getRelativeTime } from '../utils/dateUtils';
 import { serverTimestamp } from 'firebase/firestore';
-import UserFormModal from '../components/UserFormModal';
+import UserFormModal from '../components/modals/UserFormModal';
 
 const UserDetail: React.FC = () => {
   const { userId } = useParams<{ userId: string }>();
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
+  const { showSuccess, showError } = useToast();
   const { users } = useUsers();
   const { venues } = useVenues({ realtime: true });
   const [user, setUser] = useState<User | null>(null);
@@ -144,10 +146,11 @@ const UserDetail: React.FC = () => {
       setUser(updatedUser);
       setIsModalOpen(false);
       setProcessing(null);
+      showSuccess('User updated successfully.');
     } catch (err: any) {
       console.error('Error saving user:', err);
       setProcessing(null);
-      alert(`Failed to save user: ${err.message}`);
+      showError(`Failed to save user: ${err.message}`);
     }
   };
 
@@ -162,10 +165,11 @@ const UserDetail: React.FC = () => {
       });
       setUser({ ...user, status: newStatus });
       setProcessing(null);
+      showSuccess(`User status updated to ${newStatus}.`);
     } catch (err: any) {
       console.error('Error updating user status:', err);
       setProcessing(null);
-      alert(`Failed to update user status: ${err.message}`);
+      showError(`Failed to update user status: ${err.message}`);
     }
   };
 
@@ -203,12 +207,21 @@ const UserDetail: React.FC = () => {
 
   return (
     <div className="p-8 space-y-10 bg-slate-50 dark:bg-slate-900 min-h-full">
-      {/* Header */}
+      {/* Breadcrumb */}
+      <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-widest">
+        <button onClick={() => navigate('/users')} className="hover:text-primary transition-colors">
+          Users
+        </button>
+        <span className="material-symbols-outlined text-sm text-slate-300">chevron_right</span>
+        <span className="text-slate-700 dark:text-slate-200 truncate max-w-xs">{user.name || user.email}</span>
+      </nav>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
         <div className="flex items-center gap-6">
           <button
             onClick={() => navigate('/users')}
+            aria-label="Back to users"
             className="size-12 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400 hover:text-primary hover:border-primary/30 transition-all shadow-sm group"
           >
             <span className="material-symbols-outlined transition-transform group-hover:-translate-x-1">arrow_back</span>

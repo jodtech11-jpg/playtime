@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { courtsCollection, subscribeToCollection } from '../services/firebase';
+import { courtsCollection } from '../services/firebase';
 import { Court } from '../types';
 
 interface UseCourtsOptions {
@@ -18,6 +18,9 @@ export const useCourts = (options: UseCourtsOptions = {}) => {
       return;
     }
 
+    let unsubscribe: (() => void) | undefined;
+    let mounted = true;
+
     const fetchCourts = async () => {
       try {
         setLoading(true);
@@ -32,31 +35,44 @@ export const useCourts = (options: UseCourtsOptions = {}) => {
         ];
 
         if (options.realtime) {
-          // Real-time subscription
-          const unsubscribe = courtsCollection.subscribeAll(
+          // Real-time subscription (no orderBy to avoid composite index requirement; sort in memory)
+          unsubscribe = courtsCollection.subscribeAll(
             (data: Court[]) => {
-              setCourts(data);
+              if (!mounted) return;
+              const sorted = [...data].sort((a, b) => {
+                const aTime = a.createdAt && (typeof a.createdAt.toDate === 'function' ? a.createdAt.toDate() : a.createdAt);
+                const bTime = b.createdAt && (typeof b.createdAt.toDate === 'function' ? b.createdAt.toDate() : b.createdAt);
+                if (!aTime) return 1;
+                if (!bTime) return -1;
+                return new Date(aTime).getTime() - new Date(bTime).getTime();
+              });
+              setCourts(sorted);
               setLoading(false);
             },
-            filters,
-            'createdAt',
-            'asc'
+            filters
+            // omit orderByField/orderDirection so Firestore only filters by venueId (no composite index needed)
           );
-
-          return () => unsubscribe();
         } else {
           const data = await courtsCollection.getAll(filters);
+          if (!mounted) return;
           setCourts(data as Court[]);
           setLoading(false);
         }
       } catch (err: any) {
         console.error('Error fetching courts:', err);
-        setError(err.message || 'Failed to fetch courts');
-        setLoading(false);
+        if (mounted) {
+          setError(err.message || 'Failed to fetch courts');
+          setLoading(false);
+        }
       }
     };
 
     fetchCourts();
+
+    return () => {
+      mounted = false;
+      if (unsubscribe) unsubscribe();
+    };
   }, [options.venueId, options.realtime]);
 
   return { courts, loading, error };

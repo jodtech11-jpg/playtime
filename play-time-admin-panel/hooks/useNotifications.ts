@@ -27,7 +27,9 @@ export const useNotifications = (realtime: boolean = false) => {
             unsubscribe = notificationsCollection.subscribeAll(
               (data: Notification[]) => {
                 if (mounted) {
-                  setNotifications(data || []);
+                  // Filter out per-user notifications (created by sendNotificationToAudience)
+                  // Those have a userId field; broadcast notifications do not
+                  setNotifications((data || []).filter((n: any) => !n.userId));
                   setLoading(false);
                 }
               },
@@ -47,7 +49,7 @@ export const useNotifications = (realtime: boolean = false) => {
                   'desc'
                 );
                 if (mounted) {
-                  setNotifications(data as Notification[]);
+                  setNotifications((data as any[]).filter(n => !n.userId) as Notification[]);
                   setLoading(false);
                 }
               } catch (fetchError: any) {
@@ -64,7 +66,7 @@ export const useNotifications = (realtime: boolean = false) => {
             'desc'
           );
           if (mounted) {
-            setNotifications(data as Notification[]);
+            setNotifications((data as any[]).filter(n => !n.userId) as Notification[]);
             setLoading(false);
           }
         }

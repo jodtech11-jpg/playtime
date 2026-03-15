@@ -11,7 +11,7 @@ import { MembershipPlan, Membership } from '../types';
 import { formatCurrency, getStatusColor } from '../utils/formatUtils';
 import { formatDate } from '../utils/dateUtils';
 import { exportMembershipsToCSV, exportMembersToPDF } from '../utils/exportUtils';
-import MembershipPlanFormModal from '../components/MembershipPlanFormModal';
+import MembershipPlanFormModal from '../components/modals/MembershipPlanFormModal';
 import { serverTimestamp, Timestamp } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { sendNotificationToAudience } from '../services/notificationService';

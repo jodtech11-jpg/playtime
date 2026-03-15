@@ -6,7 +6,7 @@ import { serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
-import CmsPageFormModal from '../components/CmsPageFormModal';
+import CmsPageFormModal from '../components/modals/CmsPageFormModal';
 
 const FrontendCms: React.FC = () => {
   const { user } = useAuth();

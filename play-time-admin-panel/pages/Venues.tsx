@@ -7,16 +7,18 @@ import { venuesCollection } from '../services/firebase';
 import { Venue } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
+import { useToast } from '../contexts/ToastContext';
 import { formatCurrency, getStatusColor } from '../utils/formatUtils';
 import { formatDate } from '../utils/dateUtils';
-import VenueFormModal from '../components/VenueFormModal';
-import CourtManagementModal from '../components/CourtManagementModal';
+import VenueFormModal from '../components/modals/VenueFormModal';
+import CourtManagementModal from '../components/modals/CourtManagementModal';
 import { serverTimestamp } from 'firebase/firestore';
 
 const Venues: React.FC = () => {
   const navigate = useNavigate();
   const { user, isSuperAdmin } = useAuth();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
+  const { showSuccess, showError } = useToast();
   const { venues, loading: venuesLoading } = useVenues({ realtime: true });
   const { bookings } = useBookings({ realtime: true });
   const { users } = useUsers({ limit: 100 });
@@ -43,11 +45,26 @@ const Venues: React.FC = () => {
   const venueStats = useMemo(() => {
     const stats = new Map<string, { occupancy: number; revenue: number }>();
 
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
     venues.forEach(venue => {
-      const venueBookings = bookings.filter(b => b.venueId === venue.id && b.status === 'Confirmed');
+      // Filter to today's confirmed bookings for occupancy (daily metric)
+      const todayBookings = bookings.filter(b => {
+        if (b.venueId !== venue.id || b.status !== 'Confirmed') return false;
+        if (!b.startTime) return false;
+        const startDate = b.startTime.toDate ? b.startTime.toDate() : new Date(b.startTime as any);
+        return startDate >= today && startDate < tomorrow;
+      });
       const totalSlots = venue.courts?.length || 1;
-      const bookedSlots = venueBookings.length;
-      const occupancy = totalSlots > 0 ? Math.round((bookedSlots / (totalSlots * 24)) * 100) : 0; // Simplified calculation
+      // Total hours booked today across all courts
+      const totalBookedHours = todayBookings.reduce((sum, b) => sum + (b.duration || 1), 0);
+      // Available hours = courts × 14 operating hours (8am–10pm)
+      const totalAvailableHours = totalSlots * 14;
+      const occupancy = totalAvailableHours > 0 ? Math.min(100, Math.round((totalBookedHours / totalAvailableHours) * 100)) : 0;
+      const venueBookings = bookings.filter(b => b.venueId === venue.id && b.status === 'Confirmed');
       const revenue = venueBookings.reduce((sum, b) => sum + (b.amount || 0), 0);
 
       stats.set(venue.id, { occupancy, revenue });
@@ -226,18 +243,14 @@ const Venues: React.FC = () => {
   };
 
   const performDeleteVenue = async (venueId: string) => {
-    if (!confirm('Are you sure you want to delete this venue? This action cannot be undone.')) {
-      setShowDeleteConfirm(null);
-      return;
-    }
-
     try {
       setProcessing(venueId);
       await venuesCollection.delete(venueId);
       setShowDeleteConfirm(null);
+      showSuccess('Venue deleted successfully.');
     } catch (error: any) {
       console.error('Error deleting venue:', error);
-      alert('Failed to delete venue: ' + error.message);
+      showError('Failed to delete venue: ' + error.message);
     } finally {
       setProcessing(null);
     }
@@ -254,9 +267,10 @@ const Venues: React.FC = () => {
         status: 'Active',
         updatedAt: serverTimestamp()
       });
+      showSuccess('Venue approved successfully.');
     } catch (error: any) {
       console.error('Error approving venue:', error);
-      alert('Failed to approve venue: ' + error.message);
+      showError('Failed to approve venue: ' + error.message);
     } finally {
       setProcessing(null);
     }
@@ -441,7 +455,7 @@ const Venues: React.FC = () => {
       </div>
 
       {/* Results Count */}
-      <div className="flex items-center justify-between text-sm text-gray-600">
+      <div className="flex items-center justify-between text-sm text-gray-600 dark:text-slate-400">
         <p>
           Showing <span className="font-bold">{paginatedVenues.length}</span> of{' '}
           <span className="font-bold">{filteredVenues.length}</span> venues
@@ -462,10 +476,10 @@ const Venues: React.FC = () => {
       </div>
 
       {venues.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-12 text-center">
-          <span className="material-symbols-outlined text-6xl text-gray-300 mb-4">location_off</span>
-          <h3 className="text-xl font-black text-gray-900 mb-2">No Venues Found</h3>
-          <p className="text-gray-500 mb-6">Get started by creating your first venue.</p>
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm p-12 text-center">
+          <span className="material-symbols-outlined text-6xl text-gray-300 dark:text-slate-600 mb-4">location_off</span>
+          <h3 className="text-xl font-black text-gray-900 dark:text-white mb-2">No Venues Found</h3>
+          <p className="text-gray-500 dark:text-slate-400 mb-6">Get started by creating your first venue.</p>
           <button
             onClick={handleCreateVenue}
             className="px-6 py-3 bg-primary text-primary-content rounded-xl text-sm font-black hover:bg-primary-hover shadow-lg shadow-primary/20 transition-all"
@@ -474,10 +488,10 @@ const Venues: React.FC = () => {
           </button>
         </div>
       ) : filteredVenues.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-12 text-center">
-          <span className="material-symbols-outlined text-6xl text-gray-300 mb-4">search_off</span>
-          <h3 className="text-xl font-black text-gray-900 mb-2">No Venues Found</h3>
-          <p className="text-gray-500 mb-6">Try adjusting your search or filters</p>
+        <div className="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm p-12 text-center">
+          <span className="material-symbols-outlined text-6xl text-gray-300 dark:text-slate-600 mb-4">search_off</span>
+          <h3 className="text-xl font-black text-gray-900 dark:text-white mb-2">No Venues Found</h3>
+          <p className="text-gray-500 dark:text-slate-400 mb-6">Try adjusting your search or filters</p>
           <button
             onClick={() => {
               setSearchQuery('');
@@ -500,7 +514,7 @@ const Venues: React.FC = () => {
             return (
               <div
                 key={venue.id}
-                className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden group flex flex-col hover:shadow-md transition-shadow cursor-pointer"
+                className="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm overflow-hidden group flex flex-col hover:shadow-md transition-shadow cursor-pointer"
                 onClick={() => handleViewVenue(venue.id)}
               >
                 <div className="relative h-48 overflow-hidden">
@@ -518,40 +532,40 @@ const Venues: React.FC = () => {
                 <div className="p-6 flex-1 flex flex-col gap-4">
                   <div>
                     <div className="flex justify-between items-start">
-                      <h3 className="text-lg font-black text-gray-900">{venue.name}</h3>
-                      <p className="text-[10px] font-mono font-bold text-gray-400">{venue.id.substring(0, 8)}</p>
+                      <h3 className="text-lg font-black text-gray-900 dark:text-white">{venue.name}</h3>
+                      <p className="text-[10px] font-mono font-bold text-gray-400 dark:text-slate-500">{venue.id.substring(0, 8)}</p>
                     </div>
-                    <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                    <p className="text-xs text-gray-500 dark:text-slate-400 mt-1 flex items-center gap-1">
                       <span className="material-symbols-outlined text-sm">location_on</span>
                       {venue.address}
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4 py-4 border-y border-gray-50">
+                  <div className="grid grid-cols-2 gap-4 py-4 border-y border-gray-50 dark:border-slate-700">
                     <div>
-                      <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Courts</p>
-                      <p className="text-xl font-black text-gray-900">{venue.courts?.length || 0}</p>
+                      <p className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">Courts</p>
+                      <p className="text-xl font-black text-gray-900 dark:text-white">{venue.courts?.length || 0}</p>
                     </div>
                     <div>
-                      <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Occupancy</p>
+                      <p className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">Occupancy</p>
                       <p className="text-xl font-black text-primary">{stats.occupancy}%</p>
                     </div>
                   </div>
 
                   <div>
-                    <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2">Sports</p>
+                    <p className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-2">Sports</p>
                     <div className="flex flex-wrap gap-2">
                       {venue.sports && venue.sports.length > 0 ? (
                         venue.sports.slice(0, 3).map((sport, idx) => (
-                          <span key={idx} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-[10px] font-bold">
+                          <span key={idx} className="px-2 py-1 bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 rounded text-[10px] font-bold">
                             {sport}
                           </span>
                         ))
                       ) : (
-                        <span className="text-xs text-gray-400">No sports</span>
+                        <span className="text-xs text-gray-400 dark:text-slate-500">No sports</span>
                       )}
                       {venue.sports && venue.sports.length > 3 && (
-                        <span className="text-xs text-gray-400">+{venue.sports.length - 3} more</span>
+                        <span className="text-xs text-gray-400 dark:text-slate-500">+{venue.sports.length - 3} more</span>
                       )}
                     </div>
                   </div>
@@ -565,7 +579,7 @@ const Venues: React.FC = () => {
                     </button>
                     <button
                       onClick={() => handleEditVenue(venue)}
-                      className="px-4 py-2.5 bg-gray-100 text-gray-700 text-xs font-bold rounded-xl hover:bg-gray-200 transition-colors"
+                      className="px-4 py-2.5 bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-200 text-xs font-bold rounded-xl hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors"
                     >
                       Edit
                     </button>
@@ -669,14 +683,16 @@ const Venues: React.FC = () => {
                         <button
                           onClick={() => handleViewVenue(venue.id)}
                           className="size-8 flex items-center justify-center text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
-                          title="Open Console"
+                          aria-label="View venue details"
+                          title="View venue details"
                         >
                           <span className="material-symbols-outlined text-xl">terminal</span>
                         </button>
                         <button
                           onClick={() => handleEditVenue(venue)}
                           className="size-8 flex items-center justify-center text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-all"
-                          title="Configure Parameters"
+                          aria-label="Edit venue"
+                          title="Edit venue"
                         >
                           <span className="material-symbols-outlined text-xl">settings</span>
                         </button>
@@ -685,7 +701,8 @@ const Venues: React.FC = () => {
                             onClick={() => setShowDeleteConfirm(venue.id)}
                             disabled={processing === venue.id}
                             className="size-8 flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all disabled:opacity-50"
-                            title="Decommission"
+                            aria-label="Delete venue"
+                            title="Delete venue"
                           >
                             <span className="material-symbols-outlined text-xl">block</span>
                           </button>
@@ -702,15 +719,15 @@ const Venues: React.FC = () => {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-          <div className="text-sm text-gray-600">
+        <div className="flex items-center justify-between bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm p-4">
+          <div className="text-sm text-gray-600 dark:text-slate-400">
             Page <span className="font-bold">{currentPage}</span> of <span className="font-bold">{totalPages}</span>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
               disabled={currentPage === 1}
-              className="px-4 py-2 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-bold text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Previous
             </button>
@@ -732,7 +749,7 @@ const Venues: React.FC = () => {
                     onClick={() => setCurrentPage(pageNum)}
                     className={`px-3 py-2 rounded-lg text-sm font-bold transition-colors ${currentPage === pageNum
                       ? 'bg-primary text-white'
-                      : 'text-gray-700 hover:bg-gray-100'
+                      : 'text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700'
                       }`}
                   >
                     {pageNum}
@@ -743,7 +760,7 @@ const Venues: React.FC = () => {
             <button
               onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
               disabled={currentPage === totalPages}
-              className="px-4 py-2 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-bold text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Next
             </button>
@@ -754,9 +771,9 @@ const Venues: React.FC = () => {
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6">
-            <h3 className="text-xl font-black text-gray-900 mb-2">Delete Venue</h3>
-            <p className="text-gray-600 mb-6">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-xl font-black text-gray-900 dark:text-white mb-2">Delete Venue</h3>
+            <p className="text-gray-600 dark:text-slate-400 mb-6">
               Are you sure you want to delete this venue? This action cannot be undone and will affect all associated bookings and courts.
             </p>
             <div className="flex gap-3">
@@ -769,7 +786,7 @@ const Venues: React.FC = () => {
               </button>
               <button
                 onClick={() => setShowDeleteConfirm(null)}
-                className="px-6 py-3 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-50 transition-all"
+                className="px-6 py-3 bg-slate-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-200 rounded-xl text-sm font-bold hover:bg-slate-200 dark:hover:bg-slate-600 transition-all"
               >
                 Cancel
               </button>

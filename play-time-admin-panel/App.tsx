@@ -33,13 +33,17 @@ import Marketing from './pages/Marketing';
 import Support from './pages/Support';
 import Settings from './pages/Settings';
 import FrontendCms from './pages/FrontendCms';
+import CmsPageView from './pages/CmsPageView';
 import Notifications from './pages/Notifications';
 import Payments from './pages/Payments';
-import Sidebar from './components/Sidebar';
-import Header from './components/Header';
-import ProtectedRoute from './components/ProtectedRoute';
-import ErrorBoundary from './components/ErrorBoundary';
-import ToastContainer from './components/ToastContainer';
+import ActivityLog from './pages/ActivityLog';
+import Sidebar from './components/layout/Sidebar';
+import Header from './components/layout/Header';
+import ProtectedRoute from './components/layout/ProtectedRoute';
+import VenueProtectedRoute from './components/layout/VenueProtectedRoute';
+import ErrorBoundary from './components/layout/ErrorBoundary';
+import ToastContainer from './components/layout/ToastContainer';
+import { VenueTwoStepAuthProvider } from './contexts/VenueTwoStepAuthContext';
 
 const AppRoutes: React.FC = () => {
   const { isAuthenticated, loading } = useAuth();
@@ -61,6 +65,7 @@ const AppRoutes: React.FC = () => {
     return (
       <Routes>
         <Route path="/" element={<Landing />} />
+        <Route path="/page/:slug" element={<CmsPageView />} />
         <Route path="/login" element={<Login />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
@@ -68,18 +73,19 @@ const AppRoutes: React.FC = () => {
   }
 
   return (
-    <HeaderActionsProvider>
-      <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark">
-        <Sidebar />
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden lg:ml-0">
-          <Header />
-          <main className="flex-1 overflow-y-auto pt-16 lg:pt-0 bg-background-light dark:bg-background-dark">
-            <Routes>
-              <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-              <Route path="/bookings" element={<ProtectedRoute><Bookings /></ProtectedRoute>} />
-              <Route path="/venues" element={<ProtectedRoute><Venues /></ProtectedRoute>} />
-              <Route path="/venues/:venueId" element={<ProtectedRoute><VenueDetail /></ProtectedRoute>} />
-              <Route path="/venues/courts" element={<ProtectedRoute><CourtManagement /></ProtectedRoute>} />
+    <VenueTwoStepAuthProvider>
+      <HeaderActionsProvider>
+        <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark">
+          <Sidebar />
+          <div className="flex-1 flex flex-col min-w-0 overflow-hidden lg:ml-0">
+            <Header />
+            <main className="flex-1 overflow-y-auto pt-16 lg:pt-0 bg-background-light dark:bg-background-dark">
+              <Routes>
+                <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                <Route path="/bookings" element={<ProtectedRoute><Bookings /></ProtectedRoute>} />
+                <Route path="/venues" element={<VenueProtectedRoute><Venues /></VenueProtectedRoute>} />
+                <Route path="/venues/:venueId" element={<VenueProtectedRoute><VenueDetail /></VenueProtectedRoute>} />
+                <Route path="/venues/courts" element={<VenueProtectedRoute><CourtManagement /></VenueProtectedRoute>} />
               <Route path="/memberships" element={<ProtectedRoute><Memberships /></ProtectedRoute>} />
               <Route path="/financials" element={<ProtectedRoute><Financials /></ProtectedRoute>} />
               <Route path="/staff" element={<ProtectedRoute><Staff /></ProtectedRoute>} />
@@ -88,6 +94,7 @@ const AppRoutes: React.FC = () => {
               <Route path="/users/:userId" element={<ProtectedRoute><UserDetail /></ProtectedRoute>} />
               <Route path="/users/roles" element={<ProtectedRoute requireSuperAdmin><RoleManagement /></ProtectedRoute>} />
               <Route path="/users/permissions" element={<ProtectedRoute requireSuperAdmin><PermissionManagement /></ProtectedRoute>} />
+              <Route path="/activity-log" element={<ProtectedRoute requireSuperAdmin><ActivityLog /></ProtectedRoute>} />
               <Route path="/moderation" element={<ProtectedRoute requireSuperAdmin><Moderation /></ProtectedRoute>} />
               <Route path="/tournaments" element={<ProtectedRoute requireSuperAdmin><Tournaments /></ProtectedRoute>} />
               <Route path="/quick-matches" element={<ProtectedRoute><QuickMatches /></ProtectedRoute>} />
@@ -110,6 +117,7 @@ const AppRoutes: React.FC = () => {
         </div>
       </div>
     </HeaderActionsProvider>
+    </VenueTwoStepAuthProvider>
   );
 };
 

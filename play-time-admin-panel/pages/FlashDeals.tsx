@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { flashDealsCollection } from '../services/firebase';
 import { serverTimestamp } from 'firebase/firestore';
 import { useToast } from '../contexts/ToastContext';
-import FlashDealFormModal from '../components/FlashDealFormModal';
+import FlashDealFormModal from '../components/modals/FlashDealFormModal';
 import { formatDate, formatTime } from '../utils/dateUtils';
 import { formatCurrency } from '../utils/formatUtils';
 
@@ -157,8 +157,8 @@ const FlashDeals: React.FC = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-black text-white mb-2">Flash Deals</h1>
-          <p className="text-gray-400 text-sm">Manage time-limited promotional deals</p>
+          <h1 className="text-3xl font-black text-slate-900 dark:text-white mb-2">Flash Deals</h1>
+          <p className="text-slate-500 dark:text-gray-400 text-sm">Manage time-limited promotional deals</p>
         </div>
         <button
           onClick={handleCreateDeal}
@@ -173,7 +173,7 @@ const FlashDeals: React.FC = () => {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-4 py-2 border border-gray-700 bg-surface-dark text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+          className="px-4 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-surface-dark text-slate-900 dark:text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
         >
           {statuses.map((status) => (
             <option key={status} value={status}>
@@ -189,7 +189,7 @@ const FlashDeals: React.FC = () => {
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
       ) : filteredDeals.length === 0 ? (
-        <div className="text-center py-12 bg-surface-dark rounded-2xl border border-gray-800">
+        <div className="text-center py-12 bg-white dark:bg-surface-dark rounded-2xl border border-gray-200 dark:border-gray-800">
           <p className="text-gray-400">No flash deals found</p>
         </div>
       ) : (
@@ -201,7 +201,7 @@ const FlashDeals: React.FC = () => {
             return (
               <div
                 key={deal.id}
-                className="bg-surface-dark rounded-2xl p-6 border border-gray-800 hover:border-primary/30 transition-colors"
+                className="bg-white dark:bg-surface-dark rounded-2xl p-6 border border-gray-200 dark:border-gray-800 hover:border-primary/30 transition-colors"
               >
                 {deal.imageUrl && (
                   <div className="mb-4 rounded-xl overflow-hidden">
@@ -215,7 +215,7 @@ const FlashDeals: React.FC = () => {
                 
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex-1">
-                    <h3 className="text-lg font-black text-white mb-1">
+                    <h3 className="text-lg font-black text-slate-900 dark:text-white mb-1">
                       {deal.title}
                     </h3>
                     {deal.venueName && (
@@ -246,19 +246,19 @@ const FlashDeals: React.FC = () => {
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-500">Bookings:</span>
-                    <span className="text-white">
+                    <span className="text-slate-900 dark:text-white">
                       {deal.currentBookings} {deal.maxBookings ? `/ ${deal.maxBookings}` : ''}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-500">Start:</span>
-                    <span className="text-white">
+                    <span className="text-slate-900 dark:text-white">
                       {deal.startTime ? `${formatDate(deal.startTime.toDate())} ${formatTime(deal.startTime.toDate())}` : 'N/A'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-500">End:</span>
-                    <span className="text-white">
+                    <span className="text-slate-900 dark:text-white">
                       {deal.endTime ? `${formatDate(deal.endTime.toDate())} ${formatTime(deal.endTime.toDate())}` : 'N/A'}
                     </span>
                   </div>
@@ -282,11 +282,11 @@ const FlashDeals: React.FC = () => {
 
                 {/* Quick Status Update */}
                 {deal.status !== 'Cancelled' && (
-                  <div className="mt-3 pt-3 border-t border-gray-800">
+                  <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-800">
                     <select
                       value={deal.status}
                       onChange={(e) => handleUpdateStatus(deal.id, e.target.value as FlashDeal['status'])}
-                      className="w-full px-3 py-2 border border-gray-700 bg-surface-dark text-white rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-surface-dark text-slate-900 dark:text-white rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-primary"
                     >
                       <option value="Upcoming">Upcoming</option>
                       <option value="Active">Active</option>

@@ -36,6 +36,7 @@ import {
   onSnapshot,
   QuerySnapshot,
   DocumentData,
+  DocumentSnapshot,
   addDoc,
   writeBatch,
   runTransaction,
@@ -64,12 +65,10 @@ import {
 } from 'firebase/messaging';
 
 // Firebase configuration
-import { firebaseConfig as config, validateFirebaseConfig } from '../config/firebase.config';
+import { firebaseConfig as config, validateFirebaseConfigOrThrow } from '../config/firebase.config';
 
-// Validate config on import (only in development)
-if (import.meta.env.DEV) {
-  validateFirebaseConfig();
-}
+// Validate config on import: warn in dev, throw in production if missing
+validateFirebaseConfigOrThrow();
 
 const firebaseConfig = config;
 
@@ -295,6 +294,56 @@ export const getDocuments = async <T = DocumentData>(
     })) as T[];
   } catch (error: any) {
     console.error(`Error getting documents from ${collectionName}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Get documents with cursor for pagination. Returns data and the last document snapshot for startAfter on next page.
+ */
+export const getDocumentsPaginated = async <T = DocumentData>(
+  collectionName: string,
+  filters?: { field: string; operator: any; value: any }[],
+  orderByField?: string,
+  orderDirection?: 'asc' | 'desc',
+  limitCount: number = 50,
+  startAfterDoc?: DocumentSnapshot | null
+): Promise<{ data: T[]; lastDoc: DocumentSnapshot | null }> => {
+  try {
+    let q = query(collection(db, collectionName));
+
+    if (filters && filters.length > 0) {
+      filters.forEach(filter => {
+        const field = filter?.field;
+        const operator = filter?.operator;
+        const value = filter?.value;
+        if (field && operator !== undefined && value !== undefined) {
+          q = query(q, where(field, operator, value));
+        }
+      });
+    }
+
+    if (orderByField) {
+      q = query(q, orderBy(orderByField, orderDirection || 'asc'));
+    }
+
+    if (startAfterDoc) {
+      q = query(q, startAfter(startAfterDoc), limit(limitCount));
+    } else {
+      q = query(q, limit(limitCount));
+    }
+
+    const querySnapshot = await getDocs(q);
+    const data = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as T[];
+    const lastDoc = querySnapshot.docs.length > 0
+      ? querySnapshot.docs[querySnapshot.docs.length - 1]
+      : null;
+    return { data, lastDoc };
+  } catch (error: any) {
+    console.error(`Error getting paginated documents from ${collectionName}:`, error);
     throw error;
   }
 };
@@ -633,7 +682,7 @@ export const getFCMToken = async (): Promise<string | null> => {
     console.warn('Messaging not supported or not initialized');
     return null;
   }
-  
+
   try {
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
@@ -644,7 +693,17 @@ export const getFCMToken = async (): Promise<string | null> => {
     }
     return null;
   } catch (error: any) {
-    console.error('Error getting FCM token:', error);
+    const isPushUnavailable =
+      error?.name === 'AbortError' ||
+      (typeof error?.message === 'string' && (
+        error.message.includes('push service not available') ||
+        error.message.includes('Registration failed')
+      ));
+    if (isPushUnavailable) {
+      console.warn('FCM push not available (e.g. localhost or unsupported environment):', error?.message || error);
+    } else {
+      console.error('Error getting FCM token:', error);
+    }
     return null;
   }
 };
@@ -666,9 +725,22 @@ export const onForegroundMessage = (
 // ==================== COLLECTION-SPECIFIC HELPERS ====================
 
 // Users Collection
+const USERS_PAGE_SIZE = 50;
+
 export const usersCollection = {
   get: (userId: string) => getDocument('users', userId),
   getAll: (filters?: any[]) => getDocuments('users', filters),
+  getRecent: (limitCount: number = 10) =>
+    getDocuments('users', [], 'createdAt', 'desc', limitCount),
+  /** Paginated fetch for list + Load more. Returns data and lastDoc for next page. */
+  getPage: (
+    filters: any[] | undefined,
+    orderByField: string,
+    orderDirection: 'asc' | 'desc',
+    limitCount: number = USERS_PAGE_SIZE,
+    startAfterDoc?: DocumentSnapshot | null
+  ) =>
+    getDocumentsPaginated('users', filters, orderByField, orderDirection, limitCount, startAfterDoc),
   create: (userId: string, data: any) => setDocument('users', userId, data),
   update: (userId: string, data: any) => updateDocument('users', userId, data),
   delete: (userId: string) => deleteDocument('users', userId),
@@ -735,13 +807,173 @@ export const membershipsCollection = {
 // Courts Collection
 export const courtsCollection = {
   get: (courtId: string) => getDocument('courts', courtId),
-  getAll: (filters?: any[], orderByField?: string, orderDirection?: 'asc' | 'desc', limitCount?: number) => 
+  getAll: (filters?: any[], orderByField?: string, orderDirection?: 'asc' | 'desc', limitCount?: number) =>
     getDocuments('courts', filters, orderByField, orderDirection, limitCount),
   create: (data: any) => createDocument('courts', data),
   update: (courtId: string, data: any) => updateDocument('courts', courtId, data),
   delete: (courtId: string) => deleteDocument('courts', courtId),
-  subscribeAll: (callback: any, filters?: any[], orderByField?: string, orderDirection?: 'asc' | 'desc') => 
+  subscribeAll: (callback: any, filters?: any[], orderByField?: string, orderDirection?: 'asc' | 'desc') =>
     subscribeToCollection('courts', callback, filters, orderByField, orderDirection)
+};
+
+/** Activity log entry (audit trail). */
+export interface ActivityLogEntry {
+  id: string;
+  userId: string;
+  userEmail?: string | null;
+  action: string;
+  targetType: string;
+  targetId: string;
+  details?: Record<string, unknown>;
+  createdAt: Timestamp | null;
+}
+
+/**
+ * Fetch activity log entries (super_admin only in UI; rules enforce read).
+ * Uses index: userId ASC, createdAt DESC (optional userId filter).
+ */
+export const getActivityLogs = async (opts?: {
+  userId?: string;
+  action?: string;
+  limitCount?: number;
+}): Promise<ActivityLogEntry[]> => {
+  const limitCount = opts?.limitCount ?? 100;
+  const constraints: any[] = [];
+  if (opts?.userId) constraints.push(where('userId', '==', opts.userId));
+  constraints.push(orderBy('createdAt', 'desc'));
+  const q = query(
+    collection(db, 'activityLog'),
+    ...constraints,
+    limit(limitCount)
+  );
+  const snapshot = await getDocs(q);
+  let entries: ActivityLogEntry[] = snapshot.docs.map((d) => {
+    const data = d.data();
+    return {
+      id: d.id,
+      userId: data.userId ?? '',
+      userEmail: data.userEmail ?? null,
+      action: data.action ?? '',
+      targetType: data.targetType ?? '',
+      targetId: data.targetId ?? '',
+      details: (data.details as Record<string, unknown>) ?? {},
+      createdAt: data.createdAt ?? null,
+    };
+  });
+  if (opts?.action) {
+    entries = entries.filter((e) => e.action === opts.action);
+  }
+  return entries;
+};
+
+/**
+ * Write an audit log entry to activityLog (readable by super_admin only).
+ * Call after sensitive actions (e.g. cancel booking, change user role).
+ */
+export const logActivity = async (params: {
+  userId: string;
+  userEmail?: string | null;
+  action: string;
+  targetType: string;
+  targetId: string;
+  details?: Record<string, unknown>;
+}): Promise<void> => {
+  try {
+    await addDoc(collection(db, 'activityLog'), {
+      userId: params.userId,
+      userEmail: params.userEmail ?? null,
+      action: params.action,
+      targetType: params.targetType,
+      targetId: params.targetId,
+      details: params.details ?? {},
+      createdAt: serverTimestamp(),
+    });
+  } catch (err: any) {
+    console.error('Failed to write activity log:', err);
+    // Do not throw; activity log is non-critical
+  }
+};
+
+/**
+ * Get user IDs of venue managers who manage the given venue.
+ */
+export const getVenueManagerIds = async (venueId: string): Promise<string[]> => {
+  try {
+    const users = await getDocuments('users', [
+      { field: 'managedVenues', operator: 'array-contains', value: venueId }
+    ]) as { id: string }[];
+    return users.map((u) => u.id).filter(Boolean);
+  } catch (err: any) {
+    console.error('Failed to get venue manager IDs:', err);
+    return [];
+  }
+};
+
+/**
+ * Create in-app notification docs for venue managers when a booking is confirmed, cancelled, or rejected.
+ * Each manager of the booking's venue gets one document (for notification centre / badge).
+ */
+export const notifyVenueManagersOfBookingEvent = async (params: {
+  venueId: string;
+  bookingId: string;
+  eventType: 'booking_confirmed' | 'booking_cancelled' | 'booking_rejected';
+  title: string;
+  body?: string;
+}): Promise<void> => {
+  try {
+    const managerIds = await getVenueManagerIds(params.venueId);
+    if (managerIds.length === 0) return;
+    for (const recipientUserId of managerIds) {
+      await createDocument('notifications', {
+        recipientUserId,
+        venueId: params.venueId,
+        bookingId: params.bookingId,
+        bookingEventType: params.eventType,
+        title: params.title,
+        body: params.body ?? '',
+        read: false,
+      });
+    }
+  } catch (err: any) {
+    console.error('Failed to notify venue managers of booking event:', err);
+    // Non-critical; do not throw
+  }
+};
+
+/**
+ * Sync the venue document's courts array with the courts collection.
+ * Call after create/update/delete court so the mobile app (which may read venue.courts) sees changes.
+ */
+export const syncVenueCourts = async (venueId: string): Promise<void> => {
+  const courts = await courtsCollection.getAll([
+    { field: 'venueId', operator: '==', value: venueId }
+  ]) as any[];
+  await venuesCollection.update(venueId, {
+    courts,
+    updatedAt: serverTimestamp()
+  });
+};
+
+/**
+ * Sync courts array for ALL venues from the courts collection.
+ * Use this to fix mobile app "No time slots available" when venue.courts was empty or stale.
+ * Run once after adding this feature, or when courts exist in collection but not on venue docs.
+ */
+export const syncAllVenuesCourts = async (): Promise<{ synced: number; failed: string[] }> => {
+  const venues = (await venuesCollection.getAll()) as any[];
+  const failed: string[] = [];
+  let synced = 0;
+  for (const venue of venues) {
+    if (!venue?.id) continue;
+    try {
+      await syncVenueCourts(venue.id);
+      synced++;
+    } catch (err: any) {
+      console.error(`Failed to sync courts for venue ${venue.id}:`, err);
+      failed.push(venue.name || venue.id);
+    }
+  }
+  return { synced, failed };
 };
 
 // Membership Plans Collection
@@ -994,6 +1226,19 @@ export const cmsPagesCollection = {
   get: (pageId: string) => getDocument('cmsPages', pageId),
   getAll: (filters?: any[], orderByField?: string, orderDirection?: 'asc' | 'desc', limitCount?: number) =>
     getDocuments('cmsPages', filters, orderByField, orderDirection, limitCount),
+  /** Get a single published page by URL slug (for public landing/frontend). */
+  getBySlug: async (slug: string, activeOnly = true): Promise<{ id: string; [key: string]: any } | null> => {
+    const list = await getDocuments<{ id: string; slug?: string; isActive?: boolean; [key: string]: any }>(
+      'cmsPages',
+      [{ field: 'slug', operator: '==', value: slug }],
+      undefined,
+      undefined,
+      1
+    );
+    const page = list?.[0] ?? null;
+    if (page && activeOnly && page.isActive === false) return null;
+    return page;
+  },
   create: (data: any) => createDocument('cmsPages', data),
   update: (pageId: string, data: any) => updateDocument('cmsPages', pageId, data),
   delete: (pageId: string) => deleteDocument('cmsPages', pageId),

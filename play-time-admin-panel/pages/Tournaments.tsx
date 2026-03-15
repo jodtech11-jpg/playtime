@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useTournaments } from '../hooks/useTournaments';
 import { useVenues } from '../hooks/useVenues';
 import { useSports } from '../hooks/useSports';
@@ -8,10 +8,10 @@ import { useHeaderActions } from '../contexts/HeaderActionsContext';
 import { formatCurrency, getStatusColor } from '../utils/formatUtils';
 import { formatDate, getRelativeTime } from '../utils/dateUtils';
 import { serverTimestamp } from 'firebase/firestore';
-import TournamentFormModal from '../components/TournamentFormModal';
-import TeamRegistrationModal from '../components/TeamRegistrationModal';
-import MatchManagementModal from '../components/MatchManagementModal';
-import SportManagementModal from '../components/SportManagementModal';
+import TournamentFormModal from '../components/modals/TournamentFormModal';
+import TeamRegistrationModal from '../components/modals/TeamRegistrationModal';
+import MatchManagementModal from '../components/modals/MatchManagementModal';
+import SportManagementModal from '../components/modals/SportManagementModal';
 
 const Tournaments: React.FC = () => {
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
@@ -138,10 +138,10 @@ const Tournaments: React.FC = () => {
   };
 
   // Handle create
-  const handleCreate = () => {
+  const handleCreate = useCallback(() => {
     setEditingTournament(null);
     setIsFormModalOpen(true);
-  };
+  }, []);
 
   // Handle generate report
   const handleGenerateReport = () => {
@@ -319,20 +319,29 @@ const Tournaments: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  // Register "New Entry" handler for Header button
+  // Register "New Entry" handler for Header button — run only once on mount
+  const setNewEntryHandlerRef = useRef(setNewEntryHandler);
+  const unsetNewEntryHandlerRef = useRef(unsetNewEntryHandler);
   useEffect(() => {
-    setNewEntryHandler(handleCreate);
+    setNewEntryHandlerRef.current(handleCreate);
     return () => {
-      unsetNewEntryHandler();
+      unsetNewEntryHandlerRef.current();
     };
-  }, [setNewEntryHandler, unsetNewEntryHandler]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-select first tournament if none selected
-  React.useEffect(() => {
+  useEffect(() => {
     if (!selectedTournament && filteredTournaments.length > 0) {
       setSelectedTournament(filteredTournaments[0]);
+    } else if (selectedTournament) {
+      // Keep selectedTournament in sync with realtime updates
+      const updated = filteredTournaments.find(t => t.id === selectedTournament.id);
+      if (updated && updated !== selectedTournament) {
+        setSelectedTournament(updated);
+      }
     }
-  }, [filteredTournaments]);
+  }, [filteredTournaments, selectedTournament?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading && tournaments.length === 0) {
     return (

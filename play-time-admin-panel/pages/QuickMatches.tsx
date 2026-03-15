@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { quickMatchesCollection } from '../services/firebase';
 import { serverTimestamp } from 'firebase/firestore';
 import { useToast } from '../contexts/ToastContext';
-import QuickMatchFormModal from '../components/QuickMatchFormModal';
+import QuickMatchFormModal from '../components/modals/QuickMatchFormModal';
 import { formatDate, formatTime } from '../utils/dateUtils';
 
 const QuickMatches: React.FC = () => {
@@ -127,8 +127,8 @@ const QuickMatches: React.FC = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-black text-white mb-2">Quick Matches</h1>
-          <p className="text-gray-400 text-sm">Manage quick matches for players to join</p>
+          <h1 className="text-3xl font-black text-slate-900 dark:text-white mb-2">Quick Matches</h1>
+          <p className="text-slate-500 dark:text-gray-400 text-sm">Manage quick matches for players to join</p>
         </div>
         <button
           onClick={handleCreateMatch}
@@ -143,7 +143,7 @@ const QuickMatches: React.FC = () => {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-4 py-2 border border-gray-700 bg-surface-dark text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+          className="px-4 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-surface-dark text-slate-900 dark:text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
         >
           {statuses.map((status) => (
             <option key={status} value={status}>
@@ -155,7 +155,7 @@ const QuickMatches: React.FC = () => {
         <select
           value={sportFilter}
           onChange={(e) => setSportFilter(e.target.value)}
-          className="px-4 py-2 border border-gray-700 bg-surface-dark text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+          className="px-4 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-surface-dark text-slate-900 dark:text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
         >
           {sports.map((sport) => (
             <option key={sport} value={sport}>
@@ -171,7 +171,7 @@ const QuickMatches: React.FC = () => {
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
       ) : filteredMatches.length === 0 ? (
-        <div className="text-center py-12 bg-surface-dark rounded-2xl border border-gray-800">
+        <div className="text-center py-12 bg-white dark:bg-surface-dark rounded-2xl border border-gray-200 dark:border-gray-800">
           <p className="text-gray-400">No quick matches found</p>
         </div>
       ) : (
@@ -179,11 +179,11 @@ const QuickMatches: React.FC = () => {
           {filteredMatches.map((match) => (
             <div
               key={match.id}
-              className="bg-surface-dark rounded-2xl p-6 border border-gray-800 hover:border-primary/30 transition-colors"
+              className="bg-white dark:bg-surface-dark rounded-2xl p-6 border border-gray-200 dark:border-gray-800 hover:border-primary/30 transition-colors"
             >
               <div className="flex justify-between items-start mb-4">
                 <div>
-                  <h3 className="text-lg font-black text-white mb-1">
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white mb-1">
                     {match.venueName || 'Unknown Venue'}
                   </h3>
                   <p className="text-sm text-gray-400">{match.sport}</p>
@@ -194,20 +194,20 @@ const QuickMatches: React.FC = () => {
               </div>
 
               <div className="space-y-2 mb-4">
-                <div className="flex items-center text-sm text-gray-300">
+                <div className="flex items-center text-sm text-slate-600 dark:text-gray-300">
                   <span className="text-gray-500 w-24">Date:</span>
                   <span>{match.date ? formatDate(match.date.toDate()) : 'N/A'}</span>
                 </div>
-                <div className="flex items-center text-sm text-gray-300">
+                <div className="flex items-center text-sm text-slate-600 dark:text-gray-300">
                   <span className="text-gray-500 w-24">Time:</span>
                   <span>{match.time}</span>
                 </div>
-                <div className="flex items-center text-sm text-gray-300">
+                <div className="flex items-center text-sm text-slate-600 dark:text-gray-300">
                   <span className="text-gray-500 w-24">Players:</span>
                   <span>{match.currentPlayers || 0} / {match.maxPlayers}</span>
                 </div>
                 {match.courtName && (
-                  <div className="flex items-center text-sm text-gray-300">
+                  <div className="flex items-center text-sm text-slate-600 dark:text-gray-300">
                     <span className="text-gray-500 w-24">Court:</span>
                     <span>{match.courtName}</span>
                   </div>
@@ -232,11 +232,11 @@ const QuickMatches: React.FC = () => {
 
               {/* Quick Status Update */}
               {match.status === 'Open' && (
-                <div className="mt-3 pt-3 border-t border-gray-800">
+                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-800">
                   <select
                     value={match.status}
                     onChange={(e) => handleUpdateStatus(match.id, e.target.value as QuickMatch['status'])}
-                    className="w-full px-3 py-2 border border-gray-700 bg-surface-dark text-white rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-surface-dark text-slate-900 dark:text-white rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-primary"
                   >
                     <option value="Open">Open</option>
                     <option value="Full">Mark as Full</option>

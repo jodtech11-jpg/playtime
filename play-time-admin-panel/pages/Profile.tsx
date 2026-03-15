@@ -8,7 +8,7 @@ import { useBookings } from '../hooks/useBookings';
 import { useMemberships } from '../hooks/useMemberships';
 import { getStatusColor } from '../utils/formatUtils';
 import { formatDate } from '../utils/dateUtils';
-import ImageUpload from '../components/ImageUpload';
+import ImageUpload from '../components/shared/ImageUpload';
 import { useToast } from '../contexts/ToastContext';
 
 const Profile: React.FC = () => {

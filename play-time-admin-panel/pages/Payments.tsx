@@ -9,7 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Payment, Settlement } from '../types';
 import { formatCurrency } from '../utils/formatUtils';
 import { formatDate, getRelativeTime } from '../utils/dateUtils';
-import SettlementConfirmationModal from '../components/SettlementConfirmationModal';
+import SettlementConfirmationModal from '../components/modals/SettlementConfirmationModal';
 import { createOfflinePayment } from '../services/paymentService';
 
 const Payments: React.FC = () => {

@@ -218,9 +218,9 @@ const createUserNotificationDocuments = async (
           type: notification.type,
           read: false,
           // Store action fields at root level for mobile app compatibility
-          actionUrl: notification.actionUrl || undefined,
-          actionText: notification.actionText || undefined,
-          imageUrl: notification.imageUrl || undefined,
+          ...(notification.actionUrl ? { actionUrl: notification.actionUrl } : {}),
+          ...(notification.actionText ? { actionText: notification.actionText } : {}),
+          ...(notification.imageUrl ? { imageUrl: notification.imageUrl } : {}),
           // Store additional data in data field for future use
           data: {
             type: notification.type,

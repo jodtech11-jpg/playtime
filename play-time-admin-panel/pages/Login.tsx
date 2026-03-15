@@ -3,11 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { signInEmailPassword, signInWithPhone, verifyOTP, signInWithGoogle, usersCollection, auth, createUserWithEmailAndPassword, resetPassword } from '../services/firebase';
 import { RecaptchaVerifier, ConfirmationResult } from 'firebase/auth';
-import VendorSignupModal from '../components/VendorSignupModal';
+import VendorSignupModal from '../components/modals/VendorSignupModal';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, error: authError, clearError } = useAuth();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [authMethod, setAuthMethod] = useState<'email' | 'phone' | 'google'>('email');
   const [email, setEmail] = useState('');
@@ -294,6 +294,22 @@ const Login: React.FC = () => {
         {/* Right Side - Login Form */}
         <div className="flex flex-1 flex-col justify-center px-4 py-12 sm:px-6 lg:flex-none lg:px-20 xl:px-24 bg-white dark:bg-surface-dark w-full lg:w-[600px] shadow-2xl z-10">
           <div className="mx-auto w-full max-w-sm lg:w-96">
+            {authError && (
+              <div className="mb-6 flex items-start gap-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4">
+                <span className="material-symbols-outlined text-amber-600 dark:text-amber-400 shrink-0">info</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-amber-800 dark:text-amber-200">{authError}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={clearError}
+                  className="shrink-0 p-1 rounded-lg hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300"
+                  aria-label="Dismiss"
+                >
+                  <span className="material-symbols-outlined text-lg">close</span>
+                </button>
+              </div>
+            )}
             <div className="text-center lg:text-left mb-8">
               <h2 className="text-4xl font-black tracking-tight text-gray-900 dark:text-gray-100 leading-tight">
                 {mode === 'login' ? 'Welcome back' : 'Create account'}
@@ -356,10 +372,10 @@ const Login: React.FC = () => {
                         Forgot?
                       </button>
                     </div>
-                    {error && (
-                      <div className="flex items-center gap-2 justify-center text-red-500 bg-red-50 py-3 rounded-xl border border-red-100">
+                    {(authError || error) && (
+                      <div className="flex items-center gap-2 justify-center text-red-500 bg-red-50 dark:bg-red-900/20 py-3 rounded-xl border border-red-100 dark:border-red-800">
                         <span className="material-symbols-outlined text-lg">error</span>
-                        <p className="text-xs font-black uppercase tracking-widest">{error}</p>
+                        <p className="text-xs font-black uppercase tracking-widest">{authError || error}</p>
                       </div>
                     )}
                     <button 
@@ -405,7 +421,7 @@ const Login: React.FC = () => {
                         <span className="material-symbols-outlined text-[20px]">mail</span>
                       </div>
                       <input 
-                        className="block w-full rounded-2xl border-none py-4 pl-12 bg-gray-50 text-gray-900 shadow-inner ring-1 ring-inset ring-gray-100 focus:ring-2 focus:ring-primary focus:bg-white transition-all font-semibold" 
+                        className="block w-full rounded-2xl border-none py-4 pl-12 bg-gray-50 dark:bg-slate-700 text-gray-900 dark:text-white shadow-inner ring-1 ring-inset ring-gray-100 dark:ring-slate-600 focus:ring-2 focus:ring-primary focus:bg-white dark:focus:bg-slate-600 transition-all font-semibold" 
                         value={forgotPasswordEmail}
                         onChange={(e) => setForgotPasswordEmail(e.target.value)}
                         type="email" 
@@ -414,10 +430,10 @@ const Login: React.FC = () => {
                       />
                     </div>
                   </div>
-                  {error && (
-                    <div className="flex items-center gap-2 justify-center text-red-500 bg-red-50 py-3 rounded-xl border border-red-100">
+                  {(authError || error) && (
+                    <div className="flex items-center gap-2 justify-center text-red-500 bg-red-50 dark:bg-red-900/20 py-3 rounded-xl border border-red-100 dark:border-red-800">
                       <span className="material-symbols-outlined text-lg">error</span>
-                      <p className="text-xs font-black uppercase tracking-widest">{error}</p>
+                      <p className="text-xs font-black uppercase tracking-widest">{authError || error}</p>
                     </div>
                   )}
                   <button 
@@ -443,11 +459,11 @@ const Login: React.FC = () => {
                   <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
                     <span className="material-symbols-outlined text-3xl text-green-600">check_circle</span>
                   </div>
-                  <h3 className="text-xl font-black text-gray-900 mb-2">Check Your Email</h3>
-                  <p className="text-sm text-gray-600 font-medium mb-6">
+                  <h3 className="text-xl font-black text-gray-900 dark:text-white mb-2">Check Your Email</h3>
+                  <p className="text-sm text-gray-600 dark:text-slate-400 font-medium mb-6">
                     We've sent a password reset link to <strong>{forgotPasswordEmail}</strong>
                   </p>
-                  <p className="text-xs text-gray-500 mb-6">
+                  <p className="text-xs text-gray-500 dark:text-slate-400 mb-6">
                     Click the link in the email to reset your password. If you don't see it, check your spam folder.
                   </p>
                   <button
@@ -473,22 +489,22 @@ const Login: React.FC = () => {
                     <div className="w-full border-t border-gray-200"></div>
                   </div>
                   <div className="relative flex justify-center text-sm">
-                    <span className="px-4 bg-white text-gray-500 font-medium">Or continue with</span>
+                    <span className="px-4 bg-white dark:bg-slate-800 text-gray-500 dark:text-slate-400 font-medium">Or continue with</span>
                   </div>
                 </div>
                 
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     onClick={() => { setAuthMethod('phone'); setOtpSent(false); setError(null); }}
-                    className="flex items-center justify-center gap-2 rounded-xl py-3 px-4 border-2 border-gray-200 bg-white hover:bg-gray-50 hover:border-primary transition-all group"
+                    className="flex items-center justify-center gap-2 rounded-xl py-3 px-4 border-2 border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 hover:border-primary transition-all group"
                   >
-                    <span className="material-symbols-outlined text-gray-600 group-hover:text-primary">phone</span>
-                    <span className="text-sm font-bold text-gray-700 group-hover:text-primary">Phone</span>
+                    <span className="material-symbols-outlined text-gray-600 dark:text-slate-400 group-hover:text-primary">phone</span>
+                    <span className="text-sm font-bold text-gray-700 dark:text-slate-200 group-hover:text-primary">Phone</span>
                   </button>
                   <button
                     onClick={handleGoogleSignIn}
                     disabled={isLoading}
-                    className="flex items-center justify-center gap-2 rounded-xl py-3 px-4 border-2 border-gray-200 bg-white hover:bg-gray-50 hover:border-primary transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center justify-center gap-2 rounded-xl py-3 px-4 border-2 border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 hover:border-primary transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <svg className="w-5 h-5" viewBox="0 0 24 24">
                       <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -538,7 +554,7 @@ const Login: React.FC = () => {
                         <span className="material-symbols-outlined text-[20px]">phone</span>
                       </div>
                       <input 
-                        className="block w-full rounded-2xl border-none py-4 pl-12 bg-gray-50 text-gray-900 shadow-inner ring-1 ring-inset ring-gray-100 focus:ring-2 focus:ring-primary focus:bg-white transition-all font-semibold" 
+                        className="block w-full rounded-2xl border-none py-4 pl-12 bg-gray-50 dark:bg-slate-700 text-gray-900 dark:text-white shadow-inner ring-1 ring-inset ring-gray-100 dark:ring-slate-600 focus:ring-2 focus:ring-primary focus:bg-white dark:focus:bg-slate-600 transition-all font-semibold" 
                         value={phoneNumber}
                         onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, ''))}
                         type="tel" 
@@ -549,10 +565,10 @@ const Login: React.FC = () => {
                     <p className="text-[10px] text-gray-400 ml-1">We'll send you a verification code</p>
                   </div>
                   <div id="recaptcha-container" ref={recaptchaContainerRef} className="flex justify-center"></div>
-                  {error && (
-                    <div className="flex items-center gap-2 justify-center text-red-500 bg-red-50 py-3 rounded-xl border border-red-100">
+                  {(authError || error) && (
+                    <div className="flex items-center gap-2 justify-center text-red-500 bg-red-50 dark:bg-red-900/20 py-3 rounded-xl border border-red-100 dark:border-red-800">
                       <span className="material-symbols-outlined text-lg">error</span>
-                      <p className="text-xs font-black uppercase tracking-widest">{error}</p>
+                      <p className="text-xs font-black uppercase tracking-widest">{authError || error}</p>
                     </div>
                   )}
                   <button 
@@ -584,7 +600,7 @@ const Login: React.FC = () => {
                         <span className="material-symbols-outlined text-[20px]">vpn_key</span>
                       </div>
                       <input 
-                        className="block w-full rounded-2xl border-none py-4 pl-12 bg-gray-50 text-gray-900 shadow-inner ring-1 ring-inset ring-gray-100 focus:ring-2 focus:ring-primary focus:bg-white transition-all font-semibold text-center text-2xl tracking-widest" 
+                        className="block w-full rounded-2xl border-none py-4 pl-12 bg-gray-50 dark:bg-slate-700 text-gray-900 dark:text-white shadow-inner ring-1 ring-inset ring-gray-100 dark:ring-slate-600 focus:ring-2 focus:ring-primary focus:bg-white dark:focus:bg-slate-600 transition-all font-semibold text-center text-2xl tracking-widest" 
                         value={otpCode}
                         onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                         type="text" 
@@ -595,10 +611,10 @@ const Login: React.FC = () => {
                     </div>
                     <p className="text-[10px] text-gray-400 ml-1">Code sent to {phoneNumber}</p>
                   </div>
-                  {error && (
-                    <div className="flex items-center gap-2 justify-center text-red-500 bg-red-50 py-3 rounded-xl border border-red-100">
+                  {(authError || error) && (
+                    <div className="flex items-center gap-2 justify-center text-red-500 bg-red-50 dark:bg-red-900/20 py-3 rounded-xl border border-red-100 dark:border-red-800">
                       <span className="material-symbols-outlined text-lg">error</span>
-                      <p className="text-xs font-black uppercase tracking-widest">{error}</p>
+                      <p className="text-xs font-black uppercase tracking-widest">{authError || error}</p>
                     </div>
                   )}
                   <button 

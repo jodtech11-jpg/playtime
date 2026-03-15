@@ -10,9 +10,9 @@ import { Product, Order } from '../types';
 import { formatCurrency } from '../utils/formatUtils';
 import { getRelativeTime } from '../utils/dateUtils';
 import { serverTimestamp } from 'firebase/firestore';
-import CreateProductModal from '../components/CreateProductModal';
-import OrderDetailsModal from '../components/OrderDetailsModal';
-import CategoryManagementModal from '../components/CategoryManagementModal';
+import CreateProductModal from '../components/modals/CreateProductModal';
+import OrderDetailsModal from '../components/modals/OrderDetailsModal';
+import CategoryManagementModal from '../components/modals/CategoryManagementModal';
 
 const Marketplace: React.FC = () => {
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();

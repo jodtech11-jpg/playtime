@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { useAuth } from '../contexts/AuthContext';
 import { useBookings, usePendingBookings } from '../hooks/useBookings';
@@ -7,14 +7,16 @@ import { useVenues } from '../hooks/useVenues';
 import { useAnalytics } from '../hooks/useAnalytics';
 import { formatCurrency, formatNumber, getStatusColor, formatPercentage } from '../utils/formatUtils';
 import { getRelativeTime, isToday, formatDate, formatTime, getToday, getWeekStart, getWeekEnd, getMonthStart, getMonthEnd } from '../utils/dateUtils';
-import { Booking } from '../types';
-import DateRangePicker from '../components/DateRangePicker';
+import { Booking, User } from '../types';
+import { usersCollection } from '../services/firebase';
+import DateRangePicker from '../components/shared/DateRangePicker';
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const [dateRangeType, setDateRangeType] = useState<'today' | 'week' | 'month' | 'custom'>('today');
   const [customDateRange, setCustomDateRange] = useState<{ start: Date; end: Date } | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [recentSignups, setRecentSignups] = useState<User[]>([]);
 
   // Calculate date range based on selection
   const dateRange = useMemo(() => {
@@ -47,6 +49,14 @@ const Dashboard: React.FC = () => {
   const { bookings: pendingBookings } = usePendingBookings();
   const { memberships: activeMemberships, loading: membershipsLoading } = useActiveMemberships();
   const { venues, loading: venuesLoading } = useVenues({ realtime: true });
+
+  useEffect(() => {
+    let mounted = true;
+    usersCollection.getRecent(8).then((users) => {
+      if (mounted) setRecentSignups(users as User[]);
+    }).catch(() => {});
+    return () => { mounted = false; };
+  }, []);
 
   // Fetch analytics data with period comparison
   const { periodComparison, loading: analyticsLoading } = useAnalytics({
@@ -223,6 +233,23 @@ const Dashboard: React.FC = () => {
     return Array.from(courtMap.values()).slice(0, 10);
   }, [bookings, venues]);
 
+  // Top venues by booking count in date range
+  const topVenuesByBookings = useMemo(() => {
+    const byVenue: Record<string, number> = {};
+    bookings.forEach((b: Booking) => {
+      const vid = b.venueId || '';
+      if (vid) byVenue[vid] = (byVenue[vid] || 0) + 1;
+    });
+    return Object.entries(byVenue)
+      .map(([venueId, count]) => ({
+        venueId,
+        name: venues.find((v) => v.id === venueId)?.name || 'Unknown',
+        count
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+  }, [bookings, venues]);
+
   const loading = bookingsLoading || membershipsLoading || venuesLoading || analyticsLoading;
 
   if (loading) {
@@ -380,7 +407,7 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
           </div>
-          <div className="h-[300px] w-full">
+          <div className="h-[300px] min-h-[280px] min-w-0 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={revenueTrendData}>
                 <defs>
@@ -404,7 +431,7 @@ const Dashboard: React.FC = () => {
 
         <div className="ui-card p-6 flex flex-col">
           <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-8">Busy Hours</h3>
-          <div className="flex-1 min-h-[300px] w-full">
+          <div className="flex-1 min-h-[300px] min-w-0 w-full" style={{ minHeight: 280 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={peakHoursData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.5} />
@@ -489,6 +516,53 @@ const Dashboard: React.FC = () => {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="ui-card overflow-hidden">
+          <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
+            <h3 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-tight">Top Venues by Bookings</h3>
+            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-1">In selected period</p>
+          </div>
+          <div className="divide-y divide-slate-100 dark:divide-slate-700">
+            {topVenuesByBookings.length > 0 ? (
+              topVenuesByBookings.map((row, i) => (
+                <div key={row.venueId} className="px-6 py-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 w-6">{i + 1}</span>
+                    <span className="text-sm font-bold text-slate-900 dark:text-white truncate">{row.name}</span>
+                  </div>
+                  <span className="text-sm font-black text-primary">{row.count} booking{row.count !== 1 ? 's' : ''}</span>
+                </div>
+              ))
+            ) : (
+              <div className="p-12 text-center text-slate-400 text-xs font-bold">No bookings in period</div>
+            )}
+          </div>
+        </div>
+        <div className="ui-card overflow-hidden">
+          <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
+            <h3 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-tight">Recent Signups</h3>
+            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-1">New users</p>
+          </div>
+          <div className="divide-y divide-slate-100 dark:divide-slate-700">
+            {recentSignups.length > 0 ? (
+              recentSignups.map((u) => (
+                <div key={u.id} className="px-6 py-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{u.name || '—'}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{u.email || ''}</p>
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 whitespace-nowrap ml-2">
+                    {u.createdAt ? getRelativeTime(u.createdAt) : '—'}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <div className="p-12 text-center text-slate-400 text-xs font-bold">No recent signups</div>
+            )}
           </div>
         </div>
       </div>

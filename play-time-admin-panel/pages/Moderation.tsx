@@ -8,7 +8,7 @@ import { Post, Report } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { formatDate, getRelativeTime } from '../utils/dateUtils';
 import { serverTimestamp } from 'firebase/firestore';
-import HistoryLogModal from '../components/HistoryLogModal';
+import HistoryLogModal from '../components/modals/HistoryLogModal';
 
 const Moderation: React.FC = () => {
   const { user } = useAuth();
@@ -23,6 +23,7 @@ const Moderation: React.FC = () => {
   const [filter, setFilter] = useState<'All Posts' | 'Reported' | 'Auto-Flagged' | 'Match' | 'Venue'>('All Posts');
   const [processing, setProcessing] = useState<string | null>(null);
   const [showHistoryLog, setShowHistoryLog] = useState(false);
+  const [localRemovedPostIds, setLocalRemovedPostIds] = useState<Set<string>>(new Set());
 
   // Calculate statistics
   const stats = useMemo(() => {
@@ -66,6 +67,9 @@ const Moderation: React.FC = () => {
         postsToShow = allPosts;
     }
 
+    // Hide optimistically removed posts
+    postsToShow = postsToShow.filter(p => !localRemovedPostIds.has(p.id));
+
     // Sort by most reported or most recent
     return postsToShow.sort((a, b) => {
       if (filter === 'Reported' || filter === 'Auto-Flagged') {
@@ -75,7 +79,7 @@ const Moderation: React.FC = () => {
       const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
       return dateB.getTime() - dateA.getTime();
     });
-  }, [filter, allPosts, reportedPosts]);
+  }, [filter, allPosts, reportedPosts, localRemovedPostIds]);
 
   // Get reports for a post
   const getPostReports = (postId: string): Report[] => {
@@ -86,6 +90,9 @@ const Moderation: React.FC = () => {
     if (!confirm('Are you sure you want to remove this post? This action cannot be undone.')) {
       return;
     }
+
+    // Optimistic update — hide post immediately
+    setLocalRemovedPostIds(prev => new Set(prev).add(postId));
 
     try {
       setProcessing(postId);
@@ -107,6 +114,12 @@ const Moderation: React.FC = () => {
       }
     } catch (error: any) {
       console.error('Error removing post:', error);
+      // Rollback optimistic update
+      setLocalRemovedPostIds(prev => {
+        const next = new Set(prev);
+        next.delete(postId);
+        return next;
+      });
       alert('Failed to remove post: ' + error.message);
     } finally {
       setProcessing(null);

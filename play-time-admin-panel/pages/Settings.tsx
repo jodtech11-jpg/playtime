@@ -2,8 +2,8 @@ import React, { useState, useRef } from 'react';
 import { useAppSettings } from '../hooks/useAppSettings';
 import { useAuth } from '../contexts/AuthContext';
 import { AppSettings } from '../types';
-import IntegrationConfigModal from '../components/IntegrationConfigModal';
-import LandingPageManagementModal from '../components/LandingPageManagementModal';
+import IntegrationConfigModal from '../components/modals/IntegrationConfigModal';
+import LandingPageManagementModal from '../components/modals/LandingPageManagementModal';
 import { uploadFile } from '../services/firebase';
 import { useToast } from '../contexts/ToastContext';
 
@@ -280,11 +280,11 @@ const Settings: React.FC = () => {
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">App Name</label>
                 <input
-                  className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 rounded-xl text-sm font-bold focus:ring-primary focus:border-primary"
+                  className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 rounded-xl text-sm font-bold opacity-60 cursor-not-allowed"
                   type="text"
                   value={formData.appName || ''}
-                  onChange={(e) => updateFormField('appName', e.target.value)}
-                  disabled={!isSuperAdmin}
+                  readOnly
+                  disabled
                 />
               </div>
               <div className="space-y-2 md:col-span-1">

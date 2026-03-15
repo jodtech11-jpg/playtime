@@ -8,6 +8,15 @@ import { Booking, Membership, Transaction, Invoice, User, Venue } from '../types
 import { formatDate, formatTime, formatDateTime } from './dateUtils';
 import { formatCurrency } from './formatUtils';
 
+// jsPDF Helvetica font does not support the ₹ Unicode glyph — use ASCII prefix instead
+const formatCurrencyPDF = (amount: number): string => {
+  const formatted = new Intl.NumberFormat('en-IN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(amount || 0);
+  return `Rs. ${formatted}`;
+};
+
 /**
  * Escape CSV value (handles commas, quotes, newlines)
  */
@@ -147,7 +156,7 @@ export const exportUsersToCSV = (users: User[]): void => {
     'User ID': user.id,
     'Name': user.name,
     'Email': user.email,
-    'Phone': user.phone || 'N/A',
+    'Phone': user.phone ? `="${user.phone}"` : 'N/A',
     'Role': user.role,
     'Status': user.status,
     'Created At': user.createdAt
@@ -201,7 +210,7 @@ export const exportBookingsToPDF = (
   const totalRevenue = bookings
     .filter(b => b.status === 'Confirmed' && b.paymentStatus === 'Paid')
     .reduce((sum, b) => sum + (b.amount || 0), 0);
-  doc.text(`Total Revenue: ${formatCurrency(totalRevenue)}`, margin, yPos);
+  doc.text(`Total Revenue: ${formatCurrencyPDF(totalRevenue)}`, margin, yPos);
   yPos += 12;
 
   // Table headers
@@ -242,7 +251,7 @@ export const exportBookingsToPDF = (
     const venue = venueMap.get(booking.venueId) || booking.venueId;
     const court = booking.court || booking.courtId;
     const user = booking.user || 'N/A';
-    const amount = formatCurrency(booking.amount || 0);
+    const amount = formatCurrencyPDF(booking.amount || 0);
     const status = booking.status;
 
     xPos = margin;
@@ -308,13 +317,13 @@ export const exportFinancialReportToPDF = (
 
   doc.setFontSize(11);
   doc.setFont('helvetica', 'normal');
-  doc.text(`Gross Booking Value: ${formatCurrency(metrics.grossBookingValue)}`, margin, yPos);
+  doc.text(`Gross Booking Value: ${formatCurrencyPDF(metrics.grossBookingValue)}`, margin, yPos);
   yPos += lineHeight;
-  doc.text(`Platform Commission: ${formatCurrency(metrics.platformCommission)}`, margin, yPos);
+  doc.text(`Platform Commission: ${formatCurrencyPDF(metrics.platformCommission)}`, margin, yPos);
   yPos += lineHeight;
-  doc.text(`Convenience Fees: ${formatCurrency(metrics.convenienceFees)}`, margin, yPos);
+  doc.text(`Convenience Fees: ${formatCurrencyPDF(metrics.convenienceFees)}`, margin, yPos);
   yPos += lineHeight;
-  doc.text(`Pending Venue Payouts: ${formatCurrency(metrics.pendingVenuePayouts)}`, margin, yPos);
+  doc.text(`Pending Venue Payouts: ${formatCurrencyPDF(metrics.pendingVenuePayouts)}`, margin, yPos);
   yPos += 15;
 
   // Transactions Table
@@ -350,7 +359,7 @@ export const exportFinancialReportToPDF = (
         : 'N/A';
       const type = transaction.type;
       const source = transaction.source.substring(0, 20);
-      const amount = formatCurrency(transaction.amount);
+      const amount = formatCurrencyPDF(transaction.amount || 0);
       const status = transaction.status;
 
       xPos = margin;
@@ -543,24 +552,24 @@ export const generateInvoicePDF = (invoice: Invoice, venueName?: string): void =
 
   doc.setFont('helvetica', 'normal');
   doc.text('Gross Amount', margin, yPos);
-  doc.text(formatCurrency(breakdown.gross), pageWidth - margin - 40, yPos, { align: 'right' });
+  doc.text(formatCurrencyPDF(breakdown.gross), pageWidth - margin - 40, yPos, { align: 'right' });
   yPos += 8;
 
   if (breakdown.commission) {
     doc.text('Platform Commission (5%)', margin, yPos);
-    doc.text(formatCurrency(breakdown.commission), pageWidth - margin - 40, yPos, { align: 'right' });
+    doc.text(formatCurrencyPDF(breakdown.commission), pageWidth - margin - 40, yPos, { align: 'right' });
     yPos += 8;
   }
 
   if (breakdown.convenienceFee) {
     doc.text('Convenience Fee', margin, yPos);
-    doc.text(formatCurrency(breakdown.convenienceFee), pageWidth - margin - 40, yPos, { align: 'right' });
+    doc.text(formatCurrencyPDF(breakdown.convenienceFee), pageWidth - margin - 40, yPos, { align: 'right' });
     yPos += 8;
   }
 
   if (breakdown.gatewayFee) {
     doc.text('Processing Fee', margin, yPos);
-    doc.text(formatCurrency(breakdown.gatewayFee), pageWidth - margin - 40, yPos, { align: 'right' });
+    doc.text(formatCurrencyPDF(breakdown.gatewayFee), pageWidth - margin - 40, yPos, { align: 'right' });
     yPos += 8;
   }
 
@@ -570,7 +579,7 @@ export const generateInvoicePDF = (invoice: Invoice, venueName?: string): void =
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
   doc.text('Total Amount', margin, yPos);
-  doc.text(formatCurrency(breakdown.net), pageWidth - margin - 40, yPos, { align: 'right' });
+  doc.text(formatCurrencyPDF(breakdown.net), pageWidth - margin - 40, yPos, { align: 'right' });
   yPos += 15;
 
   // Status

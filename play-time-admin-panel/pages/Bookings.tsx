@@ -1,27 +1,68 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useBookings, usePendingBookings } from '../hooks/useBookings';
 import { useVenues } from '../hooks/useVenues';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
 import { useToast } from '../contexts/ToastContext';
-import { bookingsCollection } from '../services/firebase';
+import { useAuth } from '../contexts/AuthContext';
+import { bookingsCollection, logActivity, notifyVenueManagersOfBookingEvent } from '../services/firebase';
 import { Booking } from '../types';
 import { formatDate, formatTime, getWeekStart, getWeekEnd, getToday } from '../utils/dateUtils';
 import { formatCurrency, getStatusColor } from '../utils/formatUtils';
 import { exportBookingsToCSV, exportBookingsToPDF } from '../utils/exportUtils';
-import BookingDetailsModal from '../components/BookingDetailsModal';
-import DatePicker from '../components/DatePicker';
+import BookingDetailsModal from '../components/modals/BookingDetailsModal';
+import DatePicker from '../components/shared/DatePicker';
+import ConfirmDialog from '../components/shared/ConfirmDialog';
 import { serverTimestamp } from 'firebase/firestore';
 
+const VIEW_MODES = ['day', 'week', 'month'] as const;
+const STATUS_OPTIONS = ['All', 'Pending', 'Confirmed', 'Cancelled', 'Completed'] as const;
+
 const Bookings: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
   const { showSuccess, showError } = useToast();
-  const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('week');
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [selectedSport, setSelectedSport] = useState<string>('All Sports');
+  const { user } = useAuth();
+  const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>(() => {
+    const v = searchParams.get('view');
+    return VIEW_MODES.includes(v as any) ? (v as 'day' | 'week' | 'month') : 'week';
+  });
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const d = searchParams.get('date');
+    if (d) {
+      const parsed = new Date(d);
+      if (!isNaN(parsed.getTime())) return parsed;
+    }
+    return new Date();
+  });
+  const [selectedSport, setSelectedSport] = useState<string>(() => searchParams.get('sport') || 'All Sports');
+  const [selectedVenueId, setSelectedVenueId] = useState<string>(() => searchParams.get('venue') || '');
+  const [selectedStatus, setSelectedStatus] = useState<string>(() => searchParams.get('status') || 'All');
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [processing, setProcessing] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    variant: 'danger' | 'warning' | 'default';
+    onConfirm: () => Promise<void>;
+  } | null>(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+
+  // Persist filters to URL so links are shareable
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    next.set('view', viewMode);
+    next.set('date', selectedDate.toISOString().slice(0, 10));
+    next.set('sport', selectedSport === 'All Sports' ? '' : selectedSport);
+    if (selectedVenueId) next.set('venue', selectedVenueId); else next.delete('venue');
+    if (selectedStatus !== 'All') next.set('status', selectedStatus); else next.delete('status');
+    setSearchParams(next, { replace: true });
+  }, [viewMode, selectedDate, selectedSport, selectedVenueId, selectedStatus]);
 
   // Calculate date range based on view mode and selected date
   const dateRange = useMemo(() => {
@@ -43,6 +84,9 @@ const Bookings: React.FC = () => {
       // month - use selected date's month
       start.setDate(1);
       start.setHours(0, 0, 0, 0);
+      // Reset end's day to 1 first to prevent day-of-month overflow when calling setMonth
+      // e.g. if end is Oct 31, setMonth(10) → "Nov 31" → normalizes to Dec 1, then setDate(0) → Nov 30 (wrong)
+      end.setDate(1);
       end.setMonth(start.getMonth() + 1);
       end.setDate(0);
       end.setHours(23, 59, 59, 999);
@@ -55,6 +99,8 @@ const Bookings: React.FC = () => {
   const { bookings, loading: bookingsLoading } = useBookings({
     dateRange,
     sport: selectedSport !== 'All Sports' ? selectedSport : undefined,
+    venueId: selectedVenueId || undefined,
+    status: selectedStatus !== 'All' ? (selectedStatus as Booking['status']) : undefined,
     realtime: true
   });
 
@@ -148,6 +194,12 @@ const Bookings: React.FC = () => {
     };
   };
 
+  // Resolve booking (from list or modal) for venueId
+  const getBookingVenueId = (bookingId: string): string | undefined => {
+    const b = bookings.find((x) => x.id === bookingId) || pendingBookings.find((x) => x.id === bookingId) || (selectedBooking?.id === bookingId ? selectedBooking : null);
+    return b?.venueId;
+  };
+
   // Handle booking actions
   const handleAccept = async (bookingId: string) => {
     try {
@@ -156,18 +208,37 @@ const Bookings: React.FC = () => {
         status: 'Confirmed',
         updatedAt: serverTimestamp()
       });
+      const venueId = getBookingVenueId(bookingId);
+      if (venueId) {
+        await notifyVenueManagersOfBookingEvent({
+          venueId,
+          bookingId,
+          eventType: 'booking_confirmed',
+          title: 'Booking confirmed',
+          body: `Booking #${bookingId.slice(0, 8)} has been confirmed.`
+        });
+      }
       setIsModalOpen(false);
       setSelectedBooking(null);
     } catch (error: any) {
       console.error('Error accepting booking:', error);
-      alert('Failed to accept booking: ' + error.message);
+      showError('Failed to accept booking: ' + error.message);
     } finally {
       setProcessing(null);
     }
   };
 
   const handleReject = async (bookingId: string) => {
-    if (!confirm('Are you sure you want to reject this booking?')) return;
+    setConfirmDialog({
+      title: 'Reject Booking',
+      message: 'Are you sure you want to reject this booking? The user will be notified.',
+      confirmLabel: 'Reject',
+      variant: 'danger',
+      onConfirm: async () => { await _doReject(bookingId); },
+    });
+  };
+
+  const _doReject = async (bookingId: string) => {
 
     try {
       setProcessing(bookingId);
@@ -175,32 +246,209 @@ const Bookings: React.FC = () => {
         status: 'Cancelled',
         updatedAt: serverTimestamp()
       });
+      const venueId = getBookingVenueId(bookingId);
+      if (venueId) {
+        await notifyVenueManagersOfBookingEvent({
+          venueId,
+          bookingId,
+          eventType: 'booking_rejected',
+          title: 'Booking rejected',
+          body: `Booking #${bookingId.slice(0, 8)} was rejected.`
+        });
+      }
+      if (user) {
+        await logActivity({
+          userId: user.uid,
+          userEmail: user.email ?? undefined,
+          action: 'booking_rejected',
+          targetType: 'booking',
+          targetId: bookingId,
+          details: { status: 'Cancelled' },
+        });
+      }
       setIsModalOpen(false);
       setSelectedBooking(null);
     } catch (error: any) {
       console.error('Error rejecting booking:', error);
-      alert('Failed to reject booking: ' + error.message);
+      showError('Failed to reject booking: ' + error.message);
     } finally {
       setProcessing(null);
     }
   };
 
   const handleCancel = async (bookingId: string) => {
-    if (!confirm('Are you sure you want to cancel this booking?')) return;
+    setConfirmDialog({
+      title: 'Cancel Booking',
+      message: 'Are you sure you want to cancel this booking? This action cannot be undone.',
+      confirmLabel: 'Cancel Booking',
+      variant: 'danger',
+      onConfirm: async () => { await _doCancel(bookingId); },
+    });
+  };
 
+  const _doCancel = async (bookingId: string) => {
     try {
       setProcessing(bookingId);
       await bookingsCollection.update(bookingId, {
         status: 'Cancelled',
         updatedAt: serverTimestamp()
       });
+      const venueId = getBookingVenueId(bookingId);
+      if (venueId) {
+        await notifyVenueManagersOfBookingEvent({
+          venueId,
+          bookingId,
+          eventType: 'booking_cancelled',
+          title: 'Booking cancelled',
+          body: `Booking #${bookingId.slice(0, 8)} was cancelled.`
+        });
+      }
+      if (user) {
+        await logActivity({
+          userId: user.uid,
+          userEmail: user.email ?? undefined,
+          action: 'booking_cancelled',
+          targetType: 'booking',
+          targetId: bookingId,
+          details: { status: 'Cancelled' },
+        });
+      }
       setIsModalOpen(false);
       setSelectedBooking(null);
     } catch (error: any) {
       console.error('Error cancelling booking:', error);
-      alert('Failed to cancel booking: ' + error.message);
+      showError('Failed to cancel booking: ' + error.message);
     } finally {
       setProcessing(null);
+    }
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllPending = () => {
+    if (selectedIds.size === pendingBookings.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(pendingBookings.map((b) => b.id)));
+    }
+  };
+
+  const handleBulkConfirm = async () => {
+    const ids = Array.from(selectedIds);
+    const toConfirm = ids.filter((id) => {
+      const b = pendingBookings.find((x) => x.id === id);
+      return b && b.status === 'Pending';
+    });
+    if (toConfirm.length === 0) {
+      showError('No pending bookings selected.');
+      return;
+    }
+    setConfirmDialog({
+      title: `Confirm ${toConfirm.length} Booking${toConfirm.length > 1 ? 's' : ''}`,
+      message: `This will confirm ${toConfirm.length} pending booking${toConfirm.length > 1 ? 's' : ''}. Users will be notified.`,
+      confirmLabel: 'Confirm All',
+      variant: 'default',
+      onConfirm: async () => { await _doBulkConfirm(toConfirm); },
+    });
+  };
+
+  const _doBulkConfirm = async (toConfirm: string[]) => {
+    try {
+      setBulkProcessing(true);
+      for (const bookingId of toConfirm) {
+        const venueId = getBookingVenueId(bookingId);
+        await bookingsCollection.update(bookingId, {
+          status: 'Confirmed',
+          updatedAt: serverTimestamp(),
+        });
+        if (venueId) {
+          await notifyVenueManagersOfBookingEvent({
+            venueId,
+            bookingId,
+            eventType: 'booking_confirmed',
+            title: 'Booking confirmed',
+            body: `Booking #${bookingId.slice(0, 8)} has been confirmed.`,
+          });
+        }
+        if (user) {
+          await logActivity({
+            userId: user.uid,
+            userEmail: user.email ?? undefined,
+            action: 'booking_confirmed',
+            targetType: 'booking',
+            targetId: bookingId,
+            details: { status: 'Confirmed' },
+          });
+        }
+      }
+      setSelectedIds(new Set());
+      showSuccess(`Confirmed ${toConfirm.length} booking(s).`);
+    } catch (error: any) {
+      console.error('Bulk confirm error:', error);
+      showError('Failed to confirm some bookings: ' + error.message);
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  const handleBulkCancel = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) {
+      showError('No bookings selected.');
+      return;
+    }
+    setConfirmDialog({
+      title: `Cancel ${ids.length} Booking${ids.length > 1 ? 's' : ''}`,
+      message: `This will cancel ${ids.length} booking${ids.length > 1 ? 's' : ''}. This cannot be undone.`,
+      confirmLabel: 'Cancel All',
+      variant: 'danger',
+      onConfirm: async () => { await _doBulkCancel(ids); },
+    });
+  };
+
+  const _doBulkCancel = async (ids: string[]) => {
+    try {
+      setBulkProcessing(true);
+      for (const bookingId of ids) {
+        const venueId = getBookingVenueId(bookingId);
+        await bookingsCollection.update(bookingId, {
+          status: 'Cancelled',
+          updatedAt: serverTimestamp(),
+        });
+        if (venueId) {
+          await notifyVenueManagersOfBookingEvent({
+            venueId,
+            bookingId,
+            eventType: 'booking_cancelled',
+            title: 'Booking cancelled',
+            body: `Booking #${bookingId.slice(0, 8)} was cancelled.`,
+          });
+        }
+        if (user) {
+          await logActivity({
+            userId: user.uid,
+            userEmail: user.email ?? undefined,
+            action: 'booking_cancelled',
+            targetType: 'booking',
+            targetId: bookingId,
+            details: { status: 'Cancelled' },
+          });
+        }
+      }
+      setSelectedIds(new Set());
+      showSuccess(`Cancelled ${ids.length} booking(s).`);
+    } catch (error: any) {
+      console.error('Bulk cancel error:', error);
+      showError('Failed to cancel some bookings: ' + error.message);
+    } finally {
+      setBulkProcessing(false);
     }
   };
 
@@ -214,6 +462,18 @@ const Bookings: React.FC = () => {
     setSelectedBooking(null);
     setIsModalOpen(true);
   };
+
+  // Keyboard shortcut: Ctrl+N / Cmd+N → new booking
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+        e.preventDefault();
+        handleCreateBooking();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   const handleToday = () => {
     setSelectedDate(new Date());
@@ -282,6 +542,7 @@ const Bookings: React.FC = () => {
                 else newDate.setMonth(newDate.getMonth() - 1);
                 setSelectedDate(newDate);
               }}
+              aria-label="Previous period"
               className="size-10 flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-all"
             >
               <span className="material-symbols-outlined text-slate-600 dark:text-slate-300">chevron_left</span>
@@ -306,13 +567,33 @@ const Bookings: React.FC = () => {
                 else newDate.setMonth(newDate.getMonth() + 1);
                 setSelectedDate(newDate);
               }}
+              aria-label="Next period"
               className="size-10 flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-all"
             >
               <span className="material-symbols-outlined text-slate-600 dark:text-slate-300">chevron_right</span>
             </button>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <select
+              value={selectedVenueId}
+              onChange={(e) => setSelectedVenueId(e.target.value)}
+              className="h-12 px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-[10px] font-black uppercase tracking-widest rounded-xl outline-none focus:ring-2 focus:ring-primary/20 transition-all shadow-sm cursor-pointer min-w-[140px]"
+            >
+              <option value="">All Venues</option>
+              {venues.map(v => (
+                <option key={v.id} value={v.id}>{v.name}</option>
+              ))}
+            </select>
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+              className="h-12 px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-[10px] font-black uppercase tracking-widest rounded-xl outline-none focus:ring-2 focus:ring-primary/20 transition-all shadow-sm cursor-pointer"
+            >
+              {STATUS_OPTIONS.map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
             <select
               value={selectedSport}
               onChange={(e) => setSelectedSport(e.target.value)}
@@ -330,13 +611,18 @@ const Bookings: React.FC = () => {
               <button
                 onClick={handleCreateBooking}
                 className="size-12 bg-primary text-white rounded-xl shadow-lg shadow-primary/20 hover:scale-105 transition-all flex items-center justify-center"
-                title="Force Reservaton"
+                aria-label="Force Reservation"
+                title="Force Reservation"
               >
                 <span className="material-symbols-outlined font-black">add</span>
               </button>
 
               <div className="relative group">
-                <button className="size-12 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 hover:text-primary transition-all shadow-sm rounded-xl flex items-center justify-center">
+                <button
+                  aria-label="Export bookings"
+                  title="Export bookings"
+                  className="size-12 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 hover:text-primary transition-all shadow-sm rounded-xl flex items-center justify-center"
+                >
                   <span className="material-symbols-outlined">download</span>
                 </button>
                 <div className="absolute right-0 top-full mt-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 min-w-[160px] p-1">
@@ -414,6 +700,21 @@ const Bookings: React.FC = () => {
                   ))}
                 </div>
 
+                {/* Empty state overlay */}
+                {bookings.length === 0 && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 dark:bg-slate-900/80 z-10">
+                    <div className="size-16 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-300 mb-3">
+                      <span className="material-symbols-outlined text-3xl">event_busy</span>
+                    </div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No bookings</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {selectedStatus !== 'All' || selectedVenueId || selectedSport !== 'All Sports'
+                        ? 'Try adjusting your filters'
+                        : 'No bookings for this period'}
+                    </p>
+                  </div>
+                )}
+
                 {/* Bookings */}
                 {bookings.map((booking) => {
                   const position = getBookingPosition(booking);
@@ -486,39 +787,84 @@ const Bookings: React.FC = () => {
           </div>
 
           {/* Pending Requests */}
-          <div className="ui-card flex flex-col overflow-hidden max-h-[600px]">
-            <div className="p-6 border-b border-slate-100 dark:border-slate-700 bg-slate-50/30 dark:bg-slate-800/30 flex justify-between items-center">
-              <div>
-                <h3 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-tight">Active Queue</h3>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Awaiting verification</p>
+          <div className="ui-card flex flex-col overflow-hidden">
+            <div className="p-6 border-b border-slate-100 dark:border-slate-700 bg-slate-50/30 dark:bg-slate-800/30 flex flex-col gap-3">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-tight">Active Queue</h3>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Awaiting verification</p>
+                </div>
+                {pendingBookings.length > 0 && (
+                  <span className="bg-amber-400 text-white text-[10px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest shadow-lg shadow-amber-400/20">
+                    {pendingBookings.length}
+                  </span>
+                )}
               </div>
               {pendingBookings.length > 0 && (
-                <span className="bg-amber-400 text-white text-[10px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest shadow-lg shadow-amber-400/20">
-                  {pendingBookings.length}
-                </span>
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.size === pendingBookings.length && pendingBookings.length > 0}
+                      onChange={selectAllPending}
+                      className="rounded border-slate-300 dark:border-slate-600 text-primary focus:ring-primary"
+                    />
+                    <span className="text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest">Select all</span>
+                  </label>
+                  {selectedIds.size > 0 && (
+                    <>
+                      <span className="text-[10px] font-black text-slate-500 dark:text-slate-400">{selectedIds.size} selected</span>
+                      <button
+                        type="button"
+                        onClick={handleBulkConfirm}
+                        disabled={bulkProcessing}
+                        className="h-8 px-3 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                      >
+                        Bulk confirm
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleBulkCancel}
+                        disabled={bulkProcessing}
+                        className="h-8 px-3 bg-slate-200 dark:bg-slate-600 text-slate-800 dark:text-slate-200 text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-slate-300 dark:hover:bg-slate-500 disabled:opacity-50"
+                      >
+                        Bulk cancel
+                      </button>
+                    </>
+                  )}
+                </div>
               )}
             </div>
             <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
               {pendingBookings.length > 0 ? (
                 pendingBookings.slice(0, 10).map((booking) => {
                   const venue = venues.find(v => v.id === booking.venueId);
+                  const isSelected = selectedIds.has(booking.id);
                   return (
                     <div
                       key={booking.id}
-                      className="bg-white dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700 rounded-2xl p-6 shadow-sm relative overflow-hidden group hover:border-primary/40 hover:shadow-md transition-all cursor-pointer"
+                      className={`bg-white dark:bg-slate-800/50 border rounded-2xl p-6 shadow-sm relative overflow-hidden group hover:shadow-md transition-all cursor-pointer ${isSelected ? 'border-primary ring-2 ring-primary/30' : 'border-slate-100 dark:border-slate-700 hover:border-primary/40'}`}
                       onClick={() => handleBookingClick(booking)}
                     >
                       <div className="absolute top-0 left-0 w-2 h-full bg-amber-400"></div>
                       <div className="flex justify-between items-start mb-6">
-                        <div className="flex items-center gap-4">
-                          <div className="size-11 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500 group-hover:bg-primary/20 group-hover:text-primary transition-colors">
-                            <span className="material-symbols-outlined">person</span>
-                          </div>
-                          <div>
-                            <p className="text-sm font-black text-slate-900 dark:text-white leading-none">{booking.user}</p>
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">
-                              {booking.sport} Specialist
-                            </p>
+                        <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelection(booking.id)}
+                            className="rounded border-slate-300 dark:border-slate-600 text-primary focus:ring-primary"
+                          />
+                          <div className="flex items-center gap-4">
+                            <div className="size-11 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500 group-hover:bg-primary/20 group-hover:text-primary transition-colors">
+                              <span className="material-symbols-outlined">person</span>
+                            </div>
+                            <div>
+                              <p className="text-sm font-black text-slate-900 dark:text-white leading-none">{booking.user}</p>
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">
+                                {booking.sport} Specialist
+                              </p>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -601,6 +947,27 @@ const Bookings: React.FC = () => {
         onSelect={handleDateSelect}
         initialDate={selectedDate}
         viewMode={viewMode}
+      />
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={!!confirmDialog}
+        title={confirmDialog?.title || ''}
+        message={confirmDialog?.message || ''}
+        confirmLabel={confirmDialog?.confirmLabel || 'Confirm'}
+        variant={confirmDialog?.variant || 'danger'}
+        loading={confirmLoading}
+        onConfirm={async () => {
+          if (!confirmDialog) return;
+          setConfirmLoading(true);
+          try {
+            await confirmDialog.onConfirm();
+          } finally {
+            setConfirmLoading(false);
+            setConfirmDialog(null);
+          }
+        }}
+        onCancel={() => setConfirmDialog(null)}
       />
     </div>
   );

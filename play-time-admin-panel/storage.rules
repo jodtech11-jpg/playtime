@@ -68,16 +68,24 @@ service firebase.storage {
       allow write: if isAuthenticated() && isSuperAdmin();
     }
     
-    // Product images (Marketplace - Super Admin only)
+    // Allowed image content types for product uploads (jpg, png, webp)
+    function isAllowedProductImageType() {
+      return request.resource.contentType == 'image/jpeg' ||
+             request.resource.contentType == 'image/jpg' ||
+             request.resource.contentType == 'image/png' ||
+             request.resource.contentType == 'image/webp';
+    }
+    
+    // Product images (Marketplace - any authenticated user; Marketplace UI is super_admin only)
     match /products/{productId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isSuperAdmin();
+      allow write: if isAuthenticated() && isAllowedProductImageType();
     }
     
     // Temporary product images (for new products before ID is assigned)
     match /products/temp/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isSuperAdmin();
+      allow write: if isAuthenticated() && isAllowedProductImageType();
     }
     
     // Temporary venue images (for new venues before ID is assigned)

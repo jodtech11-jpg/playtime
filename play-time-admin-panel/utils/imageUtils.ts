@@ -89,12 +89,12 @@ export const validateImageFile = (
   file: File,
   maxSizeMB: number = 5
 ): { valid: boolean; error?: string } => {
-  // Check file type
-  const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
+  // Check file type (jpg, png, webp only for marketplace/product uploads)
+  const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
   if (!validTypes.includes(file.type)) {
     return {
       valid: false,
-      error: 'Invalid file type. Please upload a JPEG, PNG, WebP, or GIF image.'
+      error: 'Invalid file type. Please upload a JPG, PNG, or WebP image.'
     };
   }
   

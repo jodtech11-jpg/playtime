@@ -2,18 +2,22 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useMarketingCampaigns } from '../hooks/useMarketingCampaigns';
 import { useVenues } from '../hooks/useVenues';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
+import { useToast } from '../contexts/ToastContext';
 import { marketingCampaignsCollection } from '../services/firebase';
 import { MarketingCampaign } from '../types';
 import { getRelativeTime } from '../utils/dateUtils';
 import { serverTimestamp } from 'firebase/firestore';
-import CreateCampaignModal from '../components/CreateCampaignModal';
+import CreateCampaignModal from '../components/modals/CreateCampaignModal';
+import ConfirmDialog from '../components/shared/ConfirmDialog';
 
 const Marketing: React.FC = () => {
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
+  const { showSuccess, showError } = useToast();
   const [campaignType, setCampaignType] = useState<'Global' | 'Venue'>('Global');
   const [processing, setProcessing] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<MarketingCampaign | null>(null);
+  const [deletingCampaignId, setDeletingCampaignId] = useState<string | null>(null);
 
   const { campaigns, loading } = useMarketingCampaigns({ realtime: true });
   const { venues } = useVenues({ realtime: true });
@@ -74,21 +78,24 @@ const Marketing: React.FC = () => {
       });
     } catch (error: any) {
       console.error('Error toggling campaign:', error);
-      alert('Failed to update campaign: ' + error.message);
+      showError('Failed to update campaign: ' + error.message);
     } finally {
       setProcessing(null);
     }
   };
 
-  const handleDeleteCampaign = async (campaignId: string) => {
-    if (!confirm('Are you sure you want to delete this campaign?')) return;
+  const handleDeleteCampaign = (campaignId: string) => {
+    setDeletingCampaignId(campaignId);
+  };
 
+  const _doDeleteCampaign = async (campaignId: string) => {
     try {
       setProcessing(campaignId);
       await marketingCampaignsCollection.delete(campaignId);
+      showSuccess('Campaign deleted successfully.');
     } catch (error: any) {
       console.error('Error deleting campaign:', error);
-      alert('Failed to delete campaign: ' + error.message);
+      showError('Failed to delete campaign: ' + error.message);
     } finally {
       setProcessing(null);
     }
@@ -355,6 +362,23 @@ const Marketing: React.FC = () => {
         }}
         onCreate={handleCreateCampaign}
         editingCampaign={editingCampaign}
+      />
+
+      {/* Delete Campaign Confirm */}
+      <ConfirmDialog
+        isOpen={!!deletingCampaignId}
+        title="Delete Campaign"
+        message="Are you sure you want to delete this campaign? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        loading={!!processing}
+        onConfirm={async () => {
+          if (deletingCampaignId) {
+            await _doDeleteCampaign(deletingCampaignId);
+            setDeletingCampaignId(null);
+          }
+        }}
+        onCancel={() => setDeletingCampaignId(null)}
       />
     </div>
   );

@@ -21,6 +21,9 @@ export const useMemberships = (options: UseMembershipsOptions = {}) => {
       return;
     }
 
+    let mounted = true;
+    let unsubscribeRef: (() => void) | undefined;
+
     const fetchMemberships = async () => {
       try {
         setLoading(true);
@@ -53,8 +56,9 @@ export const useMemberships = (options: UseMembershipsOptions = {}) => {
         }
 
         if (options.realtime) {
-          const unsubscribe = membershipsCollection.subscribeAll(
+          unsubscribeRef = membershipsCollection.subscribeAll(
             (data: Membership[]) => {
+              if (!mounted) return;
               setMemberships(data);
               setLoading(false);
             },
@@ -62,18 +66,18 @@ export const useMemberships = (options: UseMembershipsOptions = {}) => {
             'createdAt',
             'desc'
           );
-
-          return () => unsubscribe();
         } else {
           const data = await membershipsCollection.getAll(
             filters.length > 0 ? filters : undefined,
             'createdAt',
             'desc'
           );
+          if (!mounted) return;
           setMemberships(data as Membership[]);
           setLoading(false);
         }
       } catch (err: any) {
+        if (!mounted) return;
         console.error('Error fetching memberships:', err);
         setError(err.message || 'Failed to fetch memberships');
         setLoading(false);
@@ -81,6 +85,11 @@ export const useMemberships = (options: UseMembershipsOptions = {}) => {
     };
 
     fetchMemberships();
+
+    return () => {
+      mounted = false;
+      if (unsubscribeRef) unsubscribeRef();
+    };
   }, [user, options.venueId, options.status, options.realtime, isVenueManager]);
 
   return { memberships, loading, error };

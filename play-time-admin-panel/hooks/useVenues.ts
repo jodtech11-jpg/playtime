@@ -84,7 +84,7 @@ export const useVenues = (options: UseVenuesOptions = {}) => {
         unsubscribe();
       }
     };
-  }, [user?.id, options.status, options.realtime, isVenueManager]);
+  }, [user?.id, options.status, options.realtime, isVenueManager, user?.managedVenues?.join(',')]);
 
   return { venues, loading, error };
 };

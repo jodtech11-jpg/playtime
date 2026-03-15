@@ -1,9 +1,11 @@
 /**
  * Razorpay Payment Service
  * Handles Razorpay payment gateway integration
+ * Venues store only razorpay.enabled; API key comes from platform settings (appSettings/integrations/razorpay).
  */
 
-import { Booking, Membership, Venue } from '../types';
+import { Booking, Membership, Venue, AppSettings } from '../types';
+import { getDocument } from './firebase';
 
 // Razorpay types
 interface RazorpayOptions {
@@ -51,8 +53,9 @@ export const loadRazorpayScript = (): Promise<void> => {
     // Check if script is already being loaded
     const existingScript = document.querySelector('script[src*="razorpay"]');
     if (existingScript) {
-      existingScript.addEventListener('load', () => resolve());
-      existingScript.addEventListener('error', () => reject(new Error('Failed to load Razorpay script')));
+      // Use { once: true } to prevent stacking duplicate listeners on concurrent calls
+      existingScript.addEventListener('load', () => resolve(), { once: true });
+      existingScript.addEventListener('error', () => reject(new Error('Failed to load Razorpay script')), { once: true });
       return;
     }
 
@@ -84,8 +87,8 @@ export const initiateBookingPayment = async (
       throw new Error('Razorpay SDK not loaded');
     }
 
-    // Get Razorpay key from venue settings
-    const razorpayKey = venue.paymentSettings?.razorpay?.apiKey;
+    // Get Razorpay key (venue or platform-level credentials)
+    const razorpayKey = await getRazorpayKeyForVenue(venue);
     if (!razorpayKey) {
       throw new Error('Razorpay not configured for this venue');
     }
@@ -151,8 +154,8 @@ export const initiateMembershipPayment = async (
       throw new Error('Razorpay SDK not loaded');
     }
 
-    // Get Razorpay key from venue settings
-    const razorpayKey = venue.paymentSettings?.razorpay?.apiKey;
+    // Get Razorpay key (venue or platform-level credentials)
+    const razorpayKey = await getRazorpayKeyForVenue(venue);
     if (!razorpayKey) {
       throw new Error('Razorpay not configured for this venue');
     }
@@ -202,43 +205,59 @@ export const initiateMembershipPayment = async (
 };
 
 /**
- * Verify Razorpay payment signature
- * This should be done on the backend, but we include it here for reference
+ * Verify Razorpay payment signature.
+ *
+ * IMPORTANT: This function must NEVER be called on the client side.
+ * The Razorpay secret key must remain on the backend (Cloud Function / server).
+ * Client-side verification exposes the secret key and can be trivially bypassed.
+ *
+ * Correct flow:
+ *  1. Client receives razorpay_payment_id + razorpay_order_id from Razorpay checkout
+ *  2. Client sends both IDs to your backend endpoint
+ *  3. Backend computes HMAC-SHA256(order_id + "|" + payment_id, razorpay_secret)
+ *  4. Backend compares against razorpay_signature and only then updates Firestore
  */
 export const verifyPaymentSignature = (
-  orderId: string,
-  paymentId: string,
-  signature: string,
-  secret: string
-): boolean => {
-  // Note: This verification should ideally be done on the backend
-  // Using crypto library for signature verification
-  // For now, we'll return true and let backend handle verification
-  // In production, always verify on backend before updating payment status
-  
-  // This is a placeholder - actual verification requires crypto library
-  // const crypto = require('crypto');
-  // const generatedSignature = crypto
-  //   .createHmac('sha256', secret)
-  //   .update(orderId + '|' + paymentId)
-  //   .digest('hex');
-  // return generatedSignature === signature;
-  
-  return true; // Backend should verify
+  _orderId: string,
+  _paymentId: string,
+  _signature: string,
+  _secret: string
+): never => {
+  throw new Error(
+    'verifyPaymentSignature must not be called on the client. ' +
+    'Verify Razorpay signatures on your backend using HMAC-SHA256.'
+  );
 };
 
 /**
- * Get Razorpay key from venue settings
+ * Get Razorpay key for a venue (async).
+ * Uses venue's apiKey if present, otherwise platform-level credentials from appSettings.
  */
+export const getRazorpayKeyForVenue = async (venue: Venue): Promise<string | null> => {
+  if (!venue.paymentSettings?.razorpay?.enabled) {
+    return null;
+  }
+  // Venue may have its own apiKey (legacy) or use platform key
+  const venueKey = venue.paymentSettings?.razorpay?.apiKey;
+  if (venueKey && venueKey.trim()) {
+    return venueKey;
+  }
+  // Use platform-level Razorpay credentials (system-wide master credentials)
+  const settings = await getDocument<AppSettings>('appSettings', 'platform');
+  const platformKey = settings?.integrations?.razorpay?.apiKey;
+  return (platformKey && platformKey.trim()) ? platformKey : null;
+};
+
+/** @deprecated Use getRazorpayKeyForVenue for async key resolution */
 export const getRazorpayKey = (venue: Venue): string | null => {
   return venue.paymentSettings?.razorpay?.apiKey || null;
 };
 
 /**
- * Check if Razorpay is enabled for venue
+ * Check if Razorpay is enabled for venue.
+ * Venue must have enabled=true; key resolution happens at payment initiation.
  */
 export const isRazorpayEnabled = (venue: Venue): boolean => {
-  return venue.paymentSettings?.razorpay?.enabled === true && 
-         !!venue.paymentSettings?.razorpay?.apiKey;
+  return venue.paymentSettings?.razorpay?.enabled === true;
 };
 

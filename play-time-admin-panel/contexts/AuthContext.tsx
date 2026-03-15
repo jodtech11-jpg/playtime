@@ -19,6 +19,7 @@ const defaultContextValue: AuthContextType = {
   isVenueManager: false,
   signOut: async () => {},
   refreshUser: async () => {},
+  clearError: () => {},
 };
 
 const AuthContext = createContext<AuthContextType>(defaultContextValue);
@@ -38,13 +39,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       const userData = await usersCollection.get(uid);
       if (userData) {
+        setError(null);
         setUser(userData as User);
         setLoading('loaded');
       } else {
-        // User document doesn't exist, create it
+        // User document doesn't exist – sign out so user isn't stuck
         console.warn('User document not found in Firestore for:', uid);
-        setLoading('loaded');
+        await signOutUser();
+        setUser(null);
+        setFirebaseUser(null);
         setError('User profile not found. Please contact administrator.');
+        setLoading('loaded');
       }
     } catch (err: any) {
       console.error('Error fetching user data:', err);
@@ -55,21 +60,48 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Listen to auth state changes
   useEffect(() => {
+    let mounted = true;
+
     const unsubscribe = onAuthStateChange(async (firebaseUser) => {
+      if (!mounted) return;
       setFirebaseUser(firebaseUser);
-      
+
       if (firebaseUser) {
         setLoading('loading');
         setError(null);
-        // Fetch user data from Firestore
-        await fetchUserData(firebaseUser.uid);
+        // Fetch user data from Firestore — guard against unmount during async fetch
+        try {
+          const userData = await usersCollection.get(firebaseUser.uid);
+          if (!mounted) return;
+          if (userData) {
+            setError(null);
+            setUser(userData as User);
+            setLoading('loaded');
+          } else {
+            console.warn('User document not found in Firestore for:', firebaseUser.uid);
+            await signOutUser();
+            if (!mounted) return;
+            setUser(null);
+            setFirebaseUser(null);
+            setError('User profile not found. Please contact administrator.');
+            setLoading('loaded');
+          }
+        } catch (err: any) {
+          if (!mounted) return;
+          console.error('Error fetching user data:', err);
+          setError(err.message || 'Failed to load user data');
+          setLoading('error');
+        }
       } else {
         setUser(null);
         setLoading('loaded');
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
   }, []);
 
   // Sign out function
@@ -95,6 +127,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const clearError = () => setError(null);
+
   const value: AuthContextType = {
     user,
     firebaseUser,
@@ -102,6 +136,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     error,
     signOut,
     refreshUser,
+    clearError,
     isAuthenticated: !!firebaseUser && !!user,
     isSuperAdmin: user?.role === 'super_admin',
     isVenueManager: user?.role === 'venue_manager',

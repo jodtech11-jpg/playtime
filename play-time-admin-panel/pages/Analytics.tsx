@@ -6,7 +6,7 @@ import {
 import { useAnalytics } from '../hooks/useAnalytics';
 import { formatCurrency, formatNumber, formatPercentage } from '../utils/formatUtils';
 import { formatDate, getToday, getWeekStart, getWeekEnd, getMonthStart, getMonthEnd } from '../utils/dateUtils';
-import DateRangePicker from '../components/DateRangePicker';
+import DateRangePicker from '../components/shared/DateRangePicker';
 
 const COLORS = ['#11d473', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#06b6d4'];
 
@@ -72,7 +72,7 @@ const Analytics: React.FC = () => {
       <div className="p-8 flex items-center justify-center h-full">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
-          <p className="text-gray-600 font-medium">Loading analytics...</p>
+          <p className="text-gray-600 dark:text-slate-400 font-medium">Loading analytics...</p>
         </div>
       </div>
     );
@@ -190,7 +190,7 @@ const Analytics: React.FC = () => {
         <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-8">
           Financial Trajectory
         </h3>
-        <div className="h-[400px] w-full">
+        <div className="h-[400px] min-h-[300px] min-w-0 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={revenueTrends}>
               <defs>
@@ -218,7 +218,7 @@ const Analytics: React.FC = () => {
         <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-8">
           Audience Retention & Growth
         </h3>
-        <div className="h-[400px] w-full">
+        <div className="h-[400px] min-h-[300px] min-w-0 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={userGrowth}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.5} />
@@ -243,7 +243,7 @@ const Analytics: React.FC = () => {
           <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-8">
             Hourly Heatmap
           </h3>
-          <div className="h-[300px] w-full">
+          <div className="h-[300px] min-h-[250px] min-w-0 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={bookingPatternsByHour.filter(h => h.bookings > 0)}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.5} />
@@ -263,7 +263,7 @@ const Analytics: React.FC = () => {
           <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-8">
             Engagement by Day
           </h3>
-          <div className="h-[300px] w-full">
+          <div className="h-[300px] min-h-[250px] min-w-0 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={bookingPatternsByDay}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.5} />
@@ -287,7 +287,7 @@ const Analytics: React.FC = () => {
           <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-8">
             Sports Distribution
           </h3>
-          <div className="h-[350px] w-full">
+          <div className="h-[350px] min-h-[280px] min-w-0 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie

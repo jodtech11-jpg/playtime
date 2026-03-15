@@ -78,6 +78,7 @@ export interface AuthContextType {
   isVenueManager: boolean;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  clearError: () => void;
 }
 
 export interface Booking {

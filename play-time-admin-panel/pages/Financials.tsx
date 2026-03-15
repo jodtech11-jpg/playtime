@@ -8,7 +8,7 @@ import { formatCurrency } from '../utils/formatUtils';
 import { formatDate } from '../utils/dateUtils';
 import { exportTransactionsToCSV, exportFinancialReportToPDF, generateInvoicePDF } from '../utils/exportUtils';
 import { generateInvoicePDFFile, getInvoiceVenueName } from '../services/invoiceService';
-import CreateInvoiceModal from '../components/CreateInvoiceModal';
+import CreateInvoiceModal from '../components/modals/CreateInvoiceModal';
 import { Invoice } from '../types';
 
 const Financials: React.FC = () => {
@@ -17,6 +17,7 @@ const Financials: React.FC = () => {
   const [dateRange, setDateRange] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const [filterType, setFilterType] = useState<'All' | 'Bookings' | 'Memb' | 'Equip'>('All');
   const [showCreateInvoiceModal, setShowCreateInvoiceModal] = useState(false);
+  const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null);
   const [settlementLoading, setSettlementLoading] = useState(false);
   const [settlementError, setSettlementError] = useState<string | null>(null);
   const [showSettlementConfirm, setShowSettlementConfirm] = useState(false);
@@ -109,7 +110,7 @@ const Financials: React.FC = () => {
       return;
     }
 
-    if (settlement.settledToPlatform <= 0) {
+    if (!settlement.settledToPlatform || settlement.settledToPlatform <= 0) {
       setSettlementError('No amount to settle. Settlement amount must be greater than 0.');
       return;
     }
@@ -326,39 +327,86 @@ const Financials: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
                       {filteredTransactions.slice(0, 20).map((t) => (
-                        <tr key={t.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-all cursor-pointer group">
-                          <td className="px-6 py-5">
-                            <span className="font-mono font-black text-slate-400 group-hover:text-primary transition-colors">{t.invoiceId || `#${t.id.substring(0, 8).toUpperCase()}`}</span>
-                          </td>
-                          <td className="px-6 py-5">
-                            <div className="flex items-center gap-3">
-                              <div className="size-8 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white flex items-center justify-center text-[10px] font-black uppercase tracking-widest border border-slate-200 dark:border-slate-700">
-                                {t.source[0]}
+                        <React.Fragment key={t.id}>
+                          <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-all cursor-pointer group" onClick={() => setSelectedTransactionId(selectedTransactionId === t.id ? null : t.id)}>
+                            <td className="px-6 py-5">
+                              <span className="font-mono font-black text-slate-400 group-hover:text-primary transition-colors">{t.invoiceId || `#${t.id.substring(0, 8).toUpperCase()}`}</span>
+                            </td>
+                            <td className="px-6 py-5">
+                              <div className="flex items-center gap-3">
+                                <div className="size-8 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white flex items-center justify-center text-[10px] font-black uppercase tracking-widest border border-slate-200 dark:border-slate-700">
+                                  {t.source[0]}
+                                </div>
+                                <span className="font-black text-slate-900 dark:text-white uppercase tracking-widest">{t.source}</span>
                               </div>
-                              <span className="font-black text-slate-900 dark:text-white uppercase tracking-widest">{t.source}</span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-5">
-                            <div className="flex gap-2">
-                              {t.convenienceFee && t.convenienceFee > 0 && (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest bg-emerald-50 text-emerald-600 border border-emerald-100">
-                                  Fee: {formatCurrency(t.convenienceFee)}
-                                </span>
-                              )}
-                              {t.platformCommission && t.platformCommission > 0 && (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest bg-blue-50 text-blue-600 border border-blue-100">
-                                  Comm: {((t.platformCommission / t.amount) * 100).toFixed(0)}%
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-5 font-black text-slate-900 dark:text-white">{formatCurrency(t.netPlatform || 0)}</td>
-                          <td className="px-6 py-5 text-center">
-                            <button className="size-8 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-primary hover:border-primary/30 border border-transparent transition-all">
-                              <span className="material-symbols-outlined text-lg">info</span>
-                            </button>
-                          </td>
-                        </tr>
+                            </td>
+                            <td className="px-6 py-5">
+                              <div className="flex gap-2">
+                                {t.convenienceFee && t.convenienceFee > 0 && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest bg-emerald-50 text-emerald-600 border border-emerald-100">
+                                    Fee: {formatCurrency(t.convenienceFee)}
+                                  </span>
+                                )}
+                                {t.platformCommission && t.platformCommission > 0 && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest bg-blue-50 text-blue-600 border border-blue-100">
+                                    Comm: {((t.platformCommission / t.amount) * 100).toFixed(0)}%
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-5 font-black text-slate-900 dark:text-white">{formatCurrency(t.netPlatform || 0)}</td>
+                            <td className="px-6 py-5 text-center">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setSelectedTransactionId(selectedTransactionId === t.id ? null : t.id); }}
+                                className={`size-8 rounded-lg border transition-all ${selectedTransactionId === t.id ? 'bg-primary text-white border-primary' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-primary hover:border-primary/30 border-transparent'}`}
+                              >
+                                <span className="material-symbols-outlined text-lg">info</span>
+                              </button>
+                            </td>
+                          </tr>
+                          {selectedTransactionId === t.id && (
+                            <tr className="bg-slate-50 dark:bg-slate-800/50">
+                              <td colSpan={5} className="px-6 py-4">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                                  <div>
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Type</p>
+                                    <p className="font-black text-slate-900 dark:text-white">{t.type}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Gross Amount</p>
+                                    <p className="font-black text-slate-900 dark:text-white">{formatCurrency(t.amount)}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Venue Payout</p>
+                                    <p className="font-black text-slate-900 dark:text-white">{formatCurrency(t.venuePayout || 0)}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Status</p>
+                                    <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest ${t.status === 'Completed' ? 'bg-emerald-50 text-emerald-600' : t.status === 'Refunded' ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-600'}`}>{t.status}</span>
+                                  </div>
+                                  {t.bookingId && (
+                                    <div>
+                                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Booking ID</p>
+                                      <p className="font-mono text-slate-500">{t.bookingId}</p>
+                                    </div>
+                                  )}
+                                  {t.membershipId && (
+                                    <div>
+                                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Membership ID</p>
+                                      <p className="font-mono text-slate-500">{t.membershipId}</p>
+                                    </div>
+                                  )}
+                                  {t.createdAt && (
+                                    <div>
+                                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Date</p>
+                                      <p className="font-black text-slate-900 dark:text-white">{formatDate(t.createdAt.toDate ? t.createdAt.toDate() : new Date(t.createdAt))}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       ))}
                     </tbody>
                   </table>

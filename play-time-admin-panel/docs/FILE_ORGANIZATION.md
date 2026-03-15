@@ -1,6 +1,6 @@
 # 📁 File Organization
 
-**Date**: 2024-12-19  
+**Date**: 2024-12-19 (updated for component subfolders)  
 **Status**: ✅ Complete
 
 ---
@@ -30,11 +30,24 @@ Contains essential configuration and source files:
 - `README.md` - Project README
 
 ### `/components/`
-React UI components:
-- Modal components (BookingDetailsModal, CreateInvoiceModal, etc.)
-- Form components (VenueFormModal, UserFormModal, etc.)
-- UI components (Header, Sidebar, ToastContainer, etc.)
-- Utility components (DatePicker, ImageUpload, etc.)
+React UI components, grouped into subfolders:
+
+#### `/components/layout/`
+Layout and app shell:
+- `Sidebar.tsx`, `Header.tsx` - Main layout
+- `ProtectedRoute.tsx`, `VenueProtectedRoute.tsx` - Route guards
+- `ErrorBoundary.tsx`, `ToastContainer.tsx` - Error and toast UI
+
+#### `/components/modals/`
+All modal/dialog components (30 files):
+- BookingDetailsModal, VenueFormModal, UserFormModal, CourtFormModal
+- CreateInvoiceModal, TournamentFormModal, SportManagementModal, etc.
+
+#### `/components/shared/`
+Reusable UI and form primitives:
+- `DatePicker.tsx`, `DateRangePicker.tsx` - Date inputs
+- `GoogleMapPicker.tsx` - Map location picker
+- `ImageUpload.tsx`, `LoadingSpinner.tsx` - Common UI
 
 ### `/pages/`
 Page components (routes):
@@ -138,6 +151,9 @@ Planning and progress tracking (6 files):
 Firebase-specific documentation (2 files):
 - FIREBASE_DEPLOYMENT_SUMMARY.md
 - INDEX_BUILD_STATUS.md
+
+#### `/docs/from-root/`
+Legacy copies of docs that were previously in the project root (see `from-root/README.md`). Prefer the canonical versions in `implementations/`, `guides/`, etc.
 
 #### `/docs/README.md`
 Documentation index and navigation guide

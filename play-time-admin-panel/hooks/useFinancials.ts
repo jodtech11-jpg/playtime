@@ -67,9 +67,11 @@ export const useFinancials = (options: UseFinancialsOptions = {}) => {
     // Calculate platform commission (5% of bookings)
     const platformCommission = grossBookingValue * PLATFORM_COMMISSION_RATE;
 
-    // Calculate convenience fees (₹100 per first-time booking)
-    // For now, we'll assume all bookings are first-time (can be enhanced with user booking history)
-    const convenienceFees = confirmedBookings.length * CONVENIENCE_FEE;
+    // Calculate convenience fees (₹100 per unique user — proxy for first-time booking).
+    // Ideally this should be tracked per user's lifetime booking history across all venues.
+    // Using unique users in the current dataset as a conservative approximation.
+    const uniqueUserIds = new Set(confirmedBookings.map(b => b.userId).filter(Boolean));
+    const convenienceFees = uniqueUserIds.size * CONVENIENCE_FEE;
 
     // Calculate venue payouts (gross - commission - convenience fees)
     const pendingVenuePayouts = grossBookingValue - platformCommission - convenienceFees;
@@ -95,13 +97,22 @@ export const useFinancials = (options: UseFinancialsOptions = {}) => {
   const transactions = useMemo<Transaction[]>(() => {
     const transactionList: Transaction[] = [];
 
+    // Build set of user IDs that appear more than once (repeat users — no convenience fee)
+    const confirmedBookingsForFee = bookings.filter(b => b.status === 'Confirmed' && b.paymentStatus === 'Paid');
+    const userBookingCount: Record<string, number> = {};
+    confirmedBookingsForFee.forEach(b => {
+      if (b.userId) userBookingCount[b.userId] = (userBookingCount[b.userId] || 0) + 1;
+    });
+
     // Add booking transactions
     bookings
       .filter(b => b.status === 'Confirmed' && b.paymentStatus === 'Paid')
       .forEach(booking => {
         const venue = venues.find(v => v.id === booking.venueId);
         const commission = (booking.amount || 0) * PLATFORM_COMMISSION_RATE;
-        const convenienceFee = CONVENIENCE_FEE; // Assuming first-time
+        // Convenience fee only applies to first booking per user (count === 1 in this dataset)
+        const isFirstBooking = booking.userId ? (userBookingCount[booking.userId] || 0) === 1 : false;
+        const convenienceFee = isFirstBooking ? CONVENIENCE_FEE : 0;
         const venuePayout = (booking.amount || 0) - commission - convenienceFee;
         const netPlatform = commission + convenienceFee;
 

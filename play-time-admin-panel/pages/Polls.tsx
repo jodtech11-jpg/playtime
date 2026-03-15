@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { pollsCollection } from '../services/firebase';
 import { serverTimestamp } from 'firebase/firestore';
 import { useToast } from '../contexts/ToastContext';
-import PollFormModal from '../components/PollFormModal';
+import PollFormModal from '../components/modals/PollFormModal';
 import { formatDate } from '../utils/dateUtils';
 
 const Polls: React.FC = () => {
@@ -109,8 +109,8 @@ const Polls: React.FC = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-black text-white mb-2">Polls</h1>
-          <p className="text-gray-400 text-sm">Manage community polls and face-offs</p>
+          <h1 className="text-3xl font-black text-slate-900 dark:text-white mb-2">Polls</h1>
+          <p className="text-slate-500 dark:text-gray-400 text-sm">Manage community polls and face-offs</p>
         </div>
         <button
           onClick={handleCreatePoll}
@@ -125,7 +125,7 @@ const Polls: React.FC = () => {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-4 py-2 border border-gray-700 bg-surface-dark text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+          className="px-4 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-surface-dark text-slate-900 dark:text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
         >
           {statuses.map((status) => (
             <option key={status} value={status}>
@@ -137,7 +137,7 @@ const Polls: React.FC = () => {
         <select
           value={sportFilter}
           onChange={(e) => setSportFilter(e.target.value)}
-          className="px-4 py-2 border border-gray-700 bg-surface-dark text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+          className="px-4 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-surface-dark text-slate-900 dark:text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
         >
           {sports.map((sport) => (
             <option key={sport} value={sport}>
@@ -153,7 +153,7 @@ const Polls: React.FC = () => {
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
       ) : filteredPolls.length === 0 ? (
-        <div className="text-center py-12 bg-surface-dark rounded-2xl border border-gray-800">
+        <div className="text-center py-12 bg-white dark:bg-surface-dark rounded-2xl border border-gray-200 dark:border-gray-800">
           <p className="text-gray-400">No polls found</p>
         </div>
       ) : (
@@ -161,11 +161,11 @@ const Polls: React.FC = () => {
           {filteredPolls.map((poll) => (
             <div
               key={poll.id}
-              className="bg-surface-dark rounded-2xl p-6 border border-gray-800 hover:border-primary/30 transition-colors"
+              className="bg-white dark:bg-surface-dark rounded-2xl p-6 border border-gray-200 dark:border-gray-800 hover:border-primary/30 transition-colors"
             >
               <div className="flex justify-between items-start mb-4">
                 <div className="flex-1">
-                  <h3 className="text-lg font-black text-white mb-2">
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white mb-2">
                     {poll.question}
                   </h3>
                   <div className="flex gap-2 flex-wrap">
@@ -193,10 +193,10 @@ const Polls: React.FC = () => {
                   return (
                     <div key={option.id} className="space-y-1">
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-300">{option.text}</span>
-                        <span className="text-white font-black">{option.votes} ({percentage}%)</span>
+                        <span className="text-slate-600 dark:text-gray-300">{option.text}</span>
+                        <span className="text-slate-900 dark:text-white font-black">{option.votes} ({percentage}%)</span>
                       </div>
-                      <div className="w-full bg-gray-800 rounded-full h-2">
+                      <div className="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-2">
                         <div
                           className="bg-primary h-2 rounded-full transition-all"
                           style={{ width: `${percentage}%` }}
@@ -235,7 +235,7 @@ const Polls: React.FC = () => {
 
               {/* Quick Status Update */}
               {poll.status === 'Active' && (
-                <div className="mt-3 pt-3 border-t border-gray-800">
+                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-800">
                   <button
                     onClick={() => handleUpdateStatus(poll.id, 'Closed')}
                     className="w-full px-3 py-2 bg-yellow-500/10 text-yellow-400 rounded-lg hover:bg-yellow-500/20 transition-colors text-xs font-black uppercase tracking-wider"

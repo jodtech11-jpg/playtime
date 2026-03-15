@@ -7,15 +7,17 @@ import { useUsers } from '../hooks/useUsers';
 import { venuesCollection } from '../services/firebase';
 import { Venue } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { formatCurrency, getStatusColor } from '../utils/formatUtils';
 import { formatDate, getRelativeTime } from '../utils/dateUtils';
-import VenueFormModal from '../components/VenueFormModal';
+import VenueFormModal from '../components/modals/VenueFormModal';
 import { serverTimestamp } from 'firebase/firestore';
 
 const VenueDetail: React.FC = () => {
   const { venueId } = useParams<{ venueId: string }>();
   const navigate = useNavigate();
   const { user: currentUser, isSuperAdmin, isVenueManager } = useAuth();
+  const { showSuccess, showError } = useToast();
 
   const { venues, loading: venuesLoading } = useVenues({ realtime: true });
   const venue = venues.find(v => v.id === venueId);
@@ -61,10 +63,11 @@ const VenueDetail: React.FC = () => {
       });
       setIsEditModalOpen(false);
       setProcessing(null);
+      showSuccess('Venue updated successfully.');
     } catch (err: any) {
       console.error('Error saving venue:', err);
       setProcessing(null);
-      alert(`Failed to save venue: ${err.message}`);
+      showError(`Failed to save venue: ${err.message}`);
     }
   };
 
@@ -100,11 +103,21 @@ const VenueDetail: React.FC = () => {
 
   return (
     <div className="p-8 space-y-10 bg-slate-50 dark:bg-slate-900 min-h-full">
+      {/* Breadcrumb */}
+      <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-widest">
+        <button onClick={() => navigate('/venues')} className="hover:text-primary transition-colors">
+          Venues
+        </button>
+        <span className="material-symbols-outlined text-sm text-slate-300">chevron_right</span>
+        <span className="text-slate-700 dark:text-slate-200 truncate max-w-xs">{venue.name}</span>
+      </nav>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
         <div className="flex items-center gap-6">
           <button
             onClick={() => navigate('/venues')}
+            aria-label="Back to venues"
             className="size-12 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400 hover:text-primary hover:border-primary/30 transition-all shadow-sm group"
           >
             <span className="material-symbols-outlined transition-transform group-hover:-translate-x-1">arrow_back</span>

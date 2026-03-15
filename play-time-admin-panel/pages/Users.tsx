@@ -6,29 +6,45 @@ import { usersCollection } from '../services/firebase';
 import { User } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
+import { useToast } from '../contexts/ToastContext';
 import { getStatusColor } from '../utils/formatUtils';
+import { exportUsersToCSV } from '../utils/exportUtils';
 import { formatDate, getRelativeTime } from '../utils/dateUtils';
-import UserFormModal from '../components/UserFormModal';
+import UserFormModal from '../components/modals/UserFormModal';
+import ConfirmDialog from '../components/shared/ConfirmDialog';
 import { serverTimestamp } from 'firebase/firestore';
 
 const Users: React.FC = () => {
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
+  const { showSuccess, showError } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Pending' | 'Inactive'>('All');
   const [roleFilter, setRoleFilter] = useState<'All' | 'super_admin' | 'venue_manager' | 'player'>('All');
 
-  const { users, loading, error } = useUsers({ searchTerm: searchQuery });
+  const { users, loading, error, loadMore, hasMore, loadingMore } = useUsers({ searchTerm: searchQuery });
   const { venues } = useVenues({ realtime: true });
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
+  const [localStatusOverrides, setLocalStatusOverrides] = useState<Record<string, 'Active' | 'Pending' | 'Inactive'>>({});
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    variant: 'danger' | 'warning' | 'default';
+    onConfirm: () => Promise<void>;
+  } | null>(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
 
   // Filter users based on status and role filters (venue filtering is done in useUsers hook)
   const filteredUsers = useMemo(() => {
-    let filtered = users;
+    // Apply optimistic status overrides
+    let filtered = users.map(u =>
+      localStatusOverrides[u.id] ? { ...u, status: localStatusOverrides[u.id] } : u
+    );
 
     // Apply status filter
     if (statusFilter !== 'All') {
@@ -41,7 +57,7 @@ const Users: React.FC = () => {
     }
 
     return filtered;
-  }, [users, statusFilter, roleFilter]);
+  }, [users, statusFilter, roleFilter, localStatusOverrides]);
 
   // Calculate statistics
   const stats = useMemo(() => {
@@ -163,27 +179,34 @@ const Users: React.FC = () => {
     } catch (err: any) {
       console.error('Error saving user:', err);
       setProcessing(null);
-      alert(`Failed to save user: ${err.message}`);
+      showError(`Failed to save user: ${err.message}`);
     }
   };
 
-  const handleDeleteUser = async (userId: string) => {
-    if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
-      return;
-    }
-
-    try {
-      setProcessing(userId);
-      await usersCollection.delete(userId);
-      setProcessing(null);
-    } catch (err: any) {
-      console.error('Error deleting user:', err);
-      setProcessing(null);
-      alert(`Failed to delete user: ${err.message}`);
-    }
+  const handleDeleteUser = (userId: string) => {
+    setConfirmDialog({
+      title: 'Delete User',
+      message: 'Are you sure you want to delete this user? This action cannot be undone.',
+      confirmLabel: 'Delete User',
+      variant: 'danger',
+      onConfirm: async () => {
+        setProcessing(userId);
+        try {
+          await usersCollection.delete(userId);
+          showSuccess('User deleted successfully.');
+        } catch (err: any) {
+          console.error('Error deleting user:', err);
+          showError(`Failed to delete user: ${err.message}`);
+        } finally {
+          setProcessing(null);
+        }
+      },
+    });
   };
 
   const handleStatusChange = async (userId: string, newStatus: 'Active' | 'Pending' | 'Inactive') => {
+    // Optimistic update
+    setLocalStatusOverrides(prev => ({ ...prev, [userId]: newStatus }));
     try {
       setProcessing(userId);
       await usersCollection.update(userId, {
@@ -193,23 +216,41 @@ const Users: React.FC = () => {
       setProcessing(null);
     } catch (err: any) {
       console.error('Error updating user status:', err);
+      // Rollback optimistic update
+      setLocalStatusOverrides(prev => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
       setProcessing(null);
-      alert(`Failed to update user status: ${err.message}`);
+      showError(`Failed to update user status: ${err.message}`);
     }
   };
 
-  const handleApproveUser = async (userId: string) => {
-    if (!confirm('Approve this vendor? They will be able to access the platform.')) {
-      return;
-    }
-    await handleStatusChange(userId, 'Active');
+  const handleApproveUser = (userId: string) => {
+    setConfirmDialog({
+      title: 'Approve Vendor',
+      message: 'Approve this vendor? They will gain access to the platform.',
+      confirmLabel: 'Approve',
+      variant: 'default',
+      onConfirm: async () => {
+        await handleStatusChange(userId, 'Active');
+        showSuccess('Vendor approved successfully.');
+      },
+    });
   };
 
-  const handleRejectUser = async (userId: string) => {
-    if (!confirm('Reject this vendor? Their account will be deactivated.')) {
-      return;
-    }
-    await handleStatusChange(userId, 'Inactive');
+  const handleRejectUser = (userId: string) => {
+    setConfirmDialog({
+      title: 'Reject Vendor',
+      message: "Reject this vendor? Their account will be deactivated.",
+      confirmLabel: 'Reject',
+      variant: 'danger',
+      onConfirm: async () => {
+        await handleStatusChange(userId, 'Inactive');
+        showSuccess('Vendor rejected.');
+      },
+    });
   };
 
   if (loading) {
@@ -243,13 +284,30 @@ const Users: React.FC = () => {
           <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-none">Users</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-3 font-medium">Manage user accounts, roles, and platform access.</p>
         </div>
-        <button
-          onClick={handleCreateUser}
-          className="flex items-center gap-2 rounded-xl bg-primary hover:bg-primary/90 px-6 py-3 text-white text-sm font-black shadow-lg shadow-primary/20 transition-all active:scale-95"
-        >
-          <span className="material-symbols-outlined text-[20px]">person_add</span>
-          Add User
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              try {
+                exportUsersToCSV(filteredUsers);
+                showSuccess('Users exported to CSV successfully.');
+              } catch (e: any) {
+                showError('Failed to export CSV: ' + (e?.message || 'Unknown error'));
+              }
+            }}
+            className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 px-5 py-3 text-slate-700 dark:text-slate-200 text-sm font-black transition-all active:scale-95"
+          >
+            <span className="material-symbols-outlined text-[20px]">download</span>
+            Export CSV
+          </button>
+          <button
+            onClick={handleCreateUser}
+            className="flex items-center gap-2 rounded-xl bg-primary hover:bg-primary/90 px-6 py-3 text-white text-sm font-black shadow-lg shadow-primary/20 transition-all active:scale-95"
+          >
+            <span className="material-symbols-outlined text-[20px]">person_add</span>
+            Add User
+          </button>
+        </div>
       </div>
 
       {/* Statistics Cards */}
@@ -326,6 +384,17 @@ const Users: React.FC = () => {
         <div className="flex items-center gap-3">
           <div className="h-6 w-1 rounded-full bg-primary"></div>
           <h2 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] leading-none">User List</h2>
+          <span className="text-xs font-bold text-slate-400">
+            — showing <span className="text-slate-700 dark:text-slate-200">{filteredUsers.length}</span> user{filteredUsers.length !== 1 ? 's' : ''}
+            {(searchQuery || statusFilter !== 'All' || roleFilter !== 'All') && (
+              <button
+                onClick={() => { setSearchQuery(''); setStatusFilter('All'); setRoleFilter('All'); }}
+                className="ml-2 text-primary hover:underline font-black"
+              >
+                Clear filters
+              </button>
+            )}
+          </span>
         </div>
 
         <div className="flex flex-wrap items-center gap-3 bg-white dark:bg-slate-800 p-2 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
@@ -386,7 +455,7 @@ const Users: React.FC = () => {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-20 text-center">
+                  <td colSpan={7} className="px-6 py-20 text-center">
                     <div className="size-20 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center mx-auto mb-4 text-slate-300">
                       <span className="material-symbols-outlined text-4xl">person_off</span>
                     </div>
@@ -427,8 +496,8 @@ const Users: React.FC = () => {
                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{user.phone || '—'}</span>
                       </td>
                       <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                        <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${user.status === 'Active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                          user.status === 'Pending' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-50 text-slate-400 border-slate-100'
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${user.status === 'Active' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/30' :
+                          user.status === 'Pending' ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-900/30' : 'bg-slate-50 dark:bg-slate-800 text-slate-400 border-slate-100 dark:border-slate-700'
                           }`}>
                           <span className={`size-1.5 rounded-full ${user.status === 'Active' ? 'bg-emerald-500' :
                             user.status === 'Pending' ? 'bg-amber-500' : 'bg-slate-400'
@@ -452,13 +521,15 @@ const Users: React.FC = () => {
                       <td className="px-6 py-4">
                         <span className="text-xs font-bold text-slate-500">{user.createdAt ? formatDate(user.createdAt.toDate()) : 'ARCHIVE'}</span>
                       </td>
-                      <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-6 py-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
                           {user.status === 'Pending' && currentUser?.role === 'super_admin' && (
                             <>
                               <button
                                 onClick={() => handleApproveUser(user.id)}
                                 disabled={processing === user.id}
+                                aria-label="Approve user"
+                                title="Approve user"
                                 className="size-8 flex items-center justify-center bg-emerald-500 text-white rounded-lg hover:scale-110 transition-all shadow-lg shadow-emerald-500/20"
                               >
                                 <span className="material-symbols-outlined text-base">check</span>
@@ -466,6 +537,8 @@ const Users: React.FC = () => {
                               <button
                                 onClick={() => handleRejectUser(user.id)}
                                 disabled={processing === user.id}
+                                aria-label="Reject user"
+                                title="Reject user"
                                 className="size-8 flex items-center justify-center bg-rose-500 text-white rounded-lg hover:scale-110 transition-all shadow-lg shadow-rose-500/20"
                               >
                                 <span className="material-symbols-outlined text-base">close</span>
@@ -474,13 +547,17 @@ const Users: React.FC = () => {
                           )}
                           <button
                             onClick={() => navigate(`/users/${user.id}`)}
+                            aria-label="View user details"
+                            title="View details"
                             className="size-8 flex items-center justify-center text-slate-400 hover:text-primary transition-all rounded-lg"
                           >
                             <span className="material-symbols-outlined text-xl">visibility</span>
                           </button>
                           <button
                             onClick={() => handleEditUser(user)}
-                            className="size-8 flex items-center justify-center text-slate-400 hover:text-slate-900 rounded-lg transition-all"
+                            aria-label="Edit user"
+                            title="Edit user"
+                            className="size-8 flex items-center justify-center text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg transition-all"
                           >
                             <span className="material-symbols-outlined text-xl">settings</span>
                           </button>
@@ -488,6 +565,8 @@ const Users: React.FC = () => {
                             <button
                               onClick={() => handleDeleteUser(user.id)}
                               disabled={processing === user.id}
+                              aria-label="Delete user"
+                              title="Delete user"
                               className="size-8 flex items-center justify-center text-slate-400 hover:text-rose-500 rounded-lg transition-all"
                             >
                               <span className="material-symbols-outlined text-xl">delete</span>
@@ -501,6 +580,28 @@ const Users: React.FC = () => {
               )}
             </tbody>
           </table>
+          {hasMore && (
+            <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 flex justify-center">
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 px-5 py-2.5 text-sm font-black text-slate-700 dark:text-slate-200 transition-all disabled:opacity-50"
+              >
+                {loadingMore ? (
+                  <>
+                    <span className="inline-block size-4 animate-spin rounded-full border-2 border-slate-300 border-t-primary" />
+                    Loading…
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-lg">unfold_more</span>
+                    Load more
+                  </>
+                )}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -516,6 +617,27 @@ const Users: React.FC = () => {
           onSave={handleSaveUser}
         />
       )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={!!confirmDialog}
+        title={confirmDialog?.title || ''}
+        message={confirmDialog?.message || ''}
+        confirmLabel={confirmDialog?.confirmLabel || 'Confirm'}
+        variant={confirmDialog?.variant || 'danger'}
+        loading={confirmLoading}
+        onConfirm={async () => {
+          if (!confirmDialog) return;
+          setConfirmLoading(true);
+          try {
+            await confirmDialog.onConfirm();
+          } finally {
+            setConfirmLoading(false);
+            setConfirmDialog(null);
+          }
+        }}
+        onCancel={() => setConfirmDialog(null)}
+      />
     </div>
   );
 };
