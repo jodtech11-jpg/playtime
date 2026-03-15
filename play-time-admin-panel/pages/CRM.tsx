@@ -238,7 +238,7 @@ const CRM: React.FC = () => {
   }
 
   return (
-    <div className="p-8 space-y-10 bg-background-light">
+    <div className="p-8 space-y-10 bg-background-light dark:bg-background-dark">
       <div className="max-w-[1400px] mx-auto space-y-10">
         {/* Tabs Navigation */}
         <div className="flex items-center gap-2 border-b border-gray-200 dark:border-gray-700">

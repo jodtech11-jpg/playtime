@@ -22,6 +22,7 @@ import RoleManagement from './pages/RoleManagement';
 import PermissionManagement from './pages/PermissionManagement';
 import Moderation from './pages/Moderation';
 import Tournaments from './pages/Tournaments';
+import TournamentDetail from './pages/TournamentDetail';
 import QuickMatches from './pages/QuickMatches';
 import Leaderboards from './pages/Leaderboards';
 import Polls from './pages/Polls';
@@ -79,7 +80,7 @@ const AppRoutes: React.FC = () => {
           <Sidebar />
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden lg:ml-0">
             <Header />
-            <main className="flex-1 overflow-y-auto pt-16 lg:pt-0 bg-background-light dark:bg-background-dark">
+            <main className="flex-1 min-h-0 overflow-y-auto pt-16 lg:pt-0 bg-background-light dark:bg-background-dark">
               <Routes>
                 <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                 <Route path="/bookings" element={<ProtectedRoute><Bookings /></ProtectedRoute>} />
@@ -97,6 +98,7 @@ const AppRoutes: React.FC = () => {
               <Route path="/activity-log" element={<ProtectedRoute requireSuperAdmin><ActivityLog /></ProtectedRoute>} />
               <Route path="/moderation" element={<ProtectedRoute requireSuperAdmin><Moderation /></ProtectedRoute>} />
               <Route path="/tournaments" element={<ProtectedRoute requireSuperAdmin><Tournaments /></ProtectedRoute>} />
+              <Route path="/tournaments/:tournamentId" element={<ProtectedRoute requireSuperAdmin><TournamentDetail /></ProtectedRoute>} />
               <Route path="/quick-matches" element={<ProtectedRoute><QuickMatches /></ProtectedRoute>} />
               <Route path="/leaderboards" element={<ProtectedRoute requireSuperAdmin><Leaderboards /></ProtectedRoute>} />
               <Route path="/polls" element={<ProtectedRoute requireSuperAdmin><Polls /></ProtectedRoute>} />

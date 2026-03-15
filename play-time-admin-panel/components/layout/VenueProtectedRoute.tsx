@@ -36,10 +36,10 @@ const VenueProtectedRoute: React.FC<VenueProtectedRouteProps> = ({
   // First check basic authentication and role requirements
   if (loading === 'loading') {
     return (
-      <div className="flex items-center justify-center h-screen bg-background-light">
+      <div className="flex items-center justify-center h-screen bg-background-light dark:bg-background-dark">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
-          <p className="text-gray-600 font-medium">Loading...</p>
+          <p className="text-gray-600 dark:text-gray-400 font-medium">Loading...</p>
         </div>
       </div>
     );
@@ -51,11 +51,11 @@ const VenueProtectedRoute: React.FC<VenueProtectedRouteProps> = ({
 
   if (requireSuperAdmin && !isSuperAdmin) {
     return (
-      <div className="flex items-center justify-center h-screen bg-background-light">
-        <div className="text-center p-8 bg-white rounded-2xl border border-gray-200 shadow-sm max-w-md">
+      <div className="flex items-center justify-center h-screen bg-background-light dark:bg-background-dark">
+        <div className="text-center p-8 bg-white dark:bg-surface-dark rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm max-w-md">
           <span className="material-symbols-outlined text-6xl text-red-500 mb-4">block</span>
-          <h2 className="text-2xl font-black text-gray-900 mb-2">Access Denied</h2>
-          <p className="text-gray-600">You don't have permission to access this page.</p>
+          <h2 className="text-2xl font-black text-gray-900 dark:text-gray-100 mb-2">Access Denied</h2>
+          <p className="text-gray-600 dark:text-gray-400">You don't have permission to access this page.</p>
         </div>
       </div>
     );
@@ -63,11 +63,11 @@ const VenueProtectedRoute: React.FC<VenueProtectedRouteProps> = ({
 
   if (requireVenueManager && !isVenueManager) {
     return (
-      <div className="flex items-center justify-center h-screen bg-background-light">
-        <div className="text-center p-8 bg-white rounded-2xl border border-gray-200 shadow-sm max-w-md">
+      <div className="flex items-center justify-center h-screen bg-background-light dark:bg-background-dark">
+        <div className="text-center p-8 bg-white dark:bg-surface-dark rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm max-w-md">
           <span className="material-symbols-outlined text-6xl text-red-500 mb-4">block</span>
-          <h2 className="text-2xl font-black text-gray-900 mb-2">Access Denied</h2>
-          <p className="text-gray-600">This page is only accessible to venue managers.</p>
+          <h2 className="text-2xl font-black text-gray-900 dark:text-gray-100 mb-2">Access Denied</h2>
+          <p className="text-gray-600 dark:text-gray-400">This page is only accessible to venue managers.</p>
         </div>
       </div>
     );
@@ -88,10 +88,10 @@ const VenueProtectedRoute: React.FC<VenueProtectedRouteProps> = ({
           requiredFor="accessing venue management features"
         />
         {!show2FAModal && (
-          <div className="flex items-center justify-center h-screen bg-background-light">
+          <div className="flex items-center justify-center h-screen bg-background-light dark:bg-background-dark">
             <div className="text-center">
               <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
-              <p className="text-gray-600 font-medium">Verifying access...</p>
+              <p className="text-gray-600 dark:text-gray-400 font-medium">Verifying access...</p>
             </div>
           </div>
         )}

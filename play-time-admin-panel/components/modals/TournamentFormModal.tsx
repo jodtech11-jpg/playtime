@@ -165,23 +165,26 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
 
   if (!isOpen) return null;
 
+  const inputClass = "w-full px-4 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-surface-dark text-gray-900 dark:text-gray-100 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary";
+  const labelClass = "block text-sm font-black text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-widest";
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl p-8 max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white dark:bg-surface-dark rounded-2xl p-8 max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto border border-gray-200 dark:border-gray-700">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-black text-gray-900">
+          <h2 className="text-2xl font-black text-gray-900 dark:text-gray-100">
             {tournament ? 'Edit Tournament' : 'Create Tournament'}
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
           >
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
 
         {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/30 rounded-xl text-red-700 dark:text-red-400 text-sm">
             {error}
           </div>
         )}
@@ -189,20 +192,20 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-black text-gray-700 mb-2 uppercase tracking-widest">
+              <label className={labelClass}>
                 Tournament Name *
               </label>
               <input
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                className={inputClass}
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-black text-gray-700 mb-2 uppercase tracking-widest">
+              <label className={labelClass}>
                 Sport *
               </label>
               <select
@@ -217,7 +220,7 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
                     maxTeamSize: selectedSport?.defaultMaxTeamSize?.toString() || formData.maxTeamSize
                   });
                 }}
-                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                className={inputClass}
                 required
                 disabled={sports.length === 0}
               >
@@ -229,14 +232,14 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
                 ))}
               </select>
               {sports.length === 0 && (
-                <p className="text-xs text-amber-600 mt-1">
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
                   No sports found. Please create sports in Tournaments settings.
                 </p>
               )}
               {formData.sport && sports.find(s => s.id === formData.sport) && (() => {
                 const selectedSport = sports.find(s => s.id === formData.sport);
                 return (
-                  <div className="mt-2 p-3 bg-gray-50 rounded-xl text-xs space-y-1">
+                  <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-xl text-xs space-y-1 text-gray-700 dark:text-gray-300">
                     {selectedSport?.defaultMinTeamSize && (
                       <p><strong>Default Min Team Size:</strong> {selectedSport.defaultMinTeamSize}</p>
                     )}
@@ -250,7 +253,7 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
                       <p><strong>Scoring Format:</strong> {selectedSport.defaultScoringFormat}</p>
                     )}
                     {selectedSport?.sportSpecificOptions && Object.keys(selectedSport.sportSpecificOptions).length > 0 && (
-                      <div className="mt-2 pt-2 border-t border-gray-200">
+                      <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
                         <p className="font-bold mb-1">Sport-Specific Options:</p>
                         {Object.entries(selectedSport.sportSpecificOptions).map(([key, value]) => (
                           <p key={key} className="text-xs">
@@ -265,13 +268,13 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-sm font-black text-gray-700 mb-2 uppercase tracking-widest">
+              <label className={labelClass}>
                 Venue *
               </label>
               <select
                 value={formData.venueId}
                 onChange={(e) => setFormData({ ...formData, venueId: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                className={inputClass}
                 required
               >
                 <option value="">Select Venue</option>
@@ -284,13 +287,13 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-sm font-black text-gray-700 mb-2 uppercase tracking-widest">
+              <label className={labelClass}>
                 Status
               </label>
               <select
                 value={formData.status}
                 onChange={(e) => setFormData({ ...formData, status: e.target.value as Tournament['status'] })}
-                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                className={inputClass}
               >
                 <option value="Draft">Draft</option>
                 <option value="Open">Open</option>
@@ -302,79 +305,79 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-sm font-black text-gray-700 mb-2 uppercase tracking-widest">
+              <label className={labelClass}>
                 Start Date *
               </label>
               <input
                 type="date"
                 value={formData.startDate}
                 onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                className={inputClass}
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-black text-gray-700 mb-2 uppercase tracking-widest">
+              <label className={labelClass}>
                 End Date *
               </label>
               <input
                 type="date"
                 value={formData.endDate}
                 onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                className={inputClass}
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-black text-gray-700 mb-2 uppercase tracking-widest">
+              <label className={labelClass}>
                 Registration Start *
               </label>
               <input
                 type="date"
                 value={formData.registrationStartDate}
                 onChange={(e) => setFormData({ ...formData, registrationStartDate: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                className={inputClass}
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-black text-gray-700 mb-2 uppercase tracking-widest">
+              <label className={labelClass}>
                 Registration End *
               </label>
               <input
                 type="date"
                 value={formData.registrationEndDate}
                 onChange={(e) => setFormData({ ...formData, registrationEndDate: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                className={inputClass}
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-black text-gray-700 mb-2 uppercase tracking-widest">
+              <label className={labelClass}>
                 Entry Fee (₹)
               </label>
               <input
                 type="number"
                 value={formData.entryFee}
                 onChange={(e) => setFormData({ ...formData, entryFee: parseFloat(e.target.value) || 0 })}
-                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                className={inputClass}
                 min="0"
                 step="0.01"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-black text-gray-700 mb-2 uppercase tracking-widest">
+              <label className={labelClass}>
                 Bracket Type
               </label>
               <select
                 value={formData.bracketType}
                 onChange={(e) => setFormData({ ...formData, bracketType: e.target.value as Tournament['bracketType'] })}
-                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                className={inputClass}
               >
                 <option value="Single Elimination">Single Elimination</option>
                 <option value="Double Elimination">Double Elimination</option>
@@ -384,116 +387,116 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-sm font-black text-gray-700 mb-2 uppercase tracking-widest">
+              <label className={labelClass}>
                 Max Teams
               </label>
               <input
                 type="number"
                 value={formData.maxTeams}
                 onChange={(e) => setFormData({ ...formData, maxTeams: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                className={inputClass}
                 min="2"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-black text-gray-700 mb-2 uppercase tracking-widest">
+              <label className={labelClass}>
                 Min Team Size
               </label>
               <input
                 type="number"
                 value={formData.minTeamSize}
                 onChange={(e) => setFormData({ ...formData, minTeamSize: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                className={inputClass}
                 min="1"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-black text-gray-700 mb-2 uppercase tracking-widest">
+              <label className={labelClass}>
                 Max Team Size
               </label>
               <input
                 type="number"
                 value={formData.maxTeamSize}
                 onChange={(e) => setFormData({ ...formData, maxTeamSize: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                className={inputClass}
                 min="1"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-black text-gray-700 mb-2 uppercase tracking-widest">
+            <label className={labelClass}>
               Description
             </label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+              className={inputClass}
               rows={3}
             />
           </div>
 
-          <div className="border-t border-gray-200 pt-6">
-            <h3 className="text-lg font-black text-gray-900 mb-4">Prize Details</h3>
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+            <h3 className="text-lg font-black text-gray-900 dark:text-gray-100 mb-4">Prize Details</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-black text-gray-700 mb-2 uppercase tracking-widest">
+                <label className={labelClass}>
                   First Prize (₹)
                 </label>
                 <input
                   type="number"
                   value={formData.prizeFirst}
                   onChange={(e) => setFormData({ ...formData, prizeFirst: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                  className={inputClass}
                   min="0"
                 />
               </div>
               <div>
-                <label className="block text-sm font-black text-gray-700 mb-2 uppercase tracking-widest">
+                <label className={labelClass}>
                   Second Prize (₹)
                 </label>
                 <input
                   type="number"
                   value={formData.prizeSecond}
                   onChange={(e) => setFormData({ ...formData, prizeSecond: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                  className={inputClass}
                   min="0"
                 />
               </div>
               <div>
-                <label className="block text-sm font-black text-gray-700 mb-2 uppercase tracking-widest">
+                <label className={labelClass}>
                   Third Prize (₹)
                 </label>
                 <input
                   type="number"
                   value={formData.prizeThird}
                   onChange={(e) => setFormData({ ...formData, prizeThird: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                  className={inputClass}
                   min="0"
                 />
               </div>
             </div>
             <div className="mt-4">
-              <label className="block text-sm font-black text-gray-700 mb-2 uppercase tracking-widest">
+              <label className={labelClass}>
                 Prize Description
               </label>
               <textarea
                 value={formData.prizeDescription}
                 onChange={(e) => setFormData({ ...formData, prizeDescription: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                className={inputClass}
                 rows={2}
                 placeholder="Additional prize information..."
               />
             </div>
           </div>
 
-          <div className="flex justify-end gap-4 pt-6 border-t border-gray-200">
+          <div className="flex justify-end gap-4 pt-6 border-t border-gray-200 dark:border-gray-700">
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2 border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-black uppercase tracking-widest text-xs"
+              className="px-6 py-2 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-black uppercase tracking-widest text-xs"
             >
               Cancel
             </button>

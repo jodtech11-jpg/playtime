@@ -72,13 +72,6 @@ const Sidebar: React.FC = () => {
     { to: '/support', icon: 'support_agent', label: 'Support & Disputes' },
   ];
 
-  // Combine menu items based on role
-  const navItems = isSuperAdmin
-    ? [...baseNavItems, ...superAdminNavItems]
-    : isVenueManager
-      ? [...baseNavItems, ...venueManagerNavItems]
-      : baseNavItems;
-
   return (
     <>
       {/* Mobile Menu Button */}
@@ -145,8 +138,8 @@ const Sidebar: React.FC = () => {
               </NavLink>
             ))}
 
-            {/* Users Menu with nested items */}
-            <div className="mt-1 relative">
+            {/* Users Menu with vertical submenu */}
+            <div className="mt-1">
               {collapsed ? (
                 <NavLink
                   to="/users"
@@ -159,31 +152,93 @@ const Sidebar: React.FC = () => {
                   <span className="material-symbols-outlined text-[22px]">people</span>
                 </NavLink>
               ) : (
-                <button
-                  onClick={() => {
-                    const newState = !usersMenuOpen;
-                    setUsersMenuOpen(newState);
-                    if (newState) setVenuesMenuOpen(false);
-                  }}
-                  className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg transition-colors group ${location.pathname.startsWith('/users') || location.pathname.startsWith('/staff')
-                    ? 'bg-primary text-primary-content shadow-sm shadow-primary/20'
-                    : 'text-gray-400 dark:text-gray-500 hover:text-white hover:bg-white/5 dark:hover:bg-gray-800'
-                    }`}
-                  aria-expanded={usersMenuOpen}
-                  aria-label="Users menu"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="material-symbols-outlined text-[22px] shrink-0">people</span>
-                    <span className="text-sm font-medium truncate">Users</span>
-                  </div>
-                  <span className={`material-symbols-outlined text-lg transition-transform duration-200 shrink-0 ${usersMenuOpen ? 'rotate-90' : ''}`}>chevron_right</span>
-                </button>
+                <>
+                  <button
+                    onClick={() => {
+                      const newState = !usersMenuOpen;
+                      setUsersMenuOpen(newState);
+                      if (newState) setVenuesMenuOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg transition-colors group ${location.pathname.startsWith('/users') || location.pathname.startsWith('/staff')
+                      ? 'bg-primary text-primary-content shadow-sm shadow-primary/20'
+                      : 'text-gray-400 dark:text-gray-500 hover:text-white hover:bg-white/5 dark:hover:bg-gray-800'
+                      }`}
+                    aria-expanded={usersMenuOpen}
+                    aria-label="Users menu"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="material-symbols-outlined text-[22px] shrink-0">people</span>
+                      <span className="text-sm font-medium truncate">Users</span>
+                    </div>
+                    <span className={`material-symbols-outlined text-lg transition-transform duration-200 shrink-0 ${usersMenuOpen ? 'rotate-180' : ''}`}>expand_more</span>
+                  </button>
+                  {usersMenuOpen && (
+                    <div className="ml-4 mt-1 pl-2 border-l border-white/10 dark:border-gray-700 flex flex-col gap-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                      <NavLink
+                        to="/users"
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={({ isActive }) =>
+                          `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${isActive
+                            ? 'bg-primary text-primary-content shadow-sm shadow-primary/20'
+                            : 'text-gray-400 dark:text-gray-500 hover:text-white hover:bg-white/5 dark:hover:bg-gray-800'
+                          }`
+                        }
+                      >
+                        <span className="material-symbols-outlined text-[18px]">people</span>
+                        <span className="text-sm font-medium">All Users</span>
+                      </NavLink>
+                      <NavLink
+                        to="/staff"
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={({ isActive }) =>
+                          `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${isActive
+                            ? 'bg-primary text-primary-content shadow-sm shadow-primary/20'
+                            : 'text-gray-400 dark:text-gray-500 hover:text-white hover:bg-white/5 dark:hover:bg-gray-800'
+                          }`
+                        }
+                      >
+                        <span className="material-symbols-outlined text-[18px]">badge</span>
+                        <span className="text-sm font-medium">Staff</span>
+                      </NavLink>
+                      {isSuperAdmin && (
+                        <>
+                          <NavLink
+                            to="/users/roles"
+                            onClick={() => setMobileMenuOpen(false)}
+                            className={({ isActive }) =>
+                              `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${isActive
+                                ? 'bg-primary text-primary-content shadow-sm shadow-primary/20'
+                                : 'text-gray-400 dark:text-gray-500 hover:text-white hover:bg-white/5 dark:hover:bg-gray-800'
+                              }`
+                            }
+                          >
+                            <span className="material-symbols-outlined text-[18px]">admin_panel_settings</span>
+                            <span className="text-sm font-medium">Roles</span>
+                          </NavLink>
+                          <NavLink
+                            to="/users/permissions"
+                            onClick={() => setMobileMenuOpen(false)}
+                            className={({ isActive }) =>
+                              `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${isActive
+                                ? 'bg-primary text-primary-content shadow-sm shadow-primary/20'
+                                : 'text-gray-400 dark:text-gray-500 hover:text-white hover:bg-white/5 dark:hover:bg-gray-800'
+                              }`
+                            }
+                          >
+                            <span className="material-symbols-outlined text-[18px]">lock</span>
+                            <span className="text-sm font-medium">Permissions</span>
+                          </NavLink>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
-            {/* Venues Menu with nested items */}
+            {/* Venues Menu with vertical submenu */}
             {(isSuperAdmin || isVenueManager) && (
-              <div className="mt-1 relative">
+              <div className="mt-1">
                 {collapsed ? (
                   <NavLink
                     to="/venues"
@@ -196,25 +251,57 @@ const Sidebar: React.FC = () => {
                     <span className="material-symbols-outlined text-[22px]">location_on</span>
                   </NavLink>
                 ) : (
-                  <button
-                    onClick={() => {
-                      const newState = !venuesMenuOpen;
-                      setVenuesMenuOpen(newState);
-                      if (newState) setUsersMenuOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg transition-colors group ${location.pathname.startsWith('/venues') || location.pathname.startsWith('/courts')
-                      ? 'bg-primary text-primary-content shadow-sm shadow-primary/20'
-                      : 'text-gray-400 dark:text-gray-500 hover:text-white hover:bg-white/5 dark:hover:bg-gray-800'
-                      }`}
-                    aria-expanded={venuesMenuOpen}
-                    aria-label="Venues menu"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className="material-symbols-outlined text-[22px] shrink-0">location_on</span>
-                      <span className="text-sm font-medium truncate">Venues</span>
-                    </div>
-                    <span className={`material-symbols-outlined text-lg transition-transform duration-200 shrink-0 ${venuesMenuOpen ? 'rotate-90' : ''}`}>chevron_right</span>
-                  </button>
+                  <>
+                    <button
+                      onClick={() => {
+                        const newState = !venuesMenuOpen;
+                        setVenuesMenuOpen(newState);
+                        if (newState) setUsersMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg transition-colors group ${location.pathname.startsWith('/venues') || location.pathname.startsWith('/courts')
+                        ? 'bg-primary text-primary-content shadow-sm shadow-primary/20'
+                        : 'text-gray-400 dark:text-gray-500 hover:text-white hover:bg-white/5 dark:hover:bg-gray-800'
+                        }`}
+                      aria-expanded={venuesMenuOpen}
+                      aria-label="Venues menu"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="material-symbols-outlined text-[22px] shrink-0">location_on</span>
+                        <span className="text-sm font-medium truncate">Venues</span>
+                      </div>
+                      <span className={`material-symbols-outlined text-lg transition-transform duration-200 shrink-0 ${venuesMenuOpen ? 'rotate-180' : ''}`}>expand_more</span>
+                    </button>
+                    {venuesMenuOpen && (
+                      <div className="ml-4 mt-1 pl-2 border-l border-white/10 dark:border-gray-700 flex flex-col gap-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                        <NavLink
+                          to="/venues"
+                          onClick={() => setMobileMenuOpen(false)}
+                          className={({ isActive }) =>
+                            `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${isActive
+                              ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                              : 'text-gray-400 dark:text-gray-500 hover:text-white hover:bg-white/5 dark:hover:bg-gray-800'
+                            }`
+                          }
+                        >
+                          <span className="material-symbols-outlined text-[18px]">location_on</span>
+                          <span className="text-sm font-medium">All Venues</span>
+                        </NavLink>
+                        <NavLink
+                          to="/venues/courts"
+                          onClick={() => setMobileMenuOpen(false)}
+                          className={({ isActive }) =>
+                            `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${isActive
+                              ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                              : 'text-gray-400 dark:text-gray-500 hover:text-white hover:bg-white/5 dark:hover:bg-gray-800'
+                            }`
+                          }
+                        >
+                          <span className="material-symbols-outlined text-[18px]">sports_tennis</span>
+                          <span className="text-sm font-medium">Court Management</span>
+                        </NavLink>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -287,122 +374,6 @@ const Sidebar: React.FC = () => {
             </div>
           </div>
         </aside>
-
-        {/* Users Submenu Side Panel */}
-        {usersMenuOpen && !collapsed && (
-          <aside className="fixed lg:static inset-y-0 left-64 lg:left-auto w-56 bg-sidebar-dark dark:bg-sidebar-dark text-white flex flex-col h-full shrink-0 border-r border-white/10 dark:border-gray-700 z-30 lg:z-10 animate-in slide-in-from-left duration-200">
-            <div className="h-16 flex items-center px-6 border-b border-white/10 dark:border-gray-700">
-              <button
-                onClick={() => setUsersMenuOpen(false)}
-                className="mr-2 p-1 hover:bg-white/5 dark:hover:bg-gray-800 rounded-lg transition-colors"
-              >
-                <span className="material-symbols-outlined text-xl">arrow_back</span>
-              </button>
-              <h2 className="text-base font-bold">Users</h2>
-            </div>
-            <nav className="flex-1 overflow-y-auto py-4 px-3 flex flex-col gap-1">
-              <NavLink
-                to="/users"
-                onClick={() => setMobileMenuOpen(false)}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${isActive
-                    ? 'bg-primary text-primary-content shadow-sm shadow-primary/20'
-                    : 'text-gray-400 dark:text-gray-500 hover:text-white hover:bg-white/5 dark:hover:bg-gray-800'
-                  }`
-                }
-              >
-                <span className="material-symbols-outlined text-[22px]">people</span>
-                <span className="text-sm font-medium">All Users</span>
-              </NavLink>
-              <NavLink
-                to="/staff"
-                onClick={() => setMobileMenuOpen(false)}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${isActive
-                    ? 'bg-primary text-primary-content shadow-sm shadow-primary/20'
-                    : 'text-gray-400 dark:text-gray-500 hover:text-white hover:bg-white/5 dark:hover:bg-gray-800'
-                  }`
-                }
-              >
-                <span className="material-symbols-outlined text-[22px]">badge</span>
-                <span className="text-sm font-medium">Staff</span>
-              </NavLink>
-              {isSuperAdmin && (
-                <>
-                  <NavLink
-                    to="/users/roles"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={({ isActive }) =>
-                      `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${isActive
-                        ? 'bg-primary text-primary-content shadow-sm shadow-primary/20'
-                        : 'text-gray-400 dark:text-gray-500 hover:text-white hover:bg-white/5 dark:hover:bg-gray-800'
-                      }`
-                    }
-                  >
-                    <span className="material-symbols-outlined text-[22px]">admin_panel_settings</span>
-                    <span className="text-sm font-medium">Roles</span>
-                  </NavLink>
-                  <NavLink
-                    to="/users/permissions"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={({ isActive }) =>
-                      `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${isActive
-                        ? 'bg-primary text-primary-content shadow-sm shadow-primary/20'
-                        : 'text-gray-400 dark:text-gray-500 hover:text-white hover:bg-white/5 dark:hover:bg-gray-800'
-                      }`
-                    }
-                  >
-                    <span className="material-symbols-outlined text-[22px]">lock</span>
-                    <span className="text-sm font-medium">Permissions</span>
-                  </NavLink>
-                </>
-              )}
-            </nav>
-          </aside>
-        )}
-
-        {/* Venues Submenu Side Panel */}
-        {venuesMenuOpen && (isSuperAdmin || isVenueManager) && !collapsed && (
-          <aside className="fixed lg:static inset-y-0 left-64 lg:left-auto w-56 ui-sidebar text-white flex flex-col h-full shrink-0 z-30 lg:z-10 animate-in slide-in-from-left duration-200">
-            <div className="h-16 flex items-center px-6 border-b border-white/5">
-              <button
-                onClick={() => setVenuesMenuOpen(false)}
-                className="mr-2 p-1 hover:bg-white/5 rounded-lg transition-colors"
-              >
-                <span className="material-symbols-outlined text-xl">arrow_back</span>
-              </button>
-              <h2 className="text-base font-bold">Venues</h2>
-            </div>
-            <nav className="flex-1 overflow-y-auto py-4 px-3 flex flex-col gap-1">
-              <NavLink
-                to="/venues"
-                onClick={() => setMobileMenuOpen(false)}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${isActive
-                    ? 'bg-primary text-white shadow-lg shadow-primary/20'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                  }`
-                }
-              >
-                <span className="material-symbols-outlined text-[22px]">location_on</span>
-                <span className="text-sm font-semibold tracking-wide">All Venues</span>
-              </NavLink>
-              <NavLink
-                to="/venues/courts"
-                onClick={() => setMobileMenuOpen(false)}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${isActive
-                    ? 'bg-primary text-white shadow-lg shadow-primary/20'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                  }`
-                }
-              >
-                <span className="material-symbols-outlined text-[22px]">sports_tennis</span>
-                <span className="text-sm font-semibold tracking-wide">Court Management</span>
-              </NavLink>
-            </nav>
-          </aside>
-        )}
       </div>
     </>
   );

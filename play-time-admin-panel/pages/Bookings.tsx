@@ -503,10 +503,9 @@ const Bookings: React.FC = () => {
   }
 
   return (
-    <div className="p-8 flex flex-col gap-8 h-full bg-slate-50 dark:bg-slate-900 min-h-full">
+    <div className="p-6 lg:p-8 flex flex-col h-full min-h-0 overflow-hidden bg-slate-50 dark:bg-slate-900">
       {/* Header Controls */}
-      {/* Header Controls */}
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6">
+      <div className="flex-shrink-0 flex flex-col xl:flex-row xl:items-center justify-between gap-4 xl:gap-6">
         <div className="flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-1 shadow-sm h-12 w-fit">
           <button
             onClick={() => setViewMode('day')}
@@ -647,9 +646,9 @@ const Bookings: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 flex-1 overflow-hidden">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 xl:gap-8 flex-1 min-h-0 overflow-hidden">
         {/* Calendar View */}
-        <div className="xl:col-span-8 ui-card flex flex-col overflow-hidden bg-white dark:bg-slate-800">
+        <div className="xl:col-span-8 ui-card flex flex-col min-h-0 overflow-hidden bg-white dark:bg-slate-800">
           {/* Header Row */}
           <div className="grid grid-cols-8 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
             <div className="p-4 border-r border-slate-100 dark:border-slate-700 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center">
@@ -672,7 +671,7 @@ const Bookings: React.FC = () => {
           </div>
 
           {/* Calendar Grid */}
-          <div className="flex-1 overflow-y-auto relative bg-white dark:bg-slate-900">
+          <div className="flex-1 min-h-0 overflow-y-auto scrollbar-visible relative bg-white dark:bg-slate-900">
             <div className="grid grid-cols-8 min-h-full">
               {/* Time Column */}
               <div className="col-span-1 border-r border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
@@ -769,157 +768,127 @@ const Bookings: React.FC = () => {
           </div>
         </div>
 
-        {/* Sidebar */}
-        <div className="xl:col-span-4 flex flex-col gap-8">
-          {/* Sport Legend */}
-          <div className="ui-card p-6 space-y-6">
-            <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest border-b border-slate-100 dark:border-slate-700 pb-4">
-              Operational Legend
-            </h3>
-            <div className="grid grid-cols-2 gap-4">
+        {/* Sidebar - Redesigned for full visibility */}
+        <div className="xl:col-span-4 flex flex-col min-h-0 overflow-hidden" style={{ minHeight: 0 }}>
+          {/* Sport Legend - inline bar at top */}
+          <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl mb-4">
+            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Legend:</span>
+            <div className="flex flex-wrap gap-1.5">
               {Object.entries(sportStyles).map(([name, s]) => (
-                <div key={name} className="flex items-center gap-3 p-3 bg-slate-50/50 dark:bg-slate-800/50 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-all group">
-                  <div className={`size-3 rounded-full border-2 ${s.border} ${s.bg} group-hover:scale-125 transition-transform`}></div>
-                  <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">{name}</span>
-                </div>
+                <span key={name} className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-50 dark:bg-slate-800/50">
+                  <span className={`size-2 rounded-full ${s.bg} ${s.border} border`}></span>
+                  <span className="text-[9px] font-bold text-slate-600 dark:text-slate-400">{name}</span>
+                </span>
               ))}
             </div>
           </div>
 
-          {/* Pending Requests */}
-          <div className="ui-card flex flex-col overflow-hidden">
-            <div className="p-6 border-b border-slate-100 dark:border-slate-700 bg-slate-50/30 dark:bg-slate-800/30 flex flex-col gap-3">
-              <div className="flex justify-between items-center">
+          {/* Active Queue - full height scrollable panel */}
+          <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+            <div className="flex-shrink-0 px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-amber-50/50 dark:bg-amber-900/10">
+              <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-tight">Active Queue</h3>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Awaiting verification</p>
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white">Active Queue</h3>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Awaiting verification</p>
                 </div>
                 {pendingBookings.length > 0 && (
-                  <span className="bg-amber-400 text-white text-[10px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest shadow-lg shadow-amber-400/20">
+                  <span className="bg-amber-500 text-white text-xs font-bold px-3 py-1 rounded-full">
                     {pendingBookings.length}
                   </span>
                 )}
               </div>
               {pendingBookings.length > 0 && (
-                <div className="flex flex-wrap items-center gap-3">
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                <div className="flex items-center gap-3 mt-3 pt-3 border-t border-amber-200/50 dark:border-amber-800/30">
+                  <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={selectedIds.size === pendingBookings.length && pendingBookings.length > 0}
                       onChange={selectAllPending}
-                      className="rounded border-slate-300 dark:border-slate-600 text-primary focus:ring-primary"
+                      className="rounded border-slate-300 text-primary focus:ring-primary size-4"
                     />
-                    <span className="text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest">Select all</span>
+                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Select all</span>
                   </label>
                   {selectedIds.size > 0 && (
                     <>
-                      <span className="text-[10px] font-black text-slate-500 dark:text-slate-400">{selectedIds.size} selected</span>
+                      <span className="text-xs text-slate-500">{selectedIds.size} selected</span>
                       <button
                         type="button"
                         onClick={handleBulkConfirm}
                         disabled={bulkProcessing}
-                        className="h-8 px-3 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                        className="h-7 px-3 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary/90 disabled:opacity-50"
                       >
-                        Bulk confirm
+                        Confirm all
                       </button>
                       <button
                         type="button"
                         onClick={handleBulkCancel}
                         disabled={bulkProcessing}
-                        className="h-8 px-3 bg-slate-200 dark:bg-slate-600 text-slate-800 dark:text-slate-200 text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-slate-300 dark:hover:bg-slate-500 disabled:opacity-50"
+                        className="h-7 px-3 bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-lg hover:bg-slate-300 disabled:opacity-50"
                       >
-                        Bulk cancel
+                        Cancel all
                       </button>
                     </>
                   )}
                 </div>
               )}
             </div>
-            <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
+
+            {/* Scrollable list - compact single-row items */}
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 scrollbar-visible">
               {pendingBookings.length > 0 ? (
-                pendingBookings.slice(0, 10).map((booking) => {
-                  const venue = venues.find(v => v.id === booking.venueId);
-                  const isSelected = selectedIds.has(booking.id);
-                  return (
-                    <div
-                      key={booking.id}
-                      className={`bg-white dark:bg-slate-800/50 border rounded-2xl p-6 shadow-sm relative overflow-hidden group hover:shadow-md transition-all cursor-pointer ${isSelected ? 'border-primary ring-2 ring-primary/30' : 'border-slate-100 dark:border-slate-700 hover:border-primary/40'}`}
-                      onClick={() => handleBookingClick(booking)}
-                    >
-                      <div className="absolute top-0 left-0 w-2 h-full bg-amber-400"></div>
-                      <div className="flex justify-between items-start mb-6">
-                        <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleSelection(booking.id)}
-                            className="rounded border-slate-300 dark:border-slate-600 text-primary focus:ring-primary"
-                          />
-                          <div className="flex items-center gap-4">
-                            <div className="size-11 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500 group-hover:bg-primary/20 group-hover:text-primary transition-colors">
-                              <span className="material-symbols-outlined">person</span>
-                            </div>
-                            <div>
-                              <p className="text-sm font-black text-slate-900 dark:text-white leading-none">{booking.user}</p>
-                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">
-                                {booking.sport} Specialist
-                              </p>
-                            </div>
-                          </div>
+                <ul className="space-y-2">
+                  {pendingBookings.map((booking) => {
+                    const venue = venues.find(v => v.id === booking.venueId);
+                    const isSelected = selectedIds.has(booking.id);
+                    return (
+                      <li
+                        key={booking.id}
+                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all hover:shadow-sm ${
+                          isSelected
+                            ? 'border-primary bg-primary/5 dark:bg-primary/10'
+                            : 'border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30 hover:border-slate-300'
+                        }`}
+                        onClick={() => handleBookingClick(booking)}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => { e.stopPropagation(); toggleSelection(booking.id); }}
+                          className="rounded border-slate-300 text-primary focus:ring-primary size-4 shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{booking.user}</p>
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                            {formatTime(booking.startTime)} • {venue?.name || '—'} • {formatCurrency(booking.amount)}
+                          </p>
                         </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-y-5 border-y border-slate-50 dark:border-slate-700/50 py-5 my-5">
-                        <div className="flex flex-col gap-1">
-                          <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest leading-none">Timeline</span>
-                          <span className="text-[11px] font-black text-slate-900 dark:text-slate-200">
-                            {formatTime(booking.startTime)} - {formatTime(booking.endTime)}
-                          </span>
+                        <div className="flex gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => handleAccept(booking.id)}
+                            disabled={processing === booking.id}
+                            className="h-7 px-2.5 bg-primary text-white text-[10px] font-bold rounded-md hover:bg-primary/90 disabled:opacity-50"
+                          >
+                            ✓
+                          </button>
+                          <button
+                            onClick={() => handleReject(booking.id)}
+                            disabled={processing === booking.id}
+                            className="h-7 px-2.5 bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200 text-[10px] font-bold rounded-md hover:bg-slate-300 disabled:opacity-50"
+                          >
+                            ✕
+                          </button>
                         </div>
-                        <div className="flex flex-col gap-1">
-                          <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest leading-none">Security ID</span>
-                          <span className="text-[11px] font-black text-slate-900 dark:text-slate-200 font-mono">#{booking.id.substring(0, 8)}</span>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest leading-none">Facility</span>
-                          <span className="text-[11px] font-black text-slate-900 dark:text-slate-200 truncate pr-2">{venue?.name || 'GENERIC'}</span>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest leading-none">Revenue Impact</span>
-                          <span className="text-[11px] font-black text-primary">{formatCurrency(booking.amount)}</span>
-                        </div>
-                      </div>
-                      <div className="flex gap-3">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleAccept(booking.id);
-                          }}
-                          disabled={processing === booking.id}
-                          className="flex-1 h-11 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all disabled:opacity-50"
-                        >
-                          Confirm
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleReject(booking.id);
-                          }}
-                          disabled={processing === booking.id}
-                          className="flex-1 h-11 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition-all disabled:opacity-50"
-                        >
-                          Decline
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
+                      </li>
+                    );
+                  })}
+                </ul>
               ) : (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <div className="size-16 rounded-full bg-emerald-50 dark:bg-emerald-400/10 flex items-center justify-center text-emerald-500 mb-4">
-                    <span className="material-symbols-outlined text-3xl">verified</span>
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div className="size-14 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-3">
+                    <span className="material-symbols-outlined text-3xl">check_circle</span>
                   </div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">System Clear</p>
-                  <p className="text-xs font-bold text-slate-600 dark:text-slate-400 mt-1">No pending verifications</p>
+                  <p className="text-sm font-bold text-slate-700 dark:text-slate-300">All clear</p>
+                  <p className="text-xs text-slate-500 mt-1">No pending verifications</p>
                 </div>
               )}
             </div>

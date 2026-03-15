@@ -1148,7 +1148,7 @@ const Settings: React.FC = () => {
   };
 
   return (
-    <div className="p-8 space-y-6 bg-background-light min-h-full">
+    <div className="p-8 space-y-6 bg-background-light dark:bg-background-dark min-h-full">
       <div className="max-w-7xl mx-auto">
         <div className="mb-6">
           <h2 className="text-3xl font-black text-gray-900 tracking-tight">Settings</h2>

@@ -28,8 +28,25 @@ const StaffFormModal: React.FC<StaffFormModalProps> = ({
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+
+  const validatePhone = (value: string): string | null => {
+    const trimmed = (value || '').trim();
+    if (!trimmed) return null; // optional field
+    const digits = trimmed.replace(/\D/g, '');
+    if (digits.length < 10 || digits.length > 15) return 'Phone must have 10–15 digits';
+    // Indian: 10 digits (6–9) or 12 digits (91 + 10)
+    if (digits.startsWith('91') && digits.length === 12) {
+      return /^91[6-9]\d{9}$/.test(digits) ? null : 'Invalid Indian number (e.g. +91 9876543210)';
+    }
+    if (digits.length === 10) {
+      return /^[6-9]\d{9}$/.test(digits) ? null : 'Indian mobile must start with 6, 7, 8 or 9';
+    }
+    return null; // other international formats
+  };
 
   useEffect(() => {
+    setPhoneError(null);
     if (staff) {
       setFormData({
         name: staff.name || '',
@@ -57,16 +74,17 @@ const StaffFormModal: React.FC<StaffFormModalProps> = ({
 
   const handleInputChange = (field: keyof Staff, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    if (field === 'phone') {
+      setPhoneError(validatePhone(value));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-
-    if (formData.phone && !/^\+?[0-9\s\-]{7,15}$/.test(formData.phone.trim())) {
-      setError('Please enter a valid phone number (7–15 digits)');
-      return;
-    }
+    const phoneErr = validatePhone(formData.phone || '');
+    setPhoneError(phoneErr);
+    if (phoneErr) return;
 
     setLoading(true);
 
@@ -153,9 +171,15 @@ const StaffFormModal: React.FC<StaffFormModalProps> = ({
                 type="tel"
                 value={formData.phone}
                 onChange={(e) => handleInputChange('phone', e.target.value)}
-                className="w-full px-4 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                onBlur={() => setPhoneError(validatePhone(formData.phone || ''))}
+                className={`w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-primary focus:border-primary bg-white dark:bg-gray-800 text-gray-900 dark:text-white ${
+                  phoneError ? 'border-red-500 dark:border-red-500' : 'border-gray-200 dark:border-gray-700'
+                }`}
                 placeholder="+91 9876543210"
               />
+              {phoneError && (
+                <p className="mt-1.5 text-xs font-medium text-red-600 dark:text-red-400">{phoneError}</p>
+              )}
             </div>
           </div>
 

@@ -303,14 +303,14 @@ const Marketplace: React.FC = () => {
       <div className="p-8 flex items-center justify-center h-full">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
-          <p className="text-gray-600 font-medium">Loading marketplace data...</p>
+          <p className="text-gray-600 dark:text-gray-400 font-medium">Loading marketplace data...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-8 space-y-10 bg-background-light">
+    <div className="p-8 space-y-10 bg-background-light dark:bg-background-dark">
       <div className="max-w-7xl mx-auto space-y-10">
         {/* Analytics Dashboard */}
         {showAnalytics && (
@@ -328,7 +328,7 @@ const Marketplace: React.FC = () => {
                 <span className="material-symbols-outlined text-primary text-3xl">shopping_bag</span>
                 <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Orders</span>
               </div>
-              <h3 className="text-2xl font-black text-gray-900">{analytics.totalOrders}</h3>
+              <h3 className="text-2xl font-black text-gray-900 dark:text-gray-100">{analytics.totalOrders}</h3>
               <p className="text-xs text-gray-500 mt-1">{analytics.pendingOrders} pending</p>
             </div>
             <div className="bg-white dark:bg-surface-dark rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-6">
@@ -336,7 +336,7 @@ const Marketplace: React.FC = () => {
                 <span className="material-symbols-outlined text-primary text-3xl">inventory_2</span>
                 <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Products</span>
               </div>
-              <h3 className="text-2xl font-black text-gray-900">{analytics.totalProducts}</h3>
+              <h3 className="text-2xl font-black text-gray-900 dark:text-gray-100">{analytics.totalProducts}</h3>
               <p className="text-xs text-gray-500 mt-1">{analytics.lowStockProducts} low stock</p>
             </div>
             <div className="bg-white dark:bg-surface-dark rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-6">
@@ -344,7 +344,7 @@ const Marketplace: React.FC = () => {
                 <span className="material-symbols-outlined text-primary text-3xl">check_circle</span>
                 <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Completed</span>
               </div>
-              <h3 className="text-2xl font-black text-gray-900">{analytics.completedOrders}</h3>
+              <h3 className="text-2xl font-black text-gray-900 dark:text-gray-100">{analytics.completedOrders}</h3>
               <p className="text-xs text-gray-500 mt-1">Delivered orders</p>
             </div>
           </section>
@@ -360,7 +360,7 @@ const Marketplace: React.FC = () => {
             <div className="flex items-center gap-3">
               {selectedProducts.size > 0 && (
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-gray-600">{selectedProducts.size} selected</span>
+                  <span className="text-sm font-bold text-gray-600 dark:text-gray-400">{selectedProducts.size} selected</span>
                   <button
                     onClick={() => handleBulkStatusUpdate('In Stock')}
                     disabled={processing === 'bulk'}
@@ -402,7 +402,7 @@ const Marketplace: React.FC = () => {
           </div>
 
           {/* Product Filters and Search */}
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 space-y-4">
+          <div className="bg-white dark:bg-surface-dark rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-4 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="md:col-span-2">
                 <div className="relative">
@@ -472,17 +472,17 @@ const Marketplace: React.FC = () => {
                   Clear Filters
                 </button>
               )}
-              <span className="text-sm text-gray-500 ml-auto">
+              <span className="text-sm text-gray-500 dark:text-gray-400 ml-auto">
                 Showing {filteredProducts.length} of {products.length} products
               </span>
             </div>
           </div>
 
           {filteredProducts.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-12 text-center">
-              <span className="material-symbols-outlined text-6xl text-gray-300 mb-4">inventory_2</span>
+            <div className="bg-white dark:bg-surface-dark rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-12 text-center">
+              <span className="material-symbols-outlined text-6xl text-gray-300 dark:text-gray-600 mb-4">inventory_2</span>
               <h3 className="text-xl font-black text-gray-900 dark:text-gray-100 mb-2">No Products Found</h3>
-              <p className="text-gray-500 mb-6">
+              <p className="text-gray-500 dark:text-gray-400 mb-6">
                 {products.length === 0 
                   ? 'Get started by adding your first product.'
                   : 'Try adjusting your filters or search query.'}
@@ -526,7 +526,7 @@ const Marketplace: React.FC = () => {
                         </span>
                       )}
                     </div>
-                    <div className="aspect-square w-full rounded-2xl bg-gray-100 overflow-hidden relative shadow-inner cursor-pointer" onClick={() => handleEditProduct(product)}>
+                    <div className="aspect-square w-full rounded-2xl bg-gray-100 dark:bg-gray-800 overflow-hidden relative shadow-inner cursor-pointer" onClick={() => handleEditProduct(product)}>
                       {primaryImage ? (
                         <div 
                           className={`w-full h-full bg-cover bg-center group-hover:scale-110 transition-transform duration-700 ${product.status === 'Out of Stock' ? 'grayscale opacity-60' : ''}`} 
@@ -534,7 +534,7 @@ const Marketplace: React.FC = () => {
                         ></div>
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
-                          <span className="material-symbols-outlined text-gray-300 text-6xl">image</span>
+                          <span className="material-symbols-outlined text-gray-300 dark:text-gray-600 text-6xl">image</span>
                         </div>
                       )}
                       <span className={`absolute top-3 right-3 text-[9px] font-black uppercase tracking-widest px-2.5 py-1.5 rounded-xl shadow-sm backdrop-blur-sm ${
@@ -568,7 +568,7 @@ const Marketplace: React.FC = () => {
                               e.stopPropagation();
                               handleEditProduct(product);
                             }}
-                            className="p-2 text-gray-300 hover:text-gray-900 transition-colors"
+                            className="p-2 text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
                             title="Edit Product"
                           >
                             <span className="material-symbols-outlined text-xl">edit</span>
@@ -586,7 +586,7 @@ const Marketplace: React.FC = () => {
                           </button>
                         </div>
                       </div>
-                      <div className="w-full bg-gray-50 rounded-full h-1.5 mt-4 overflow-hidden shadow-inner">
+                      <div className="w-full bg-gray-50 dark:bg-gray-700 rounded-full h-1.5 mt-4 overflow-hidden shadow-inner">
                         <div 
                           className={`h-full rounded-full transition-all duration-1000 ${
                             statusColor === 'emerald' ? 'bg-primary' :
@@ -617,9 +617,9 @@ const Marketplace: React.FC = () => {
         </section>
 
         {/* Orders Section */}
-        <section className="bg-white border border-gray-200 rounded-3xl shadow-sm overflow-hidden mb-10">
+        <section className="bg-white dark:bg-surface-dark border border-gray-200 dark:border-gray-700 rounded-3xl shadow-sm overflow-hidden mb-10">
           <div className="px-8 py-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-            <h3 className="text-xl font-black text-gray-900 flex items-center gap-3">
+            <h3 className="text-xl font-black text-gray-900 dark:text-gray-100 flex items-center gap-3">
               <span className="material-symbols-outlined text-primary text-2xl">shopping_bag</span>
               Recent Orders
             </h3>
@@ -631,11 +631,11 @@ const Marketplace: React.FC = () => {
                   value={orderSearchQuery}
                   onChange={(e) => setOrderSearchQuery(e.target.value)}
                   placeholder="Search orders..."
-                  className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+                  className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-surface-dark text-gray-900 dark:text-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm"
                 />
               </div>
               <select 
-                className="appearance-none bg-gray-50 border border-gray-100 text-[10px] font-black uppercase tracking-widest text-gray-600 py-2 pl-4 pr-10 rounded-xl focus:ring-primary cursor-pointer shadow-inner"
+                className="appearance-none bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-[10px] font-black uppercase tracking-widest text-gray-600 dark:text-gray-400 py-2 pl-4 pr-10 rounded-xl focus:ring-primary cursor-pointer shadow-inner"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
@@ -648,7 +648,7 @@ const Marketplace: React.FC = () => {
                 <option value="Refunded">Refunded</option>
               </select>
               <select 
-                className="appearance-none bg-gray-50 border border-gray-100 text-[10px] font-black uppercase tracking-widest text-gray-600 py-2 pl-4 pr-10 rounded-xl focus:ring-primary cursor-pointer shadow-inner"
+                className="appearance-none bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-[10px] font-black uppercase tracking-widest text-gray-600 dark:text-gray-400 py-2 pl-4 pr-10 rounded-xl focus:ring-primary cursor-pointer shadow-inner"
                 value={paymentStatusFilter}
                 onChange={(e) => setPaymentStatusFilter(e.target.value)}
               >
@@ -673,8 +673,8 @@ const Marketplace: React.FC = () => {
           </div>
           <div className="overflow-x-auto">
             {orderDetails.length === 0 ? (
-              <div className="p-12 text-center text-gray-500">
-                <span className="material-symbols-outlined text-6xl text-gray-300 mb-4 block">shopping_bag</span>
+              <div className="p-12 text-center text-gray-500 dark:text-gray-400">
+                <span className="material-symbols-outlined text-6xl text-gray-300 dark:text-gray-600 mb-4 block">shopping_bag</span>
                 <p className="text-sm font-medium">No orders found</p>
                 {(statusFilter !== 'All' || paymentStatusFilter !== 'All' || orderSearchQuery) && (
                   <button
@@ -692,7 +692,7 @@ const Marketplace: React.FC = () => {
             ) : (
               <table className="w-full text-left">
                 <thead>
-                  <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-black uppercase tracking-widest text-gray-400">
+                  <tr className="bg-gray-50/50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-700 text-[10px] font-black uppercase tracking-widest text-gray-400">
                     <th className="px-8 py-4">Order ID</th>
                     <th className="px-8 py-4">Customer</th>
                     <th className="px-8 py-4">Items</th>
@@ -702,9 +702,9 @@ const Marketplace: React.FC = () => {
                     <th className="px-8 py-4 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50 text-sm font-medium">
+                <tbody className="divide-y divide-gray-50 dark:divide-gray-700 text-sm font-medium">
                   {orderDetails.map((order) => (
-                    <tr key={order.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => handleOrderClick(order)}>
+                    <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer" onClick={() => handleOrderClick(order)}>
                       <td className="px-8 py-6 font-bold text-gray-400 font-mono text-xs">{order.orderNumber || `#${order.id.substring(0, 8).toUpperCase()}`}</td>
                       <td className="px-8 py-6">
                         <div className="flex items-center gap-3">
@@ -712,7 +712,7 @@ const Marketplace: React.FC = () => {
                             {order.userInitials}
                           </div>
                           <div>
-                            <p className="font-black text-gray-900 leading-none">{order.userName}</p>
+                            <p className="font-black text-gray-900 dark:text-gray-100 leading-none">{order.userName}</p>
                             {order.userEmail && (
                               <p className="text-[10px] font-bold text-gray-400 mt-1">{order.userEmail}</p>
                             )}
@@ -723,7 +723,7 @@ const Marketplace: React.FC = () => {
                         <p className="text-[10px] font-bold text-gray-400">{order.itemsText}</p>
                         <p className="text-xs text-gray-500 mt-1">{order.items.length} item(s)</p>
                       </td>
-                      <td className="px-8 py-6 font-black text-gray-900">{formatCurrency(order.total)}</td>
+                      <td className="px-8 py-6 font-black text-gray-900 dark:text-gray-100">{formatCurrency(order.total)}</td>
                       <td className="px-8 py-6">
                         <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
                           order.statusColor === 'amber' ? 'bg-amber-50 text-amber-700 border-amber-100' :

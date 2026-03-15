@@ -28,7 +28,22 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
+
+  const validatePhone = (value: string): string | null => {
+    const trimmed = (value || '').trim();
+    if (!trimmed) return 'Phone number is required';
+    const digits = trimmed.replace(/\D/g, '');
+    if (digits.length < 10 || digits.length > 15) return 'Phone must have 10–15 digits';
+    if (digits.startsWith('91') && digits.length === 12) {
+      return /^91[6-9]\d{9}$/.test(digits) ? null : 'Invalid Indian number (e.g. +91 9876543210)';
+    }
+    if (digits.length === 10) {
+      return /^[6-9]\d{9}$/.test(digits) ? null : 'Indian mobile must start with 6, 7, 8 or 9';
+    }
+    return null;
+  };
 
   // Keyboard shortcuts: Ctrl+S / Cmd+S → save, Escape → close
   useEffect(() => {
@@ -79,6 +94,7 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
       });
     }
     setError(null);
+    setPhoneError(null);
   }, [user, isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -103,11 +119,10 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
       return;
     }
 
-    // Phone validation (optional field, but must be valid if provided)
-    if (formData.phone?.trim() && !/^\+?[0-9\s\-]{7,15}$/.test(formData.phone.trim())) {
-      setError('Please enter a valid phone number (7–15 digits)');
-      return;
-    }
+    // Phone validation (required field)
+    const phoneErr = validatePhone(formData.phone || '');
+    setPhoneError(phoneErr);
+    if (phoneErr) return;
 
     // Only require managedVenues if role is venue_manager
     if (formData.role === 'venue_manager' && (!formData.managedVenues || formData.managedVenues.length === 0)) {
@@ -236,17 +251,27 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
             </div>
 
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Phone Number</label>
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Phone Number *</label>
               <div className="relative">
                 <input
                   type="tel"
                   value={formData.phone || ''}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  placeholder="+91 1234567890"
-                  className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-bold text-slate-900 dark:text-white"
+                  onChange={(e) => {
+                    setFormData({ ...formData, phone: e.target.value });
+                    setPhoneError(validatePhone(e.target.value));
+                  }}
+                  onBlur={() => setPhoneError(validatePhone(formData.phone || ''))}
+                  placeholder="+91 9876543210"
+                  required
+                  className={`w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border rounded-2xl focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-bold text-slate-900 dark:text-white ${
+                    phoneError ? 'border-red-500 dark:border-red-500' : 'border-slate-200 dark:border-slate-700'
+                  }`}
                 />
                 <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">phone_iphone</span>
               </div>
+              {phoneError && (
+                <p className="text-xs font-medium text-red-600 dark:text-red-400 ml-1">{phoneError}</p>
+              )}
             </div>
           </section>
 

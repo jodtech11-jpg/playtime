@@ -143,17 +143,35 @@ const HistoryLogModal: React.FC<HistoryLogModalProps> = ({
     switch (type) {
       case 'Post Removed':
       case 'User Banned':
-        return 'text-red-600 bg-red-50 border-red-200';
+        return 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/30';
       case 'Report Dismissed':
-        return 'text-gray-600 bg-gray-50 border-gray-200';
+        return 'text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700';
       case 'Post Approved':
-        return 'text-green-600 bg-green-50 border-green-200';
+        return 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800/30';
       case 'Post Rejected':
-        return 'text-orange-600 bg-orange-50 border-orange-200';
+        return 'text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800/30';
       case 'Report Action Taken':
-        return 'text-blue-600 bg-blue-50 border-blue-200';
+        return 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800/30';
       default:
-        return 'text-gray-600 bg-gray-50 border-gray-200';
+        return 'text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700';
+    }
+  };
+
+  const getActionIconColor = (type: HistoryEntry['type']) => {
+    switch (type) {
+      case 'Post Removed':
+      case 'User Banned':
+        return 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400';
+      case 'Report Dismissed':
+        return 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400';
+      case 'Post Approved':
+        return 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400';
+      case 'Post Rejected':
+        return 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400';
+      case 'Report Action Taken':
+        return 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400';
+      default:
+        return 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400';
     }
   };
 
@@ -161,15 +179,15 @@ const HistoryLogModal: React.FC<HistoryLogModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col">
-        <div className="p-6 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white z-10">
+      <div className="bg-white dark:bg-surface-dark rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col border border-gray-200 dark:border-gray-700">
+        <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between sticky top-0 bg-white dark:bg-surface-dark z-10">
           <div>
-            <h3 className="text-2xl font-black text-gray-900">Moderation History Log</h3>
-            <p className="text-sm text-gray-500 mt-1">Complete record of all moderation actions</p>
+            <h3 className="text-2xl font-black text-gray-900 dark:text-gray-100">Moderation History Log</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Complete record of all moderation actions</p>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
           >
             <span className="material-symbols-outlined">close</span>
           </button>
@@ -178,8 +196,8 @@ const HistoryLogModal: React.FC<HistoryLogModalProps> = ({
         <div className="flex-1 overflow-y-auto p-6">
           {historyEntries.length === 0 ? (
             <div className="text-center py-12">
-              <span className="material-symbols-outlined text-6xl text-gray-300 mb-4">history</span>
-              <p className="text-gray-500 font-medium">No moderation history found</p>
+              <span className="material-symbols-outlined text-6xl text-gray-300 dark:text-gray-600 mb-4">history</span>
+              <p className="text-gray-500 dark:text-gray-400 font-medium">No moderation history found</p>
               <p className="text-sm text-gray-400 mt-2">Actions taken will appear here</p>
             </div>
           ) : (
@@ -193,7 +211,7 @@ const HistoryLogModal: React.FC<HistoryLogModalProps> = ({
                     className={`border rounded-xl p-4 ${getActionColor(entry.type)}`}
                   >
                     <div className="flex items-start gap-4">
-                      <div className={`p-2 rounded-lg ${getActionColor(entry.type).split(' ')[1]} ${getActionColor(entry.type).split(' ')[0]}`}>
+                      <div className={`p-2 rounded-lg ${getActionIconColor(entry.type)}`}>
                         <span className="material-symbols-outlined text-xl">
                           {getActionIcon(entry.type)}
                         </span>
@@ -201,18 +219,18 @@ const HistoryLogModal: React.FC<HistoryLogModalProps> = ({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-4 mb-2">
                           <div className="flex-1">
-                            <h4 className="font-black text-gray-900 mb-1">{entry.type}</h4>
-                            <p className="text-sm text-gray-700">{entry.action}</p>
+                            <h4 className="font-black text-gray-900 dark:text-gray-100 mb-1">{entry.type}</h4>
+                            <p className="text-sm text-gray-700 dark:text-gray-300">{entry.action}</p>
                           </div>
-                          <span className="text-xs text-gray-500 whitespace-nowrap">
+                          <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
                             {getRelativeTime(entry.timestamp)}
                           </span>
                         </div>
 
                         {entry.postContent && (
-                          <div className="mt-3 p-3 bg-white/60 rounded-lg border border-gray-200">
-                            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Post Content</p>
-                            <p className="text-sm text-gray-700 line-clamp-2">
+                          <div className="mt-3 p-3 bg-white/60 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700">
+                            <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1">Post Content</p>
+                            <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">
                               {entry.postContent}
                               {entry.postContent.length > 100 && '...'}
                             </p>
@@ -222,31 +240,31 @@ const HistoryLogModal: React.FC<HistoryLogModalProps> = ({
                         <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
                           {entry.userName && (
                             <div>
-                              <span className="font-bold text-gray-500">User:</span>
-                              <span className="ml-2 text-gray-700">{entry.userName}</span>
+                              <span className="font-bold text-gray-500 dark:text-gray-400">User:</span>
+                              <span className="ml-2 text-gray-700 dark:text-gray-300">{entry.userName}</span>
                             </div>
                           )}
                           {entry.reviewedByName && (
                             <div>
-                              <span className="font-bold text-gray-500">Moderator:</span>
-                              <span className="ml-2 text-gray-700">{entry.reviewedByName}</span>
+                              <span className="font-bold text-gray-500 dark:text-gray-400">Moderator:</span>
+                              <span className="ml-2 text-gray-700 dark:text-gray-300">{entry.reviewedByName}</span>
                             </div>
                           )}
                           {entry.reason && (
                             <div>
-                              <span className="font-bold text-gray-500">Reason:</span>
-                              <span className="ml-2 text-gray-700">{entry.reason}</span>
+                              <span className="font-bold text-gray-500 dark:text-gray-400">Reason:</span>
+                              <span className="ml-2 text-gray-700 dark:text-gray-300">{entry.reason}</span>
                             </div>
                           )}
                           {entry.reporterName && (
                             <div>
-                              <span className="font-bold text-gray-500">Reported By:</span>
-                              <span className="ml-2 text-gray-700">{entry.reporterName}</span>
+                              <span className="font-bold text-gray-500 dark:text-gray-400">Reported By:</span>
+                              <span className="ml-2 text-gray-700 dark:text-gray-300">{entry.reporterName}</span>
                             </div>
                           )}
                           <div className="col-span-2">
-                            <span className="font-bold text-gray-500">Time:</span>
-                            <span className="ml-2 text-gray-700">{formatDate(timestamp)}</span>
+                            <span className="font-bold text-gray-500 dark:text-gray-400">Time:</span>
+                            <span className="ml-2 text-gray-700 dark:text-gray-300">{formatDate(timestamp)}</span>
                           </div>
                         </div>
 
@@ -266,13 +284,13 @@ const HistoryLogModal: React.FC<HistoryLogModalProps> = ({
           )}
         </div>
 
-        <div className="p-6 border-t border-gray-200 flex justify-between items-center bg-gray-50">
-          <p className="text-sm text-gray-500">
-            Total actions: <span className="font-bold text-gray-900">{historyEntries.length}</span>
+        <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Total actions: <span className="font-bold text-gray-900 dark:text-gray-100">{historyEntries.length}</span>
           </p>
           <button
             onClick={onClose}
-            className="px-6 py-2 bg-white border border-gray-200 rounded-xl font-black text-sm hover:bg-gray-50 transition-colors"
+            className="px-6 py-2 bg-white dark:bg-surface-dark border border-gray-200 dark:border-gray-700 rounded-xl font-black text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
           >
             Close
           </button>

@@ -125,7 +125,7 @@ const Support: React.FC = () => {
   }
 
   return (
-    <div className="p-8 space-y-10 bg-background-light min-h-full">
+    <div className="p-8 space-y-10 bg-background-light dark:bg-background-dark min-h-full">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <h2 className="text-3xl font-black text-gray-900 dark:text-gray-100 tracking-tight">Support & Disputes</h2>
@@ -245,7 +245,7 @@ const Support: React.FC = () => {
                           e.stopPropagation();
                           handleViewTicket(ticket);
                         }}
-                        className="bg-background-light px-4 py-2 rounded-xl text-[10px] font-black uppercase text-gray-700 hover:bg-gray-200 transition-all"
+                        className="bg-background-light dark:bg-background-dark px-4 py-2 rounded-xl text-[10px] font-black uppercase text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all"
                       >
                         View Details
                       </button>

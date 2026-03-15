@@ -175,10 +175,10 @@ const Staff: React.FC = () => {
 
   if (loading && staff.length === 0) {
     return (
-      <div className="flex items-center justify-center h-screen bg-background-light">
+      <div className="flex items-center justify-center h-screen bg-background-light dark:bg-background-dark">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
-          <p className="text-gray-600 font-medium">Loading staff data...</p>
+          <p className="text-gray-600 dark:text-gray-400 font-medium">Loading staff data...</p>
         </div>
       </div>
     );
@@ -248,17 +248,17 @@ const Staff: React.FC = () => {
             <div className="relative flex-1">
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">search</span>
               <input
-                className="w-full pl-10 pr-4 py-2.5 bg-background-light border-none rounded-xl text-sm focus:ring-2 focus:ring-primary/20"
+                className="w-full pl-10 pr-4 py-2.5 bg-background-light dark:bg-surface-dark border border-transparent dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary/20"
                 placeholder="Search staff..."
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <button className="px-5 py-2.5 bg-background-light rounded-xl text-xs font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200 transition-colors">Filters</button>
+            <button className="px-5 py-2.5 bg-background-light dark:bg-surface-dark rounded-xl text-xs font-black uppercase tracking-widest text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">Filters</button>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="bg-white dark:bg-surface-dark rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
             {filteredStaff.length === 0 ? (
               <div className="p-12 text-center">
                 <span className="material-symbols-outlined text-6xl text-gray-300 mb-4">group</span>
@@ -315,7 +315,7 @@ const Staff: React.FC = () => {
                           <div className="flex items-center justify-end gap-2">
                             <button
                               onClick={() => handleEditStaff(st)}
-                              className="px-3 py-1.5 bg-background-light text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-200 transition-colors"
+                              className="px-3 py-1.5 bg-background-light dark:bg-surface-dark text-gray-700 dark:text-gray-300 text-xs font-bold rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
                             >
                               Edit
                             </button>
@@ -338,9 +338,9 @@ const Staff: React.FC = () => {
         </div>
 
         <div className="space-y-6">
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-gray-100 bg-gray-50/50">
-              <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight">Quick Expense Log</h3>
+          <div className="bg-white dark:bg-surface-dark rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
+              <h3 className="text-lg font-black text-gray-900 dark:text-gray-100 uppercase tracking-tight">Quick Expense Log</h3>
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Daily allowances and petty cash</p>
             </div>
             <form onSubmit={handleLogExpense} className="p-6 space-y-5">
@@ -361,7 +361,7 @@ const Staff: React.FC = () => {
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Expense Title *</label>
                 <input
-                  className="w-full rounded-xl border-gray-100 bg-background-light py-2 px-4 text-sm font-bold focus:ring-primary focus:border-primary"
+                  className="w-full rounded-xl border-gray-100 dark:border-gray-700 bg-background-light dark:bg-surface-dark py-2 px-4 text-sm font-bold text-gray-900 dark:text-gray-100 focus:ring-primary focus:border-primary"
                   placeholder="e.g., Travel Allowance"
                   type="text"
                   value={expenseForm.title}
@@ -373,7 +373,7 @@ const Staff: React.FC = () => {
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Amount (₹) *</label>
                   <input
-                    className="w-full rounded-xl border-gray-100 bg-background-light py-2 px-4 text-sm font-bold focus:ring-primary focus:border-primary"
+                    className="w-full rounded-xl border-gray-100 dark:border-gray-700 bg-background-light dark:bg-surface-dark py-2 px-4 text-sm font-bold text-gray-900 dark:text-gray-100 focus:ring-primary focus:border-primary"
                     placeholder="0.00"
                     type="number"
                     min="0"
@@ -386,8 +386,8 @@ const Staff: React.FC = () => {
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Category *</label>
                   <select
-                    className="w-full rounded-xl border-gray-100 bg-background-light text-sm font-bold text-gray-600 focus:ring-primary focus:border-primary"
-                    value={expenseForm.category}
+className="w-full rounded-xl border-gray-100 dark:border-gray-700 bg-background-light dark:bg-surface-dark text-sm font-bold text-gray-600 dark:text-gray-300 focus:ring-primary focus:border-primary"
+                  value={expenseForm.category}
                     onChange={(e) => setExpenseForm(prev => ({ ...prev, category: e.target.value as Expense['category'] }))}
                     required
                   >
@@ -403,7 +403,7 @@ const Staff: React.FC = () => {
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Description</label>
                 <textarea
-                  className="w-full rounded-xl border-gray-100 bg-background-light py-2 px-4 text-sm font-bold focus:ring-primary focus:border-primary"
+                  className="w-full rounded-xl border-gray-100 dark:border-gray-700 bg-background-light dark:bg-surface-dark py-2 px-4 text-sm font-bold text-gray-900 dark:text-gray-100 focus:ring-primary focus:border-primary"
                   placeholder="Optional description..."
                   rows={2}
                   value={expenseForm.description}

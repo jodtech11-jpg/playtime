@@ -175,7 +175,7 @@ const Marketing: React.FC = () => {
   }
 
   return (
-    <div className="p-8 space-y-10 bg-background-light min-h-full">
+    <div className="p-8 space-y-10 bg-background-light dark:bg-background-dark min-h-full">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <h2 className="text-3xl font-black text-gray-900 dark:text-gray-100 tracking-tight">Marketing & Offers</h2>

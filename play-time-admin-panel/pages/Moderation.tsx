@@ -67,8 +67,10 @@ const Moderation: React.FC = () => {
         postsToShow = allPosts;
     }
 
-    // Hide optimistically removed posts
-    postsToShow = postsToShow.filter(p => !localRemovedPostIds.has(p.id));
+    // Hide posts that are already removed (in DB) or optimistically removed
+    postsToShow = postsToShow.filter(p => 
+      p.status !== 'Removed' && !localRemovedPostIds.has(p.id)
+    );
 
     // Sort by most reported or most recent
     return postsToShow.sort((a, b) => {
@@ -220,7 +222,7 @@ const Moderation: React.FC = () => {
   };
 
   return (
-    <div className="p-8 space-y-8 h-full bg-background-light">
+    <div className="p-8 space-y-8 h-full bg-background-light dark:bg-background-dark">
       <div className="max-w-7xl mx-auto space-y-8">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>

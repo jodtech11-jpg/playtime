@@ -12,11 +12,11 @@
 body {
   font-family: 'Outfit', 'Inter', sans-serif;
   overflow-x: hidden;
-  @apply bg-slate-50 text-slate-900;
+  @apply bg-background-light text-[#111814];
 }
 
 .dark body {
-  @apply bg-[#0f172a] text-slate-100;
+  @apply bg-background-dark text-slate-100;
 }
 
 .material-symbols-outlined {
@@ -44,6 +44,37 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+/* Prominent scrollbar for queues and lists */
+.scrollbar-visible {
+  scrollbar-width: thick;
+  scrollbar-color: #64748b #e2e8f0;
+}
+.scrollbar-visible::-webkit-scrollbar {
+  width: 16px !important;
+}
+.scrollbar-visible::-webkit-scrollbar-track {
+  background: #e2e8f0 !important;
+  border-radius: 8px;
+  margin: 6px 0;
+}
+.scrollbar-visible::-webkit-scrollbar-thumb {
+  background: #64748b !important;
+  border-radius: 8px;
+  min-height: 60px;
+}
+.scrollbar-visible::-webkit-scrollbar-thumb:hover {
+  background: #475569 !important;
+}
+.dark .scrollbar-visible::-webkit-scrollbar-track {
+  background: #1e293b !important;
+}
+.dark .scrollbar-visible::-webkit-scrollbar-thumb {
+  background: #475569 !important;
+}
+.dark .scrollbar-visible::-webkit-scrollbar-thumb:hover {
+  background: #64748b !important;
 }
 
 /* Professional UI System */
