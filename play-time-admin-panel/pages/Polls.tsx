@@ -5,12 +5,14 @@ import { useAuth } from '../contexts/AuthContext';
 import { pollsCollection } from '../services/firebase';
 import { serverTimestamp } from 'firebase/firestore';
 import { useToast } from '../contexts/ToastContext';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import PollFormModal from '../components/modals/PollFormModal';
 import { formatDate } from '../utils/dateUtils';
 
 const Polls: React.FC = () => {
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
+  const { openConfirm, confirmDialog } = useConfirmDialog();
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [sportFilter, setSportFilter] = useState<string>('All');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -68,21 +70,23 @@ const Polls: React.FC = () => {
     }
   };
 
-  const handleDeletePoll = async (pollId: string) => {
-    if (!confirm('Are you sure you want to delete this poll?')) {
-      return;
-    }
-
-    try {
-      setProcessing(pollId);
-      await pollsCollection.delete(pollId);
-      showSuccess('Poll deleted successfully');
-    } catch (error: any) {
-      console.error('Error deleting poll:', error);
-      showError('Failed to delete poll: ' + error.message);
-    } finally {
-      setProcessing(null);
-    }
+  const handleDeletePoll = (pollId: string) => {
+    openConfirm({
+      title: 'Delete poll?',
+      message: 'This cannot be undone.',
+      onConfirm: async () => {
+        try {
+          setProcessing(pollId);
+          await pollsCollection.delete(pollId);
+          showSuccess('Poll deleted successfully');
+        } catch (error: any) {
+          console.error('Error deleting poll:', error);
+          showError('Failed to delete poll: ' + error.message);
+        } finally {
+          setProcessing(null);
+        }
+      },
+    });
   };
 
   const handleUpdateStatus = async (pollId: string, newStatus: Poll['status']) => {
@@ -105,7 +109,7 @@ const Polls: React.FC = () => {
   const statuses = ['All', 'Active', 'Closed'];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -259,6 +263,7 @@ const Polls: React.FC = () => {
         onSave={handleSavePoll}
         poll={selectedPoll}
       />
+      {confirmDialog}
     </div>
   );
 };

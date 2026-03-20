@@ -39,6 +39,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       const userData = await usersCollection.get(uid);
       if (userData) {
+        if (userData.status === 'Pending') {
+          await signOutUser();
+          setUser(null);
+          setFirebaseUser(null);
+          setError(
+            'Your account is pending approval. You will be able to sign in after a super admin approves your registration.'
+          );
+          setLoading('loaded');
+          return;
+        }
+        if (userData.status === 'Inactive') {
+          await signOutUser();
+          setUser(null);
+          setFirebaseUser(null);
+          setError('Your account has been deactivated. Please contact an administrator.');
+          setLoading('loaded');
+          return;
+        }
         setError(null);
         setUser(userData as User);
         setLoading('loaded');
@@ -74,6 +92,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           const userData = await usersCollection.get(firebaseUser.uid);
           if (!mounted) return;
           if (userData) {
+            if (userData.status === 'Pending') {
+              await signOutUser();
+              if (!mounted) return;
+              setFirebaseUser(null);
+              setUser(null);
+              setError(
+                'Your account is pending approval. You will be able to sign in after a super admin approves your registration.'
+              );
+              setLoading('loaded');
+              return;
+            }
+            if (userData.status === 'Inactive') {
+              await signOutUser();
+              if (!mounted) return;
+              setFirebaseUser(null);
+              setUser(null);
+              setError('Your account has been deactivated. Please contact an administrator.');
+              setLoading('loaded');
+              return;
+            }
             setError(null);
             setUser(userData as User);
             setLoading('loaded');
@@ -137,7 +175,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signOut,
     refreshUser,
     clearError,
-    isAuthenticated: !!firebaseUser && !!user,
+    isAuthenticated:
+      !!firebaseUser &&
+      !!user &&
+      user.status !== 'Pending' &&
+      user.status !== 'Inactive',
     isSuperAdmin: user?.role === 'super_admin',
     isVenueManager: user?.role === 'venue_manager',
   };

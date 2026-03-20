@@ -67,8 +67,26 @@ export const useUsers = (options: UseUsersOptions = {}) => {
 
         let userIdsToFetch: string[] | undefined = undefined;
 
-        if (isVenueManager && currentUser?.managedVenues && currentUser.managedVenues.length > 0) {
-          const venueIds = options.venueIds || currentUser.managedVenues;
+        if (isVenueManager) {
+          const managed = currentUser?.managedVenues?.filter(Boolean) ?? [];
+          if (managed.length === 0) {
+            if (!mounted) return;
+            setUsers([]);
+            setHasMore(false);
+            setLoading(false);
+            return;
+          }
+          const requested = options.venueIds?.filter(Boolean) ?? [];
+          const venueIds = (
+            requested.length > 0 ? requested.filter((id) => managed.includes(id)) : managed
+          ).slice(0, 10);
+          if (venueIds.length === 0) {
+            if (!mounted) return;
+            setUsers([]);
+            setHasMore(false);
+            setLoading(false);
+            return;
+          }
           const bookings = await bookingsCollection.getAll([{ field: 'venueId', operator: 'in', value: venueIds }]) as any[];
           const memberships = await membershipsCollection.getAll([{ field: 'venueId', operator: 'in', value: venueIds }]) as any[];
           const bookingUserIds = new Set(bookings.map(b => b.userId).filter(Boolean));

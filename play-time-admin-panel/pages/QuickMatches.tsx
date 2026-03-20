@@ -5,12 +5,14 @@ import { useAuth } from '../contexts/AuthContext';
 import { quickMatchesCollection } from '../services/firebase';
 import { serverTimestamp } from 'firebase/firestore';
 import { useToast } from '../contexts/ToastContext';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import QuickMatchFormModal from '../components/modals/QuickMatchFormModal';
 import { formatDate, formatTime } from '../utils/dateUtils';
 
 const QuickMatches: React.FC = () => {
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
+  const { openConfirm, confirmDialog } = useConfirmDialog();
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [sportFilter, setSportFilter] = useState<string>('All');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -69,21 +71,23 @@ const QuickMatches: React.FC = () => {
     }
   };
 
-  const handleDeleteMatch = async (matchId: string) => {
-    if (!confirm('Are you sure you want to delete this quick match?')) {
-      return;
-    }
-
-    try {
-      setProcessing(matchId);
-      await quickMatchesCollection.delete(matchId);
-      showSuccess('Quick match deleted successfully');
-    } catch (error: any) {
-      console.error('Error deleting quick match:', error);
-      showError('Failed to delete quick match: ' + error.message);
-    } finally {
-      setProcessing(null);
-    }
+  const handleDeleteMatch = (matchId: string) => {
+    openConfirm({
+      title: 'Delete quick match?',
+      message: 'This cannot be undone.',
+      onConfirm: async () => {
+        try {
+          setProcessing(matchId);
+          await quickMatchesCollection.delete(matchId);
+          showSuccess('Quick match deleted successfully');
+        } catch (error: any) {
+          console.error('Error deleting quick match:', error);
+          showError('Failed to delete quick match: ' + error.message);
+        } finally {
+          setProcessing(null);
+        }
+      },
+    });
   };
 
   const handleUpdateStatus = async (matchId: string, newStatus: QuickMatch['status']) => {
@@ -123,7 +127,7 @@ const QuickMatches: React.FC = () => {
   const statuses = ['All', 'Open', 'Full', 'Started', 'Completed', 'Cancelled'];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -260,6 +264,7 @@ const QuickMatches: React.FC = () => {
         onSave={handleSaveMatch}
         match={selectedMatch}
       />
+      {confirmDialog}
     </div>
   );
 };

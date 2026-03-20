@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Sport } from '../../types';
 import { sportsCollection } from '../../services/firebase';
 import { serverTimestamp } from 'firebase/firestore';
+import { useToast } from '../../contexts/ToastContext';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 
 interface SportManagementModalProps {
   isOpen: boolean;
@@ -38,6 +40,8 @@ const SportManagementModal: React.FC<SportManagementModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
+  const { showError } = useToast();
+  const { openConfirm, confirmDialog } = useConfirmDialog();
 
   useEffect(() => {
     if (editingSport) {
@@ -164,20 +168,22 @@ const SportManagementModal: React.FC<SportManagementModalProps> = ({
     setEditingSport(sport);
   };
 
-  const handleDelete = async (sportId: string) => {
-    if (!confirm('Are you sure you want to delete this sport? Tournaments using this sport will need to be updated.')) {
-      return;
-    }
-
-    try {
-      setProcessing(sportId);
-      await sportsCollection.delete(sportId);
-      onUpdate();
-    } catch (err: any) {
-      alert('Failed to delete sport: ' + err.message);
-    } finally {
-      setProcessing(null);
-    }
+  const handleDelete = (sportId: string) => {
+    openConfirm({
+      title: 'Delete sport?',
+      message: 'Tournaments using this sport will need to be updated.',
+      onConfirm: async () => {
+        try {
+          setProcessing(sportId);
+          await sportsCollection.delete(sportId);
+          onUpdate();
+        } catch (err: any) {
+          showError('Failed to delete sport: ' + err.message);
+        } finally {
+          setProcessing(null);
+        }
+      },
+    });
   };
 
   const handleToggleActive = async (sport: Sport) => {
@@ -189,7 +195,7 @@ const SportManagementModal: React.FC<SportManagementModalProps> = ({
       });
       onUpdate();
     } catch (err: any) {
-      alert('Failed to update sport: ' + err.message);
+      showError('Failed to update sport: ' + err.message);
     } finally {
       setProcessing(null);
     }
@@ -242,6 +248,8 @@ const SportManagementModal: React.FC<SportManagementModalProps> = ({
   if (!isOpen) return null;
 
   return (
+    <>
+      {confirmDialog}
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white z-10">
@@ -692,6 +700,7 @@ const SportManagementModal: React.FC<SportManagementModalProps> = ({
         </div>
       </div>
     </div>
+    </>
   );
 };
 

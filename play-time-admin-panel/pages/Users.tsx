@@ -276,10 +276,10 @@ const Users: React.FC = () => {
   }
 
   return (
-    <div className="p-8 space-y-10 bg-slate-50 dark:bg-slate-900 min-h-full">
+    <div className="p-4 sm:p-8 space-y-6 sm:space-y-10 bg-slate-50 dark:bg-slate-900 min-h-full">
       {/* Header */}
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 sm:gap-6">
         <div>
           <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-none">Users</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-3 font-medium">Manage user accounts, roles, and platform access.</p>
@@ -380,7 +380,7 @@ const Users: React.FC = () => {
       </div>
 
       {/* Filters and Search */}
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 sm:gap-6">
         <div className="flex items-center gap-3">
           <div className="h-6 w-1 rounded-full bg-primary"></div>
           <h2 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] leading-none">User List</h2>
@@ -523,7 +523,9 @@ const Users: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
-                          {user.status === 'Pending' && currentUser?.role === 'super_admin' && (
+                          {user.status === 'Pending' &&
+                            user.role === 'venue_manager' &&
+                            currentUser?.role === 'super_admin' && (
                             <>
                               <button
                                 onClick={() => handleApproveUser(user.id)}

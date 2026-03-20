@@ -13,8 +13,12 @@ import { serverTimestamp } from 'firebase/firestore';
 import CreateProductModal from '../components/modals/CreateProductModal';
 import OrderDetailsModal from '../components/modals/OrderDetailsModal';
 import CategoryManagementModal from '../components/modals/CategoryManagementModal';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 
 const Marketplace: React.FC = () => {
+  const { showError } = useToast();
+  const { openConfirm, confirmDialog } = useConfirmDialog();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
   
   // State management
@@ -219,37 +223,44 @@ const Marketplace: React.FC = () => {
     setShowCreateModal(true);
   };
 
-  const handleDeleteProduct = async (productId: string) => {
-    if (!confirm('Are you sure you want to delete this product?')) return;
-
-    try {
-      setProcessing(productId);
-      await productsCollection.delete(productId);
-    } catch (error: any) {
-      console.error('Error deleting product:', error);
-      alert('Failed to delete product: ' + error.message);
-    } finally {
-      setProcessing(null);
-    }
+  const handleDeleteProduct = (productId: string) => {
+    openConfirm({
+      title: 'Delete product?',
+      message: 'This cannot be undone.',
+      onConfirm: async () => {
+        try {
+          setProcessing(productId);
+          await productsCollection.delete(productId);
+        } catch (error: any) {
+          console.error('Error deleting product:', error);
+          showError('Failed to delete product: ' + error.message);
+        } finally {
+          setProcessing(null);
+        }
+      },
+    });
   };
 
-  const handleBulkDelete = async () => {
+  const handleBulkDelete = () => {
     if (selectedProducts.size === 0) return;
-    if (!confirm(`Are you sure you want to delete ${selectedProducts.size} product(s)?`)) return;
-
-    try {
-      setProcessing('bulk');
-      const deletePromises = Array.from(selectedProducts).map(id => 
-        productsCollection.delete(id)
-      );
-      await Promise.all(deletePromises);
-      setSelectedProducts(new Set());
-    } catch (error: any) {
-      console.error('Error deleting products:', error);
-      alert('Failed to delete products: ' + error.message);
-    } finally {
-      setProcessing(null);
-    }
+    const count = selectedProducts.size;
+    const ids = Array.from(selectedProducts);
+    openConfirm({
+      title: 'Delete products?',
+      message: `Delete ${count} product(s)? This cannot be undone.`,
+      onConfirm: async () => {
+        try {
+          setProcessing('bulk');
+          await Promise.all(ids.map((id) => productsCollection.delete(id)));
+          setSelectedProducts(new Set());
+        } catch (error: any) {
+          console.error('Error deleting products:', error);
+          showError('Failed to delete products: ' + error.message);
+        } finally {
+          setProcessing(null);
+        }
+      },
+    });
   };
 
   const handleBulkStatusUpdate = async (newStatus: Product['status']) => {
@@ -267,7 +278,7 @@ const Marketplace: React.FC = () => {
       setSelectedProducts(new Set());
     } catch (error: any) {
       console.error('Error updating products:', error);
-      alert('Failed to update products: ' + error.message);
+      showError('Failed to update products: ' + error.message);
     } finally {
       setProcessing(null);
     }
@@ -300,7 +311,7 @@ const Marketplace: React.FC = () => {
 
   if (loading && products.length === 0 && orders.length === 0) {
     return (
-      <div className="p-8 flex items-center justify-center h-full">
+      <div className="p-4 sm:p-8 flex items-center justify-center h-full">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
           <p className="text-gray-600 dark:text-gray-400 font-medium">Loading marketplace data...</p>
@@ -310,8 +321,8 @@ const Marketplace: React.FC = () => {
   }
 
   return (
-    <div className="p-8 space-y-10 bg-background-light dark:bg-background-dark">
-      <div className="max-w-7xl mx-auto space-y-10">
+    <div className="p-4 sm:p-8 space-y-6 sm:space-y-10 bg-background-light dark:bg-background-dark">
+      <div className="max-w-7xl mx-auto space-y-6 sm:space-y-10">
         {/* Analytics Dashboard */}
         {showAnalytics && (
           <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -497,7 +508,7 @@ const Marketplace: React.FC = () => {
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8">
               {filteredProducts.map((product) => {
                 const statusColor = getProductStatusColor(product);
                 const stockPercentage = getStockPercentage(product);
@@ -796,6 +807,7 @@ const Marketplace: React.FC = () => {
           // Categories will update automatically via realtime subscription
         }}
       />
+      {confirmDialog}
     </div>
   );
 };

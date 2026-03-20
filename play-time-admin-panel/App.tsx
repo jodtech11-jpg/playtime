@@ -44,6 +44,7 @@ import ProtectedRoute from './components/layout/ProtectedRoute';
 import VenueProtectedRoute from './components/layout/VenueProtectedRoute';
 import ErrorBoundary from './components/layout/ErrorBoundary';
 import ToastContainer from './components/layout/ToastContainer';
+import FullScreenLoader from './components/shared/FullScreenLoader';
 import { VenueTwoStepAuthProvider } from './contexts/VenueTwoStepAuthContext';
 
 const AppRoutes: React.FC = () => {
@@ -52,14 +53,7 @@ const AppRoutes: React.FC = () => {
   useFCMToken();
 
   if (loading === 'loading') {
-    return (
-      <div className="flex items-center justify-center h-screen bg-background-light dark:bg-background-dark">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400 font-medium">Loading...</p>
-        </div>
-      </div>
-    );
+    return <FullScreenLoader />;
   }
 
   if (!isAuthenticated) {
@@ -80,7 +74,7 @@ const AppRoutes: React.FC = () => {
           <Sidebar />
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden lg:ml-0">
             <Header />
-            <main className="flex-1 min-h-0 overflow-y-auto pt-16 lg:pt-0 bg-background-light dark:bg-background-dark">
+            <main className="flex-1 min-h-0 overflow-y-auto bg-background-light dark:bg-background-dark">
               <Routes>
                 <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                 <Route path="/bookings" element={<ProtectedRoute><Bookings /></ProtectedRoute>} />

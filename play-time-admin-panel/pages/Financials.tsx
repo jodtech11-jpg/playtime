@@ -139,8 +139,12 @@ const Financials: React.FC = () => {
 
       await createInvoice(settlementInvoice);
 
-      // Show success message
-      alert(`Settlement executed successfully!\n\nAmount: ${formatCurrency(settlement.settledToPlatform)}\nCommission: ${formatCurrency(settlement.commissionCollected)}\nConvenience Fees: ${formatCurrency(metrics.convenienceFees)}\nGateway Fees: ${formatCurrency(settlement.gatewayFees)}`);
+      showSuccess(
+        `Settlement recorded. Amount ${formatCurrency(settlement.settledToPlatform)} · Commission ${formatCurrency(
+          settlement.commissionCollected
+        )} · Convenience ${formatCurrency(metrics.convenienceFees)} · Gateway ${formatCurrency(settlement.gatewayFees)}`,
+        10000
+      );
 
       setShowSettlementConfirm(false);
     } catch (err: any) {
@@ -163,8 +167,8 @@ const Financials: React.FC = () => {
   }
 
   return (
-    <div className="p-8 space-y-10 bg-slate-50 dark:bg-slate-900 min-h-full">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
+    <div className="p-4 sm:p-8 space-y-6 sm:space-y-10 bg-slate-50 dark:bg-slate-900 min-h-full">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 sm:gap-8">
         <div>
           <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-none uppercase">Financials</h2>
           <p className="text-slate-500 dark:text-slate-400 mt-3 font-medium">Track platform revenue, payments, and settlements.</p>
@@ -221,7 +225,7 @@ const Financials: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {[
           {
             label: "Total Bookings",
@@ -282,8 +286,8 @@ const Financials: React.FC = () => {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        <div className="xl:col-span-2 space-y-10">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-8">
+        <div className="xl:col-span-2 space-y-6 sm:space-y-10">
           {/* Transaction Ledger */}
           <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -521,7 +525,7 @@ const Financials: React.FC = () => {
             </div>
           </div>
 
-          <div className="p-8 space-y-8">
+          <div className="p-4 sm:p-8 space-y-6 sm:space-y-8">
             <div className="space-y-6">
               <div className="flex items-center justify-between group">
                 <div className="flex items-center gap-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">

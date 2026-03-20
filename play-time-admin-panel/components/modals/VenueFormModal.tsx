@@ -229,7 +229,7 @@ const VenueFormModal: React.FC<VenueFormModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-8 custom-scrollbar">
           <form id="venue-form" onSubmit={handleSubmit} className="space-y-12">
             {error && (
               <div className="bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 px-5 py-4 rounded-xl text-xs font-bold flex items-center gap-3">
@@ -526,7 +526,7 @@ const VenueFormModal: React.FC<VenueFormModalProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-8">
                 {/* Bank Account */}
                 <div className="ui-card p-6 space-y-6">
                   <div className="flex items-center gap-2">

@@ -30,13 +30,26 @@ export const useVenues = (options: UseVenuesOptions = {}) => {
 
         const filters: any[] = [];
 
-        // Filter by managed venues if venue manager
-        if (isVenueManager && user.managedVenues && user.managedVenues.length > 0) {
+        // Venue managers must only see assigned venues; never fall back to "all venues"
+        if (isVenueManager) {
+          const ids = user.managedVenues?.filter(Boolean) ?? [];
+          if (ids.length === 0) {
+            if (mounted) {
+              setVenues([]);
+              setLoading(false);
+            }
+            return;
+          }
           filters.push({
             field: 'id',
             operator: 'in',
-            value: user.managedVenues
+            value: ids.slice(0, 10),
           });
+          if (ids.length > 10) {
+            console.warn(
+              'useVenues: venue manager has more than 10 managedVenues; only the first 10 are loaded (Firestore in limit).'
+            );
+          }
         }
 
         // Filter by status

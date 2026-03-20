@@ -170,7 +170,7 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-surface-dark rounded-2xl p-8 max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto border border-gray-200 dark:border-gray-700">
+      <div className="bg-white dark:bg-surface-dark rounded-2xl p-4 sm:p-8 max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto border border-gray-200 dark:border-gray-700">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-black text-gray-900 dark:text-gray-100">
             {tournament ? 'Edit Tournament' : 'Create Tournament'}

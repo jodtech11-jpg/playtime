@@ -185,7 +185,7 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
         </div>
 
         {/* Form */}
-        <form ref={formRef} onSubmit={handleSubmit} className="p-8 space-y-8 bg-white dark:bg-slate-900 border-x border-slate-200 dark:border-slate-700">
+        <form ref={formRef} onSubmit={handleSubmit} className="p-4 sm:p-8 space-y-8 bg-white dark:bg-slate-900 border-x border-slate-200 dark:border-slate-700">
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-4">
               <p className="text-sm text-red-600 font-medium">{error}</p>
@@ -380,7 +380,7 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
           )}
 
           {/* Actions */}
-          <div className="flex items-center justify-end gap-4 p-8 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 rounded-b-2xl">
+          <div className="flex items-center justify-end gap-4 p-4 sm:p-8 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 rounded-b-2xl">
             <button
               type="button"
               onClick={onClose}

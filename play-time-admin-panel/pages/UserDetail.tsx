@@ -206,7 +206,7 @@ const UserDetail: React.FC = () => {
     .filter(Boolean) || [];
 
   return (
-    <div className="p-8 space-y-10 bg-slate-50 dark:bg-slate-900 min-h-full">
+    <div className="p-4 sm:p-8 space-y-6 sm:space-y-10 bg-slate-50 dark:bg-slate-900 min-h-full">
       {/* Breadcrumb */}
       <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-widest">
         <button onClick={() => navigate('/users')} className="hover:text-primary transition-colors">
@@ -244,9 +244,9 @@ const UserDetail: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* User Information Card */}
-        <div className="lg:col-span-1 space-y-8">
+        <div className="lg:col-span-1 space-y-6 sm:space-y-8">
           {/* Profile Card */}
-          <div className="ui-card p-8 group">
+          <div className="ui-card p-4 sm:p-8 group">
             <div className="text-center">
               <div className="size-28 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto mb-6 border border-slate-200 dark:border-slate-700 overflow-hidden group-hover:scale-105 transition-transform duration-500">
                 {user.avatar ? (
@@ -364,7 +364,7 @@ const UserDetail: React.FC = () => {
         </div>
 
         {/* Main Content */}
-        <div className="lg:col-span-2 space-y-8">
+        <div className="lg:col-span-2 space-y-6 sm:space-y-8">
           {/* Enhanced Statistics Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             <div className="ui-card p-6 flex flex-col justify-between group hover:border-blue-400/40 transition-all duration-300">

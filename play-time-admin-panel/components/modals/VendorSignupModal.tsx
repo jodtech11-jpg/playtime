@@ -50,37 +50,51 @@ const VendorSignupModal: React.FC<VendorSignupModalProps> = ({ isOpen, onClose, 
     }
   }, [isOpen, step]);
 
-  // Initialize reCAPTCHA for phone verification
+  // reCAPTCHA: one verifier per open cycle (avoid stale state + React cleanup clearing a new widget)
   useEffect(() => {
-    if (isOpen && recaptchaContainerRef.current && !recaptchaVerifier) {
-      try {
-        if (recaptchaContainerRef.current.innerHTML) {
-          recaptchaContainerRef.current.innerHTML = '';
-        }
-
-        const verifier = new RecaptchaVerifier(auth, 'vendor-signup-recaptcha', {
-          size: 'normal',
-          callback: () => {},
-          'expired-callback': () => {
-            setError('reCAPTCHA expired. Please try again.');
+    if (!isOpen) {
+      setRecaptchaVerifier((prev) => {
+        if (prev) {
+          try {
+            prev.clear();
+          } catch {
+            /* ignore */
           }
-        });
+        }
+        return null;
+      });
+      return;
+    }
 
-        setRecaptchaVerifier(verifier);
-      } catch (error: any) {
-        console.error('Error initializing reCAPTCHA:', error);
-        setError('Failed to initialize reCAPTCHA. Please refresh the page.');
-      }
+    const el = recaptchaContainerRef.current;
+    if (!el) return;
+
+    let verifier: RecaptchaVerifier | null = null;
+    try {
+      el.innerHTML = '';
+      verifier = new RecaptchaVerifier(auth, 'vendor-signup-recaptcha', {
+        size: 'normal',
+        callback: () => {},
+        'expired-callback': () => {
+          setError('reCAPTCHA expired. Please try again.');
+        },
+      });
+      setRecaptchaVerifier(verifier);
+    } catch (err: unknown) {
+      console.error('Error initializing reCAPTCHA:', err);
+      setError('Failed to initialize reCAPTCHA. Please refresh the page.');
     }
 
     return () => {
-      if (recaptchaVerifier) {
+      if (verifier) {
         try {
-          recaptchaVerifier.clear();
-        } catch (e) {}
+          verifier.clear();
+        } catch {
+          /* ignore */
+        }
       }
     };
-  }, [isOpen, recaptchaVerifier]);
+  }, [isOpen]);
 
   const handleSendOTP = async () => {
     setError(null);
@@ -144,10 +158,17 @@ const VendorSignupModal: React.FC<VendorSignupModalProps> = ({ isOpen, onClose, 
       await auth.signOut();
 
       // Create user account with email/password
-      const { user: emailUser, error: createError } = await createUser(formData.email, formData.password);
-      
+      const { user: emailUser, error: createError, code: createCode } = await createUser(
+        formData.email,
+        formData.password
+      );
+
       if (createError || !emailUser) {
-        throw new Error(createError || 'Failed to create account. Please try again.');
+        const err = new Error(createError || 'Failed to create account. Please try again.') as Error & {
+          code?: string;
+        };
+        if (createCode) err.code = createCode;
+        throw err;
       }
 
       // Create user document in Firestore with Pending status

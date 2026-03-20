@@ -10,7 +10,7 @@ import { useToast } from '../contexts/ToastContext';
 const Settings: React.FC = () => {
   const { user, isSuperAdmin } = useAuth();
   const { settings, loading, updateSettings } = useAppSettings(true);
-  const { showSuccess, showError } = useToast();
+  const { showSuccess, showError, showWarning } = useToast();
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [configModalOpen, setConfigModalOpen] = useState(false);
@@ -89,7 +89,7 @@ const Settings: React.FC = () => {
 
   const handleSave = async () => {
     if (!isSuperAdmin) {
-      alert('Only super admins can update settings');
+      showWarning('Only super admins can update settings');
       return;
     }
 
@@ -103,7 +103,7 @@ const Settings: React.FC = () => {
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error: any) {
       console.error('Error saving settings:', error);
-      alert('Failed to save settings: ' + error.message);
+      showError('Failed to save settings: ' + error.message);
     } finally {
       setSaving(false);
     }
@@ -111,7 +111,7 @@ const Settings: React.FC = () => {
 
   const handleIntegrationToggle = async (integration: 'razorpay' | 'whatsapp', enabled: boolean) => {
     if (!isSuperAdmin) {
-      alert('Only super admins can modify integrations');
+      showWarning('Only super admins can modify integrations');
       return;
     }
 
@@ -121,7 +121,7 @@ const Settings: React.FC = () => {
       : !!(currentIntegration?.apiKey && currentIntegration?.phoneNumberId && currentIntegration?.businessAccountId);
 
     if (enabled && !hasCredentials) {
-      alert('Please configure the integration first before enabling it.');
+      showWarning('Please configure the integration first before enabling it.');
       return;
     }
 
@@ -146,7 +146,7 @@ const Settings: React.FC = () => {
       setTimeout(() => setSaveSuccess(false), 2000);
     } catch (error: any) {
       console.error('Error updating integration:', error);
-      alert('Failed to update integration: ' + error.message);
+      showError('Failed to update integration: ' + error.message);
       // Revert on error
       setFormData(prev => ({
         ...prev,
@@ -247,7 +247,7 @@ const Settings: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="p-8 flex items-center justify-center h-full">
+      <div className="p-4 sm:p-8 flex items-center justify-center h-full">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
           <p className="text-gray-600 font-medium">Loading settings...</p>
@@ -272,11 +272,11 @@ const Settings: React.FC = () => {
     switch (activeSection) {
       case 'general':
         return (
-          <section className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-700 p-8 shadow-sm space-y-6">
+          <section className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-700 p-4 sm:p-8 shadow-sm space-y-6">
             <h3 className="text-lg font-black text-gray-900 dark:text-gray-100 uppercase tracking-tight flex items-center gap-2">
               <span className="material-symbols-outlined text-primary">settings</span> General Settings
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">App Name</label>
                 <input
@@ -416,11 +416,11 @@ const Settings: React.FC = () => {
 
       case 'business':
         return (
-          <section className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-700 p-8 shadow-sm space-y-6">
+          <section className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-700 p-4 sm:p-8 shadow-sm space-y-6">
             <h3 className="text-lg font-black text-gray-900 dark:text-gray-100 uppercase tracking-tight flex items-center gap-2">
               <span className="material-symbols-outlined text-primary">rule</span> Business Rules
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Platform Convenience Fee (₹)</label>
                 <input
@@ -480,11 +480,11 @@ const Settings: React.FC = () => {
 
       case 'booking':
         return (
-          <section className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-700 p-8 shadow-sm space-y-6">
+          <section className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-700 p-4 sm:p-8 shadow-sm space-y-6">
             <h3 className="text-lg font-black text-gray-900 dark:text-gray-100 uppercase tracking-tight flex items-center gap-2">
               <span className="material-symbols-outlined text-primary">event</span> Booking Settings
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Max Advance Booking Days</label>
                 <input
@@ -604,11 +604,11 @@ const Settings: React.FC = () => {
 
       case 'payment':
         return (
-          <section className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-700 p-8 shadow-sm space-y-6">
+          <section className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-700 p-4 sm:p-8 shadow-sm space-y-6">
             <h3 className="text-lg font-black text-gray-900 dark:text-gray-100 uppercase tracking-tight flex items-center gap-2">
               <span className="material-symbols-outlined text-primary">payments</span> Payment Settings
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
               <div className="space-y-2 md:col-span-2">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Payment Methods</label>
                 <div className="flex flex-wrap gap-3">
@@ -724,11 +724,11 @@ const Settings: React.FC = () => {
 
       case 'notifications':
         return (
-          <section className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-700 p-8 shadow-sm space-y-6">
+          <section className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-700 p-4 sm:p-8 shadow-sm space-y-6">
             <h3 className="text-lg font-black text-gray-900 dark:text-gray-100 uppercase tracking-tight flex items-center gap-2">
               <span className="material-symbols-outlined text-primary">notifications</span> Notification Settings
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
                 <div>
                   <label className="text-sm font-bold text-gray-700">Booking Notifications</label>
@@ -818,11 +818,11 @@ const Settings: React.FC = () => {
 
       case 'security':
         return (
-          <section className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-700 p-8 shadow-sm space-y-6">
+          <section className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-700 p-4 sm:p-8 shadow-sm space-y-6">
             <h3 className="text-lg font-black text-gray-900 dark:text-gray-100 uppercase tracking-tight flex items-center gap-2">
               <span className="material-symbols-outlined text-primary">security</span> Security Settings
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Session Timeout (Minutes)</label>
                 <input
@@ -926,11 +926,11 @@ const Settings: React.FC = () => {
 
       case 'system':
         return (
-          <section className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-700 p-8 shadow-sm space-y-6">
+          <section className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-700 p-4 sm:p-8 shadow-sm space-y-6">
             <h3 className="text-lg font-black text-gray-900 dark:text-gray-100 uppercase tracking-tight flex items-center gap-2">
               <span className="material-symbols-outlined text-primary">computer</span> System Settings
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Data Retention (Days)</label>
                 <input
@@ -1024,7 +1024,7 @@ const Settings: React.FC = () => {
 
       case 'landing':
         return (
-          <section className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-700 p-8 shadow-sm space-y-6">
+          <section className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-700 p-4 sm:p-8 shadow-sm space-y-6">
             <h3 className="text-lg font-black text-gray-900 dark:text-gray-100 uppercase tracking-tight flex items-center gap-2">
               <span className="material-symbols-outlined text-primary">home</span> Landing Page Management
             </h3>
@@ -1045,7 +1045,7 @@ const Settings: React.FC = () => {
 
       case 'integrations':
         return (
-          <section className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-700 p-8 shadow-sm space-y-6">
+          <section className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-700 p-4 sm:p-8 shadow-sm space-y-6">
             <h3 className="text-lg font-black text-gray-900 dark:text-gray-100 uppercase tracking-tight flex items-center gap-2">
               <span className="material-symbols-outlined text-primary">hub</span> Integrations & API
             </h3>
@@ -1148,14 +1148,14 @@ const Settings: React.FC = () => {
   };
 
   return (
-    <div className="p-8 space-y-6 bg-background-light dark:bg-background-dark min-h-full">
+    <div className="p-4 sm:p-8 space-y-4 sm:space-y-6 bg-background-light dark:bg-background-dark min-h-full">
       <div className="max-w-7xl mx-auto">
         <div className="mb-6">
           <h2 className="text-3xl font-black text-gray-900 tracking-tight">Settings</h2>
           <p className="text-gray-500 mt-1 font-medium">Configure platform settings, business rules, and integrations.</p>
         </div>
 
-        <div className="flex gap-6">
+        <div className="flex gap-4 sm:gap-6">
           {/* Sidebar Navigation */}
           <div className="w-64 flex-shrink-0">
             <div className="bg-white rounded-3xl border border-gray-100 p-4 shadow-sm">

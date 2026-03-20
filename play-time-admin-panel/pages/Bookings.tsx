@@ -493,7 +493,7 @@ const Bookings: React.FC = () => {
 
   if (bookingsLoading) {
     return (
-      <div className="p-8 flex items-center justify-center h-full">
+      <div className="p-4 sm:p-8 flex items-center justify-center h-full">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
           <p className="text-gray-600 font-medium">Loading bookings...</p>
@@ -503,7 +503,7 @@ const Bookings: React.FC = () => {
   }
 
   return (
-    <div className="p-6 lg:p-8 flex flex-col h-full min-h-0 overflow-hidden bg-slate-50 dark:bg-slate-900">
+    <div className="p-4 sm:p-6 lg:p-8 flex flex-col h-full min-h-0 overflow-hidden bg-slate-50 dark:bg-slate-900">
       {/* Header Controls */}
       <div className="flex-shrink-0 flex flex-col xl:flex-row xl:items-center justify-between gap-4 xl:gap-6">
         <div className="flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-1 shadow-sm h-12 w-fit">
@@ -646,7 +646,7 @@ const Bookings: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 xl:gap-8 flex-1 min-h-0 overflow-hidden">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 sm:gap-6 xl:gap-8 flex-1 min-h-0 overflow-hidden">
         {/* Calendar View */}
         <div className="xl:col-span-8 ui-card flex flex-col min-h-0 overflow-hidden bg-white dark:bg-slate-800">
           {/* Header Row */}

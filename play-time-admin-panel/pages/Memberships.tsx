@@ -5,6 +5,7 @@ import { useMemberships } from '../hooks/useMemberships';
 import { useUsers } from '../hooks/useUsers';
 import { useVenues } from '../hooks/useVenues';
 import { useToast } from '../contexts/ToastContext';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
 import { membershipPlansCollection, membershipsCollection } from '../services/firebase';
 import { MembershipPlan, Membership } from '../types';
@@ -19,6 +20,7 @@ import { sendNotificationToAudience } from '../services/notificationService';
 const Memberships: React.FC = () => {
   const { user: currentUser } = useAuth();
   const { showSuccess, showError } = useToast();
+  const { openConfirm, confirmDialog } = useConfirmDialog();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
@@ -154,20 +156,22 @@ const Memberships: React.FC = () => {
     }
   };
 
-  const handleDeletePlan = async (planId: string) => {
-    if (!confirm('Are you sure you want to delete this plan? This will affect all associated memberships.')) {
-      return;
-    }
-
-    try {
-      setProcessing(planId);
-      await membershipPlansCollection.delete(planId);
-    } catch (error: any) {
-      console.error('Error deleting plan:', error);
-      alert('Failed to delete plan: ' + error.message);
-    } finally {
-      setProcessing(null);
-    }
+  const handleDeletePlan = (planId: string) => {
+    openConfirm({
+      title: 'Delete membership plan?',
+      message: 'This will affect all associated memberships.',
+      onConfirm: async () => {
+        try {
+          setProcessing(planId);
+          await membershipPlansCollection.delete(planId);
+        } catch (error: any) {
+          console.error('Error deleting plan:', error);
+          showError('Failed to delete plan: ' + error.message);
+        } finally {
+          setProcessing(null);
+        }
+      },
+    });
   };
 
   // Handle membership operations
@@ -224,41 +228,47 @@ const Memberships: React.FC = () => {
     }
   };
 
-  const handleCancelMembership = async (membershipId: string) => {
-    if (!confirm('Are you sure you want to cancel this membership?')) {
-      return;
-    }
-
-    try {
-      setProcessing(membershipId);
-      await membershipsCollection.update(membershipId, {
-        status: 'Cancelled',
-        updatedAt: serverTimestamp()
-      });
-      showSuccess('Membership cancelled successfully');
-    } catch (error: any) {
-      console.error('Error cancelling membership:', error);
-      showError('Failed to cancel membership: ' + error.message);
-    } finally {
-      setProcessing(null);
-    }
+  const handleCancelMembership = (membershipId: string) => {
+    openConfirm({
+      title: 'Cancel membership?',
+      message: 'The member will lose active access for this record.',
+      variant: 'warning',
+      confirmLabel: 'Cancel membership',
+      onConfirm: async () => {
+        try {
+          setProcessing(membershipId);
+          await membershipsCollection.update(membershipId, {
+            status: 'Cancelled',
+            updatedAt: serverTimestamp(),
+          });
+          showSuccess('Membership cancelled successfully');
+        } catch (error: any) {
+          console.error('Error cancelling membership:', error);
+          showError('Failed to cancel membership: ' + error.message);
+        } finally {
+          setProcessing(null);
+        }
+      },
+    });
   };
 
-  const handleDeleteMembership = async (membershipId: string) => {
-    if (!confirm('Are you sure you want to delete this membership record? This action cannot be undone.')) {
-      return;
-    }
-
-    try {
-      setProcessing(membershipId);
-      await membershipsCollection.delete(membershipId);
-      showSuccess('Membership record deleted successfully');
-    } catch (error: any) {
-      console.error('Error deleting membership:', error);
-      showError('Failed to delete membership: ' + error.message);
-    } finally {
-      setProcessing(null);
-    }
+  const handleDeleteMembership = (membershipId: string) => {
+    openConfirm({
+      title: 'Delete membership record?',
+      message: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          setProcessing(membershipId);
+          await membershipsCollection.delete(membershipId);
+          showSuccess('Membership record deleted successfully');
+        } catch (error: any) {
+          console.error('Error deleting membership:', error);
+          showError('Failed to delete membership: ' + error.message);
+        } finally {
+          setProcessing(null);
+        }
+      },
+    });
   };
 
   const handleExtendMembership = async (membershipId: string, extensionMonths: number) => {
@@ -288,7 +298,7 @@ const Memberships: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="p-8 flex items-center justify-center h-full">
+      <div className="p-4 sm:p-8 flex items-center justify-center h-full">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
           <p className="text-gray-600 font-medium">Loading memberships...</p>
@@ -298,7 +308,7 @@ const Memberships: React.FC = () => {
   }
 
   return (
-    <div className="p-8 space-y-10 bg-slate-50 dark:bg-slate-900 min-h-full">
+    <div className="p-4 sm:p-8 space-y-6 sm:space-y-10 bg-slate-50 dark:bg-slate-900 min-h-full">
       {/* Header */}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
@@ -337,7 +347,7 @@ const Memberships: React.FC = () => {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-8">
             {plans.map((plan) => {
               const planMemberships = memberships.filter(m => m.planId === plan.id);
               const activeCount = planMemberships.filter(m => m.status === 'Active').length;
@@ -345,7 +355,7 @@ const Memberships: React.FC = () => {
               return (
                 <div
                   key={plan.id}
-                  className={`ui-card group p-8 relative overflow-hidden flex flex-col ${!plan.isActive ? 'opacity-50 grayscale' : ''}`}
+                  className={`ui-card group p-4 sm:p-8 relative overflow-hidden flex flex-col ${!plan.isActive ? 'opacity-50 grayscale' : ''}`}
                 >
                   <div className="flex items-start justify-between mb-8">
                     <div>
@@ -628,6 +638,7 @@ const Memberships: React.FC = () => {
         }}
         onSave={handleSavePlan}
       />
+      {confirmDialog}
     </div>
   );
 };

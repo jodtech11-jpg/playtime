@@ -4,6 +4,7 @@ import { ordersCollection } from '../../services/firebase';
 import { formatCurrency } from '../../utils/formatUtils';
 import { getRelativeTime } from '../../utils/dateUtils';
 import { serverTimestamp } from 'firebase/firestore';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 
 interface OrderDetailsModalProps {
   isOpen: boolean;
@@ -28,6 +29,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [refundAmount, setRefundAmount] = useState<string>('');
   const [refundReason, setRefundReason] = useState('');
+  const { openConfirm, confirmDialog } = useConfirmDialog();
 
   useEffect(() => {
     if (order) {
@@ -144,39 +146,43 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
     }
   };
 
-  const handleProcessRefund = async () => {
+  const handleProcessRefund = () => {
     if (!order) return;
-    
-    if (!confirm(`Are you sure you want to refund ${formatCurrency(parseFloat(refundAmount) || order.total)}?`)) {
-      return;
-    }
 
-    try {
-      setLoading(true);
-      setError(null);
+    const refundAmt = parseFloat(refundAmount) || order.total;
+    openConfirm({
+      title: 'Process refund?',
+      message: `Refund ${formatCurrency(refundAmt)} for this order?`,
+      variant: 'warning',
+      confirmLabel: 'Refund',
+      onConfirm: async () => {
+        try {
+          setLoading(true);
+          setError(null);
 
-      const refundAmt = parseFloat(refundAmount) || order.total;
-      if (refundAmt > order.total) {
-        throw new Error('Refund amount cannot exceed order total');
-      }
+          if (refundAmt > order.total) {
+            throw new Error('Refund amount cannot exceed order total');
+          }
 
-      await ordersCollection.update(order.id, {
-        paymentStatus: refundAmt === order.total ? 'Refunded' : 'Partially Refunded',
-        status: 'Refunded',
-        refundAmount: refundAmt,
-        refundReason: refundReason.trim() || undefined,
-        refundedAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-      
-      if (onUpdate) onUpdate();
-      setRefundAmount('');
-      setRefundReason('');
-    } catch (err: any) {
-      setError(err.message || 'Failed to process refund');
-    } finally {
-      setLoading(false);
-    }
+          await ordersCollection.update(order.id, {
+            paymentStatus: refundAmt === order.total ? 'Refunded' : 'Partially Refunded',
+            status: 'Refunded',
+            refundAmount: refundAmt,
+            refundReason: refundReason.trim() || undefined,
+            refundedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+
+          if (onUpdate) onUpdate();
+          setRefundAmount('');
+          setRefundReason('');
+        } catch (err: any) {
+          setError(err.message || 'Failed to process refund');
+        } finally {
+          setLoading(false);
+        }
+      },
+    });
   };
 
   const getStatusColor = (status: string) => {
@@ -190,6 +196,8 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   const paymentStatusOptions: Order['paymentStatus'][] = ['Pending', 'Paid', 'Refunded', 'Partially Refunded'];
 
   return (
+    <>
+      {confirmDialog}
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto my-8">
         {/* Header */}
@@ -515,6 +523,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         </div>
       </div>
     </div>
+    </>
   );
 };
 

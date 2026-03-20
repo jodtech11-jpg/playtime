@@ -8,8 +8,10 @@ import { serverTimestamp } from 'firebase/firestore';
 import TicketDetailModal from '../components/modals/TicketDetailModal';
 import ArchiveModal from '../components/modals/ArchiveModal';
 import HelpCenterDocsModal from '../components/modals/HelpCenterDocsModal';
+import { useToast } from '../contexts/ToastContext';
 
 const Support: React.FC = () => {
+  const { showError } = useToast();
   const [statusFilter, setStatusFilter] = useState<'Open' | 'In Progress' | 'Resolved' | 'Closed' | 'All'>('All');
   const [processing, setProcessing] = useState<string | null>(null);
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
@@ -92,7 +94,7 @@ const Support: React.FC = () => {
       });
     } catch (error: any) {
       console.error('Error resolving ticket:', error);
-      alert('Failed to resolve ticket: ' + error.message);
+      showError('Failed to resolve ticket: ' + error.message);
     } finally {
       setProcessing(null);
     }
@@ -115,7 +117,7 @@ const Support: React.FC = () => {
 
   if (loading && tickets.length === 0) {
     return (
-      <div className="p-8 flex items-center justify-center h-full">
+      <div className="p-4 sm:p-8 flex items-center justify-center h-full">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
           <p className="text-gray-600 font-medium">Loading support tickets...</p>
@@ -125,8 +127,8 @@ const Support: React.FC = () => {
   }
 
   return (
-    <div className="p-8 space-y-10 bg-background-light dark:bg-background-dark min-h-full">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+    <div className="p-4 sm:p-8 space-y-6 sm:space-y-10 bg-background-light dark:bg-background-dark min-h-full">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 sm:gap-6">
         <div>
           <h2 className="text-3xl font-black text-gray-900 dark:text-gray-100 tracking-tight">Support & Disputes</h2>
           <p className="text-gray-500 mt-1">Manage user reports, billing disputes, and platform inquiries.</p>
@@ -147,7 +149,7 @@ const Support: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
         {[
           { label: 'Open Tickets', val: stats.openTickets.toString(), color: 'text-orange-600', bg: 'bg-orange-50', icon: 'confirmation_number' },
           { label: 'Billing Disputes', val: stats.billingDisputes.toString(), color: 'text-red-600', bg: 'bg-red-50', icon: 'payments' },

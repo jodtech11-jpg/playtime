@@ -192,7 +192,7 @@ const CmsPageView: React.FC = () => {
             <div
               className="rounded-2xl bg-white/90 dark:bg-slate-800/90 backdrop-blur border border-slate-200/80 dark:border-slate-600/50 shadow-xl overflow-hidden"
             >
-              <div className="p-8 md:p-10 lg:p-12">
+              <div className="p-4 sm:p-8 md:p-10 lg:p-12">
                 <div
                   ref={contentRef}
                   className="cms-prose prose prose-slate dark:prose-invert prose-lg max-w-none

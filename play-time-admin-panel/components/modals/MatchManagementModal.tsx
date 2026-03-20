@@ -4,6 +4,7 @@ import { tournamentsCollection } from '../../services/firebase';
 import { serverTimestamp } from 'firebase/firestore';
 import { useCourts } from '../../hooks/useCourts';
 import { formatDate } from '../../utils/dateUtils';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 
 interface MatchManagementModalProps {
   isOpen: boolean;
@@ -23,6 +24,7 @@ const MatchManagementModal: React.FC<MatchManagementModalProps> = ({
   const { courts } = useCourts({ venueId: tournament?.venueId, realtime: false });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { openConfirm, confirmDialog } = useConfirmDialog();
 
   const [round, setRound] = useState('');
   const [matchNumber, setMatchNumber] = useState<string>('');
@@ -156,24 +158,28 @@ const MatchManagementModal: React.FC<MatchManagementModalProps> = ({
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!tournament || !match) return;
-    if (!confirm(`Are you sure you want to delete this match?`)) return;
-
-    try {
-      setLoading(true);
-      const matches = (tournament.matches || []).filter(m => m.id !== match.id);
-      await tournamentsCollection.update(tournament.id, {
-        matches,
-        updatedAt: serverTimestamp()
-      });
-      onSuccess?.();
-      onClose();
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete match');
-    } finally {
-      setLoading(false);
-    }
+    openConfirm({
+      title: 'Delete match?',
+      message: 'This cannot be undone.',
+      onConfirm: async () => {
+        try {
+          setLoading(true);
+          const matches = (tournament.matches || []).filter((m) => m.id !== match.id);
+          await tournamentsCollection.update(tournament.id, {
+            matches,
+            updatedAt: serverTimestamp(),
+          });
+          onSuccess?.();
+          onClose();
+        } catch (err: any) {
+          setError(err.message || 'Failed to delete match');
+        } finally {
+          setLoading(false);
+        }
+      },
+    });
   };
 
   if (!isOpen || !tournament) return null;
@@ -182,6 +188,8 @@ const MatchManagementModal: React.FC<MatchManagementModalProps> = ({
   const approvedTeams = teams.filter(t => t.status === 'Approved' || t.status === 'Paid');
 
   return (
+    <>
+      {confirmDialog}
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white z-10">
@@ -393,6 +401,7 @@ const MatchManagementModal: React.FC<MatchManagementModalProps> = ({
         </form>
       </div>
     </div>
+    </>
   );
 };
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { signInEmailPassword, signInWithPhone, verifyOTP, signInWithGoogle, usersCollection, auth, createUserWithEmailAndPassword, resetPassword } from '../services/firebase';
 import { RecaptchaVerifier, ConfirmationResult } from 'firebase/auth';
 import VendorSignupModal from '../components/modals/VendorSignupModal';
@@ -8,6 +9,7 @@ import VendorSignupModal from '../components/modals/VendorSignupModal';
 const Login: React.FC = () => {
   const navigate = useNavigate();
   const { isAuthenticated, loading, error: authError, clearError } = useAuth();
+  const { showSuccess } = useToast();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [authMethod, setAuthMethod] = useState<'email' | 'phone' | 'google'>('email');
   const [email, setEmail] = useState('');
@@ -205,8 +207,6 @@ const Login: React.FC = () => {
   };
 
   const verifyUserAndNavigate = async (firebaseUser: any) => {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
     try {
       const userData = await usersCollection.get(firebaseUser.uid);
       
@@ -524,13 +524,11 @@ const Login: React.FC = () => {
                 <p className="text-sm text-gray-600 font-medium">
                   Don't have an account?{' '}
                   <button
-                    onClick={() => {
-                      setMode('signup');
-                      setShowSignupModal(true);
-                    }}
+                    type="button"
+                    onClick={() => setShowSignupModal(true)}
                     className="text-primary font-black hover:text-primary-hover transition-colors"
                   >
-                    Sign up here
+                    Sign up as a vendor
                   </button>
                 </p>
               </div>
@@ -649,6 +647,9 @@ const Login: React.FC = () => {
           setShowSignupModal(false);
           setMode('login');
           setError(null);
+          showSuccess(
+            'Registration submitted. Your account is pending approval — you can sign in after a super admin activates it.'
+          );
         }}
       />
     </>

@@ -7,6 +7,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useNotifications } from '../../hooks/useNotifications';
 import { useGlobalSearch } from '../../hooks/useGlobalSearch';
 import { formatCurrency } from '../../utils/formatUtils';
+import { getSearchShortcutLabel } from '../../utils/platformUtils';
 
 const Header: React.FC = () => {
   const location = useLocation();
@@ -100,15 +101,37 @@ const Header: React.FC = () => {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [showSearchDropdown]);
 
+  const searchShortcut = getSearchShortcutLabel();
+
   const getPageTitle = () => {
-    const path = location.pathname.split('/')[1];
-    if (!path) return 'Overview';
+    const segments = location.pathname.split('/').filter(Boolean);
+    if (segments.length === 0) return 'Overview';
+
+    const [first, second] = segments;
     const titleMap: Record<string, string> = {
       'frontend-cms': 'Frontend CMS',
       'quick-matches': 'Quick Matches',
       'flash-deals': 'Flash Deals',
+      'activity-log': 'Activity log',
     };
-    return titleMap[path] || path.charAt(0).toUpperCase() + path.slice(1);
+
+    if (first === 'users' && second) {
+      if (second === 'roles') return 'Roles';
+      if (second === 'permissions') return 'Permissions';
+      return 'User details';
+    }
+    if (first === 'users') return 'Users';
+
+    if (first === 'venues' && second === 'courts') return 'Court management';
+    if (first === 'venues' && second) return 'Venue details';
+    if (first === 'venues') return 'Venues';
+
+    if (first === 'tournaments' && second) return 'Tournament details';
+
+    if (titleMap[first]) return titleMap[first];
+
+    const raw = first.replace(/-/g, ' ');
+    return raw.charAt(0).toUpperCase() + raw.slice(1);
   };
 
   // Get unread notifications count (notifications from last 24 hours)
@@ -232,12 +255,15 @@ const Header: React.FC = () => {
   };
 
   return (
-    <header className="h-16 ui-header flex items-center justify-between px-4 sm:px-6 lg:px-8 shrink-0 z-10">
-      <div className="flex items-center gap-2 sm:gap-4">
-        <h2 className="text-lg font-black text-slate-900 dark:text-white tracking-tight leading-none">{getPageTitle()}</h2>
-      </div>
+    <header className="min-h-16 ui-header flex flex-wrap items-center gap-x-2 gap-y-2 sm:gap-x-4 px-4 sm:px-6 lg:px-8 py-2 lg:py-0 lg:h-16 lg:flex-nowrap shrink-0 z-10">
+      <h2 className="order-1 pl-14 lg:pl-0 flex-1 min-w-0 lg:flex-none lg:max-w-sm xl:max-w-md text-lg font-black text-slate-900 dark:text-white tracking-tight leading-none truncate">
+        {getPageTitle()}
+      </h2>
 
-      <div className="flex-1 max-w-lg px-8 hidden md:block" ref={searchRef}>
+      <div
+        className="order-3 w-full basis-full min-w-0 lg:order-2 lg:basis-0 lg:flex-1 lg:max-w-lg lg:px-4 xl:px-8"
+        ref={searchRef}
+      >
         <div className="relative group">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <span className="material-symbols-outlined text-gray-400 group-focus-within:text-primary">search</span>
@@ -247,8 +273,8 @@ const Header: React.FC = () => {
             value={searchQuery}
             onChange={handleSearchChange}
             onFocus={handleSearchFocus}
-            className="block w-full pl-10 pr-20 py-2 border border-slate-200 dark:border-slate-700 rounded-xl leading-5 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white dark:focus:bg-slate-700 sm:text-sm transition-all duration-200"
-            placeholder="Search anything... (⌘K)"
+            className="block w-full pl-10 pr-10 sm:pr-20 py-2 border border-slate-200 dark:border-slate-700 rounded-xl leading-5 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white dark:focus:bg-slate-700 sm:text-sm transition-all duration-200"
+            placeholder={`Search anything... (${searchShortcut})`}
             type="text"
           />
           {searchQuery && (
@@ -263,8 +289,8 @@ const Header: React.FC = () => {
             </button>
           )}
           {!searchQuery && (
-            <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-              <kbd className="px-2 py-1 text-[10px] font-black text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg">⌘K</kbd>
+            <div className="absolute inset-y-0 right-0 pr-3 items-center pointer-events-none hidden sm:flex">
+              <kbd className="px-2 py-1 text-[10px] font-black text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg">{searchShortcut}</kbd>
             </div>
           )}
 
@@ -272,12 +298,12 @@ const Header: React.FC = () => {
           {showSearchDropdown && debouncedQuery.length >= 2 && (
             <div className="absolute top-full left-0 right-0 mt-3 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 z-50 max-h-[70vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
               {searchLoading ? (
-                <div className="p-8 text-center">
+                <div className="p-4 sm:p-8 text-center">
                   <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-primary mb-2"></div>
                   <p className="text-sm text-gray-500 dark:text-slate-400">Searching...</p>
                 </div>
               ) : results.length === 0 ? (
-                <div className="p-8 text-center">
+                <div className="p-4 sm:p-8 text-center">
                   <span className="material-symbols-outlined text-4xl text-gray-300 dark:text-slate-600 mb-2">search_off</span>
                   <p className="text-sm text-gray-500 dark:text-slate-400">No results found</p>
                   <p className="text-xs text-gray-400 dark:text-slate-500 mt-1">Try a different search term</p>
@@ -374,7 +400,7 @@ const Header: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="order-2 lg:order-3 flex items-center gap-1 sm:gap-2 lg:gap-4 shrink-0 ml-auto lg:ml-0">
         {/* Theme Toggle Button */}
         <button
           onClick={toggleTheme}
@@ -391,8 +417,10 @@ const Header: React.FC = () => {
         {/* Notifications Button */}
         <div className="relative" ref={notificationsRef}>
           <button
+            type="button"
             onClick={handleNotificationsClick}
             className="relative p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} recent` : 'Notifications'}
           >
             <span className="material-symbols-outlined">notifications</span>
             {unreadCount > 0 && (
@@ -400,7 +428,7 @@ const Header: React.FC = () => {
             )}
           </button>
           {showNotificationsDropdown && (
-            <div className="absolute right-0 mt-3 w-96 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 z-50 max-h-[70vh] overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="absolute right-0 mt-3 w-[min(24rem,calc(100vw-1.5rem))] max-w-[calc(100vw-1.5rem)] bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 z-50 max-h-[70vh] overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
               <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                 <h3 className="font-black text-gray-900 dark:text-gray-100 text-sm">Notifications</h3>
                 <button
@@ -412,7 +440,7 @@ const Header: React.FC = () => {
               </div>
               <div className="divide-y divide-gray-100 dark:divide-gray-700">
                 {recentNotifications.length === 0 ? (
-                  <div className="p-8 text-center">
+                  <div className="p-4 sm:p-8 text-center">
                     <span className="material-symbols-outlined text-4xl text-gray-300 dark:text-gray-600 mb-2">notifications_off</span>
                     <p className="text-sm text-gray-500 dark:text-gray-400">No notifications</p>
                   </div>
@@ -471,7 +499,7 @@ const Header: React.FC = () => {
             <span className="material-symbols-outlined">calendar_today</span>
           </button>
           {showCalendarDropdown && (
-            <div className="absolute right-0 mt-3 w-72 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="absolute right-0 mt-3 w-[min(18rem,calc(100vw-1.5rem))] max-w-[calc(100vw-1.5rem)] bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
               <div className="p-4 border-b border-gray-200 dark:border-gray-700">
                 <h3 className="font-black text-gray-900 dark:text-gray-100 text-sm mb-3">Quick Actions</h3>
                 <div className="space-y-2">
@@ -555,7 +583,7 @@ const Header: React.FC = () => {
             <span className="material-symbols-outlined text-gray-500 dark:text-gray-400 text-lg hidden sm:block">arrow_drop_down</span>
           </button>
           {showProfileDropdown && (
-            <div className="absolute right-0 mt-3 w-64 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="absolute right-0 mt-3 w-[min(16rem,calc(100vw-1.5rem))] max-w-[calc(100vw-1.5rem)] bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
               <div className="p-4 border-b border-gray-200 dark:border-gray-700">
                 <div className="flex items-center gap-3">
                   <div className="size-12 rounded-full bg-cover bg-center bg-no-repeat border-2 border-primary"

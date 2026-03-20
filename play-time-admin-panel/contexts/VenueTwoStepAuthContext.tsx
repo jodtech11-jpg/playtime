@@ -191,6 +191,7 @@ export const VenueTwoStepAuthProvider: React.FC<VenueTwoStepAuthProviderProps> =
   const value: VenueTwoStepAuthContextType = {
     isVerified: verified,
     verifyWithPassword,
+    sendOTP,
     verifyWithOTP,
     clearVerification,
     verificationMethod,

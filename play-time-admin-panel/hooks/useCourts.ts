@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { courtsCollection } from '../services/firebase';
 import { Court } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 
 interface UseCourtsOptions {
   venueId?: string;
@@ -8,6 +9,7 @@ interface UseCourtsOptions {
 }
 
 export const useCourts = (options: UseCourtsOptions = {}) => {
+  const { user, isVenueManager } = useAuth();
   const [courts, setCourts] = useState<Court[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -16,6 +18,15 @@ export const useCourts = (options: UseCourtsOptions = {}) => {
     if (!options.venueId) {
       setLoading(false);
       return;
+    }
+
+    const managed = user?.managedVenues?.filter(Boolean) ?? [];
+    if (isVenueManager) {
+      if (managed.length === 0 || !managed.includes(options.venueId)) {
+        setCourts([]);
+        setLoading(false);
+        return;
+      }
     }
 
     let unsubscribe: (() => void) | undefined;
@@ -73,7 +84,7 @@ export const useCourts = (options: UseCourtsOptions = {}) => {
       mounted = false;
       if (unsubscribe) unsubscribe();
     };
-  }, [options.venueId, options.realtime]);
+  }, [options.venueId, options.realtime, isVenueManager, user?.managedVenues?.join(',')]);
 
   return { courts, loading, error };
 };

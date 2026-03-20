@@ -5,6 +5,8 @@ import { courtsCollection, syncVenueCourts } from '../../services/firebase';
 import { formatCurrency, getStatusColor } from '../../utils/formatUtils';
 import CourtFormModal from './CourtFormModal';
 import { serverTimestamp } from 'firebase/firestore';
+import { useToast } from '../../contexts/ToastContext';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 
 interface CourtManagementModalProps {
   venue: Venue;
@@ -61,27 +63,30 @@ const CourtManagementModal: React.FC<CourtManagementModalProps> = ({
     }
   };
 
-  const handleDeleteCourt = async (courtId: string) => {
-    if (!confirm('Are you sure you want to delete this court? This action cannot be undone.')) {
-      return;
-    }
-
-    try {
-      setProcessing(courtId);
-      await courtsCollection.delete(courtId);
-      await syncVenueCourts(venue.id);
-    } catch (error: any) {
-      console.error('Error deleting court:', error);
-      alert('Failed to delete court: ' + error.message);
-    } finally {
-      setProcessing(null);
-    }
+  const handleDeleteCourt = (courtId: string) => {
+    openConfirm({
+      title: 'Delete court?',
+      message: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          setProcessing(courtId);
+          await courtsCollection.delete(courtId);
+          await syncVenueCourts(venue.id);
+        } catch (error: any) {
+          console.error('Error deleting court:', error);
+          showError('Failed to delete court: ' + error.message);
+        } finally {
+          setProcessing(null);
+        }
+      },
+    });
   };
 
   if (!isOpen) return null;
 
   return (
     <>
+      {confirmDialog}
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
         <div className="bg-white dark:bg-surface-dark rounded-2xl shadow-2xl max-w-5xl w-full mx-4 max-h-[90vh] overflow-y-auto border border-gray-200 dark:border-gray-700" onClick={(e) => e.stopPropagation()}>
           {/* Header */}

@@ -4,6 +4,7 @@ import { tournamentsCollection } from '../../services/firebase';
 import { serverTimestamp } from 'firebase/firestore';
 import { useUsers } from '../../hooks/useUsers';
 import { formatCurrency } from '../../utils/formatUtils';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 
 interface TeamRegistrationModalProps {
   isOpen: boolean;
@@ -23,6 +24,7 @@ const TeamRegistrationModal: React.FC<TeamRegistrationModalProps> = ({
   const { users } = useUsers({ limit: 100 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { openConfirm, confirmDialog } = useConfirmDialog();
 
   const [teamName, setTeamName] = useState('');
   const [captainId, setCaptainId] = useState('');
@@ -144,24 +146,28 @@ const TeamRegistrationModal: React.FC<TeamRegistrationModalProps> = ({
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!tournament || !team) return;
-    if (!confirm(`Are you sure you want to delete team "${team.name}"?`)) return;
-
-    try {
-      setLoading(true);
-      const teams = (tournament.teams || []).filter(t => t.id !== team.id);
-      await tournamentsCollection.update(tournament.id, {
-        teams,
-        updatedAt: serverTimestamp()
-      });
-      onSuccess?.();
-      onClose();
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete team');
-    } finally {
-      setLoading(false);
-    }
+    openConfirm({
+      title: 'Delete team?',
+      message: `"${team.name}" will be removed from the tournament.`,
+      onConfirm: async () => {
+        try {
+          setLoading(true);
+          const teams = (tournament.teams || []).filter((t) => t.id !== team.id);
+          await tournamentsCollection.update(tournament.id, {
+            teams,
+            updatedAt: serverTimestamp(),
+          });
+          onSuccess?.();
+          onClose();
+        } catch (err: any) {
+          setError(err.message || 'Failed to delete team');
+        } finally {
+          setLoading(false);
+        }
+      },
+    });
   };
 
   if (!isOpen || !tournament) return null;
@@ -172,6 +178,8 @@ const TeamRegistrationModal: React.FC<TeamRegistrationModalProps> = ({
   const canAddTeam = !tournament.maxTeams || totalTeams < tournament.maxTeams;
 
   return (
+    <>
+      {confirmDialog}
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white z-10">
@@ -389,6 +397,7 @@ const TeamRegistrationModal: React.FC<TeamRegistrationModalProps> = ({
         </form>
       </div>
     </div>
+    </>
   );
 };
 

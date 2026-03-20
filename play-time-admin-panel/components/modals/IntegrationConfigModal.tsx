@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AppSettings } from '../../types';
+import { useToast } from '../../contexts/ToastContext';
 
 // Password Input Component with visibility toggle
 const PasswordInput: React.FC<{
@@ -50,6 +51,7 @@ const IntegrationConfigModal: React.FC<IntegrationConfigModalProps> = ({
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const { showWarning, showError } = useToast();
 
   useEffect(() => {
     if (isOpen) {
@@ -108,12 +110,14 @@ const IntegrationConfigModal: React.FC<IntegrationConfigModalProps> = ({
       // Validate required fields based on integration type
       if (integration === 'razorpay') {
         if (!mergedConfig.apiKey || !mergedConfig.apiSecret) {
-          alert('Please fill in all required fields');
+          showWarning('Please fill in all required fields');
+          setSaving(false);
           return;
         }
       } else if (integration === 'whatsapp') {
         if (!mergedConfig.apiKey || !mergedConfig.phoneNumberId || !mergedConfig.businessAccountId) {
-          alert('Please fill in all required fields');
+          showWarning('Please fill in all required fields');
+          setSaving(false);
           return;
         }
       }
@@ -130,7 +134,7 @@ const IntegrationConfigModal: React.FC<IntegrationConfigModalProps> = ({
       onClose();
     } catch (error: any) {
       console.error('Error saving integration config:', error);
-      alert('Failed to save configuration: ' + error.message);
+      showError('Failed to save configuration: ' + error.message);
     } finally {
       setSaving(false);
     }
@@ -247,7 +251,7 @@ const IntegrationConfigModal: React.FC<IntegrationConfigModalProps> = ({
         </div>
 
         {/* Content */}
-        <div className="p-8 space-y-6">
+        <div className="p-4 sm:p-8 space-y-6">
           {config.fields.map((field) => (
             <div key={field.key} className="space-y-2">
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">

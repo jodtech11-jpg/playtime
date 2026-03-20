@@ -9,9 +9,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { formatDate, getRelativeTime } from '../utils/dateUtils';
 import { serverTimestamp } from 'firebase/firestore';
 import HistoryLogModal from '../components/modals/HistoryLogModal';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 
 const Moderation: React.FC = () => {
   const { user } = useAuth();
+  const { showError } = useToast();
+  const { openConfirm, confirmDialog } = useConfirmDialog();
   const { posts: allPosts } = usePosts({ realtime: true });
   const { posts: reportedPosts } = useReportedPosts();
   const { posts: pendingPosts } = usePendingPosts();
@@ -88,86 +92,84 @@ const Moderation: React.FC = () => {
     return allReports.filter(r => r.postId === postId && r.status === 'Pending');
   };
 
-  const handleRemovePost = async (postId: string) => {
-    if (!confirm('Are you sure you want to remove this post? This action cannot be undone.')) {
-      return;
-    }
+  const handleRemovePost = (postId: string) => {
+    openConfirm({
+      title: 'Remove post?',
+      message: 'This action cannot be undone.',
+      onConfirm: async () => {
+        setLocalRemovedPostIds((prev) => new Set(prev).add(postId));
 
-    // Optimistic update — hide post immediately
-    setLocalRemovedPostIds(prev => new Set(prev).add(postId));
+        try {
+          setProcessing(postId);
+          await postsCollection.update(postId, {
+            status: 'Removed',
+            updatedAt: serverTimestamp(),
+          });
 
-    try {
-      setProcessing(postId);
-      await postsCollection.update(postId, {
-        status: 'Removed',
-        updatedAt: serverTimestamp()
-      });
-
-      // Update all pending reports for this post
-      const postReports = getPostReports(postId);
-      for (const report of postReports) {
-        await reportsCollection.update(report.id, {
-          status: 'Action Taken',
-          actionTaken: 'Post Removed',
-          reviewedBy: user?.id,
-          reviewedAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-      }
-    } catch (error: any) {
-      console.error('Error removing post:', error);
-      // Rollback optimistic update
-      setLocalRemovedPostIds(prev => {
-        const next = new Set(prev);
-        next.delete(postId);
-        return next;
-      });
-      alert('Failed to remove post: ' + error.message);
-    } finally {
-      setProcessing(null);
-    }
+          const postReports = getPostReports(postId);
+          for (const report of postReports) {
+            await reportsCollection.update(report.id, {
+              status: 'Action Taken',
+              actionTaken: 'Post Removed',
+              reviewedBy: user?.id,
+              reviewedAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+          }
+        } catch (error: any) {
+          console.error('Error removing post:', error);
+          setLocalRemovedPostIds((prev) => {
+            const next = new Set(prev);
+            next.delete(postId);
+            return next;
+          });
+          showError('Failed to remove post: ' + error.message);
+        } finally {
+          setProcessing(null);
+        }
+      },
+    });
   };
 
-  const handleBanUser = async (userId: string, postId: string) => {
-    if (!confirm('Are you sure you want to ban this user? They will not be able to post or interact.')) {
-      return;
-    }
+  const handleBanUser = (userId: string, postId: string) => {
+    openConfirm({
+      title: 'Ban user?',
+      message: 'They will not be able to post or interact. Their posts will be removed.',
+      onConfirm: async () => {
+        try {
+          setProcessing(`ban-${userId}`);
 
-    try {
-      setProcessing(`ban-${userId}`);
-      
-      // Update user status to Inactive (banned)
-      await usersCollection.update(userId, {
-        status: 'Inactive',
-        updatedAt: serverTimestamp()
-      });
+          await usersCollection.update(userId, {
+            status: 'Inactive',
+            updatedAt: serverTimestamp(),
+          });
 
-      // Remove all posts by this user
-      const userPosts = allPosts.filter(p => p.userId === userId);
-      for (const post of userPosts) {
-        await postsCollection.update(post.id, {
-          status: 'Removed',
-          updatedAt: serverTimestamp()
-        });
-      }
+          const userPosts = allPosts.filter((p) => p.userId === userId);
+          for (const post of userPosts) {
+            await postsCollection.update(post.id, {
+              status: 'Removed',
+              updatedAt: serverTimestamp(),
+            });
+          }
 
-      // Update reports
-      const postReports = getPostReports(postId);
-      for (const report of postReports) {
-        await reportsCollection.update(report.id, {
-          status: 'Action Taken',
-          actionTaken: 'User Banned',
-          reviewedBy: user?.id,
-          reviewedAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-      }
-    } catch (error: any) {
-      console.error('Error banning user:', error);
-      alert('Failed to ban user: ' + error.message);
-    } finally {
-      setProcessing(null);
-    }
+          const postReports = getPostReports(postId);
+          for (const report of postReports) {
+            await reportsCollection.update(report.id, {
+              status: 'Action Taken',
+              actionTaken: 'User Banned',
+              reviewedBy: user?.id,
+              reviewedAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+          }
+        } catch (error: any) {
+          console.error('Error banning user:', error);
+          showError('Failed to ban user: ' + error.message);
+        } finally {
+          setProcessing(null);
+        }
+      },
+    });
   };
 
   const handleDismissReport = async (reportId: string) => {
@@ -181,7 +183,7 @@ const Moderation: React.FC = () => {
       });
     } catch (error: any) {
       console.error('Error dismissing report:', error);
-      alert('Failed to dismiss report: ' + error.message);
+      showError('Failed to dismiss report: ' + error.message);
     } finally {
       setProcessing(null);
     }
@@ -196,34 +198,38 @@ const Moderation: React.FC = () => {
       });
     } catch (error: any) {
       console.error('Error approving post:', error);
-      alert('Failed to approve post: ' + error.message);
+      showError('Failed to approve post: ' + error.message);
     } finally {
       setProcessing(null);
     }
   };
 
-  const handleRejectPost = async (postId: string) => {
-    if (!confirm('Are you sure you want to reject this post?')) {
-      return;
-    }
-
-    try {
-      setProcessing(postId);
-      await postsCollection.update(postId, {
-        status: 'Rejected',
-        updatedAt: serverTimestamp()
-      });
-    } catch (error: any) {
-      console.error('Error rejecting post:', error);
-      alert('Failed to reject post: ' + error.message);
-    } finally {
-      setProcessing(null);
-    }
+  const handleRejectPost = (postId: string) => {
+    openConfirm({
+      title: 'Reject post?',
+      message: 'The post will be marked as rejected.',
+      variant: 'warning',
+      confirmLabel: 'Reject',
+      onConfirm: async () => {
+        try {
+          setProcessing(postId);
+          await postsCollection.update(postId, {
+            status: 'Rejected',
+            updatedAt: serverTimestamp(),
+          });
+        } catch (error: any) {
+          console.error('Error rejecting post:', error);
+          showError('Failed to reject post: ' + error.message);
+        } finally {
+          setProcessing(null);
+        }
+      },
+    });
   };
 
   return (
-    <div className="p-8 space-y-8 h-full bg-background-light dark:bg-background-dark">
-      <div className="max-w-7xl mx-auto space-y-8">
+    <div className="p-4 sm:p-8 space-y-6 sm:space-y-8 h-full bg-background-light dark:bg-background-dark">
+      <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <h1 className="text-3xl font-black text-gray-900 dark:text-gray-100 tracking-tight">Feed Moderation Queue</h1>
@@ -300,7 +306,7 @@ const Moderation: React.FC = () => {
           ))}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start pb-10">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8 items-start pb-10">
           {filteredPosts.length === 0 ? (
             <div className="lg:col-span-2 text-center py-12">
               <span className="material-symbols-outlined text-6xl text-gray-300 mb-4">check_circle</span>
@@ -507,6 +513,7 @@ const Moderation: React.FC = () => {
         posts={allPosts}
         users={users}
       />
+      {confirmDialog}
     </div>
   );
 };

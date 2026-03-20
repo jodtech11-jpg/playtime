@@ -5,6 +5,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
 import { formatDate, getRelativeTime } from '../utils/dateUtils';
 import { serverTimestamp } from 'firebase/firestore';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 
 // Default permissions - these are always available
 const DEFAULT_PERMISSIONS: Permission[] = [
@@ -53,6 +55,8 @@ const DEFAULT_PERMISSIONS: Permission[] = [
 
 const RoleManagement: React.FC = () => {
   const { user: currentUser } = useAuth();
+  const { showError, showWarning } = useToast();
+  const { openConfirm, confirmDialog } = useConfirmDialog();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
   const [roles, setRoles] = useState<RoleDefinition[]>([]);
   const [loading, setLoading] = useState(true);
@@ -197,7 +201,7 @@ const RoleManagement: React.FC = () => {
       
       if (selectedRole) {
         if (selectedRole.isSystem) {
-          alert('System roles cannot be modified');
+          showWarning('System roles cannot be modified');
           setProcessing(null);
           return;
         }
@@ -233,40 +237,41 @@ const RoleManagement: React.FC = () => {
     } catch (err: any) {
       console.error('Error saving role:', err);
       setProcessing(null);
-      alert(`Failed to save role: ${err.message}`);
+      showError(`Failed to save role: ${err.message}`);
     }
   };
 
-  const handleDeleteRole = async (roleId: string) => {
+  const handleDeleteRole = (roleId: string) => {
     const role = roles.find(r => r.id === roleId);
     if (role?.isSystem) {
-      alert('System roles cannot be deleted');
+      showWarning('System roles cannot be deleted');
       return;
     }
 
-    if (!confirm('Are you sure you want to delete this role? Users with this role will need to be reassigned.')) {
-      return;
-    }
+    openConfirm({
+      title: 'Delete role?',
+      message: 'Users with this role will need to be reassigned.',
+      onConfirm: async () => {
+        try {
+          setProcessing(roleId);
+          await rolesCollection.delete(roleId);
+          setProcessing(null);
 
-    try {
-      setProcessing(roleId);
-      await rolesCollection.delete(roleId);
-      setProcessing(null);
-      
-      // Refresh roles from Firestore
-      const customRoles = await rolesCollection.getAll() as RoleDefinition[];
-      const allRoles = [...systemRoles];
-      customRoles.forEach(customRole => {
-        if (!systemRoles.find(sr => sr.id === customRole.id)) {
-          allRoles.push(customRole);
+          const customRoles = await rolesCollection.getAll() as RoleDefinition[];
+          const allRoles = [...systemRoles];
+          customRoles.forEach((customRole) => {
+            if (!systemRoles.find((sr) => sr.id === customRole.id)) {
+              allRoles.push(customRole);
+            }
+          });
+          setRoles(allRoles);
+        } catch (err: any) {
+          console.error('Error deleting role:', err);
+          setProcessing(null);
+          showError(`Failed to delete role: ${err.message}`);
         }
-      });
-      setRoles(allRoles);
-    } catch (err: any) {
-      console.error('Error deleting role:', err);
-      setProcessing(null);
-      alert(`Failed to delete role: ${err.message}`);
-    }
+      },
+    });
   };
 
   if (loading) {
@@ -292,7 +297,7 @@ const RoleManagement: React.FC = () => {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -414,6 +419,7 @@ const RoleManagement: React.FC = () => {
           availablePermissions={availablePermissions}
         />
       )}
+      {confirmDialog}
     </div>
   );
 };

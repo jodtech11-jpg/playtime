@@ -5,12 +5,14 @@ import { cmsPagesCollection } from '../services/firebase';
 import { serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
 import CmsPageFormModal from '../components/modals/CmsPageFormModal';
 
 const FrontendCms: React.FC = () => {
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
+  const { openConfirm, confirmDialog } = useConfirmDialog();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
   const { pages, loading } = useCmsPages({ realtime: true });
   const [showFormModal, setShowFormModal] = useState(false);
@@ -58,18 +60,23 @@ const FrontendCms: React.FC = () => {
     }
   };
 
-  const handleDeletePage = async (page: CmsPage) => {
-    if (!confirm(`Delete page "${page.title}"? This cannot be undone.`)) return;
-    try {
-      setProcessing(page.id);
-      await cmsPagesCollection.delete(page.id);
-      showSuccess('Page deleted');
-    } catch (err: any) {
-      console.error('Error deleting CMS page:', err);
-      showError('Failed to delete: ' + (err?.message || 'Unknown error'));
-    } finally {
-      setProcessing(null);
-    }
+  const handleDeletePage = (page: CmsPage) => {
+    openConfirm({
+      title: 'Delete page?',
+      message: `"${page.title}" will be permanently removed.`,
+      onConfirm: async () => {
+        try {
+          setProcessing(page.id);
+          await cmsPagesCollection.delete(page.id);
+          showSuccess('Page deleted');
+        } catch (err: any) {
+          console.error('Error deleting CMS page:', err);
+          showError('Failed to delete: ' + (err?.message || 'Unknown error'));
+        } finally {
+          setProcessing(null);
+        }
+      },
+    });
   };
 
   useEffect(() => {
@@ -84,7 +91,7 @@ const FrontendCms: React.FC = () => {
   });
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">Frontend CMS</h1>
@@ -199,6 +206,7 @@ const FrontendCms: React.FC = () => {
         onSave={handleSavePage}
         page={editingPage}
       />
+      {confirmDialog}
     </div>
   );
 };

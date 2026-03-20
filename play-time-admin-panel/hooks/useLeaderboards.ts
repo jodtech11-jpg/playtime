@@ -29,18 +29,42 @@ export const useLeaderboards = (options: UseLeaderboardsOptions = {}) => {
 
         const filters: any[] = [];
 
-        // Filter by venue if venue manager
-        if (isVenueManager && user.managedVenues && user.managedVenues.length > 0) {
-          filters.push({
-            field: 'venueId',
-            operator: 'in',
-            value: user.managedVenues
-          });
+        const managed = user.managedVenues?.filter(Boolean) ?? [];
+        if (isVenueManager) {
+          if (managed.length === 0) {
+            setLeaderboards([]);
+            setLoading(false);
+            return;
+          }
+          if (options.venueId && !managed.includes(options.venueId)) {
+            setLeaderboards([]);
+            setLoading(false);
+            return;
+          }
+          if (options.venueId) {
+            filters.push({
+              field: 'venueId',
+              operator: '==',
+              value: options.venueId,
+            });
+          } else {
+            const ids = managed.slice(0, 10);
+            if (managed.length > 10) {
+              console.warn(
+                'useLeaderboards: venue manager has more than 10 managedVenues; only the first 10 are queried.'
+              );
+            }
+            filters.push({
+              field: 'venueId',
+              operator: 'in',
+              value: ids,
+            });
+          }
         } else if (options.venueId) {
           filters.push({
             field: 'venueId',
             operator: '==',
-            value: options.venueId
+            value: options.venueId,
           });
         }
 

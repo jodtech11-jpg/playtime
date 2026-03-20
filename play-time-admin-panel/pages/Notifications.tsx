@@ -8,10 +8,12 @@ import { getRelativeTime } from '../utils/dateUtils';
 import { useAuth } from '../contexts/AuthContext';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
 import { useToast } from '../contexts/ToastContext';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 
 const Notifications: React.FC = () => {
   const { user } = useAuth();
-  const { showSuccess, showError } = useToast();
+  const { showSuccess, showError, showWarning } = useToast();
+  const { openConfirm, confirmDialog } = useConfirmDialog();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
   // Use stable realtime parameter
   const { notifications, loading, error, createNotification, updateNotification, sendNotification, deleteNotification } = useNotifications(true);
@@ -112,22 +114,22 @@ const Notifications: React.FC = () => {
 
   const handleSendNotification = async () => {
     if (!formData.title.trim() || !formData.body.trim()) {
-      alert('Please fill in title and body');
+      showWarning('Please fill in title and body');
       return;
     }
 
     if (formData.channels.length === 0) {
-      alert('Please select at least one delivery channel');
+      showWarning('Please select at least one delivery channel');
       return;
     }
 
     if (formData.targetAudience === 'Specific Users' && formData.targetUserIds.length === 0) {
-      alert('Please select at least one user');
+      showWarning('Please select at least one user');
       return;
     }
 
     if (formData.targetAudience === 'Venue Users' && !formData.targetVenueId) {
-      alert('Please select a venue');
+      showWarning('Please select a venue');
       return;
     }
 
@@ -189,40 +191,51 @@ const Notifications: React.FC = () => {
     }
   };
 
-  const handleResendNotification = async (notificationId: string) => {
-    if (!confirm('Are you sure you want to resend this notification?')) return;
-
-    try {
-      setSending(notificationId);
-      // Resend with default channels (push)
-      await sendNotification(notificationId, { channels: ['push'] });
-      showSuccess('Notification resent successfully!');
-    } catch (error: any) {
-      console.error('Error resending notification:', error);
-      const errorMessage = error.message || 'Failed to resend notification';
-      
-      // Check if it's an FCM configuration error
-      if (errorMessage.includes('FCM server key not configured') || 
-          errorMessage.includes('FCM')) {
-        showError('Push notifications are not configured. Please set up FCM in Settings or use WhatsApp channel.');
-      } else {
-        showError(errorMessage);
-      }
-    } finally {
-      setSending(null);
-    }
+  const handleResendNotification = (notificationId: string) => {
+    openConfirm({
+      title: 'Resend notification?',
+      message: 'This will send the notification again using the push channel.',
+      variant: 'default',
+      confirmLabel: 'Resend',
+      onConfirm: async () => {
+        try {
+          setSending(notificationId);
+          await sendNotification(notificationId, { channels: ['push'] });
+          showSuccess('Notification resent successfully!');
+        } catch (error: any) {
+          console.error('Error resending notification:', error);
+          const errorMessage = error.message || 'Failed to resend notification';
+          if (
+            errorMessage.includes('FCM server key not configured') ||
+            errorMessage.includes('FCM')
+          ) {
+            showError(
+              'Push notifications are not configured. Please set up FCM in Settings or use WhatsApp channel.'
+            );
+          } else {
+            showError(errorMessage);
+          }
+        } finally {
+          setSending(null);
+        }
+      },
+    });
   };
 
-  const handleDeleteNotification = async (notificationId: string) => {
-    if (!confirm('Are you sure you want to delete this notification?')) return;
-
-    try {
-      await deleteNotification(notificationId);
-      showSuccess('Notification deleted successfully!');
-    } catch (error: any) {
-      console.error('Error deleting notification:', error);
-      showError('Failed to delete notification: ' + error.message);
-    }
+  const handleDeleteNotification = (notificationId: string) => {
+    openConfirm({
+      title: 'Delete notification?',
+      message: 'This will permanently remove the notification from the list.',
+      onConfirm: async () => {
+        try {
+          await deleteNotification(notificationId);
+          showSuccess('Notification deleted successfully!');
+        } catch (error: any) {
+          console.error('Error deleting notification:', error);
+          showError('Failed to delete notification: ' + error.message);
+        }
+      },
+    });
   };
 
   const handleViewNotification = (notification: Notification) => {
@@ -330,7 +343,7 @@ const Notifications: React.FC = () => {
 
   if (loading && notifications.length === 0 && !error) {
     return (
-      <div className="p-8 flex items-center justify-center h-full">
+      <div className="p-4 sm:p-8 flex items-center justify-center h-full">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
           <p className="text-gray-600 font-medium">Loading notifications...</p>
@@ -341,7 +354,7 @@ const Notifications: React.FC = () => {
 
   if (error && notifications.length === 0) {
     return (
-      <div className="p-8 flex items-center justify-center h-full">
+      <div className="p-4 sm:p-8 flex items-center justify-center h-full">
         <div className="text-center">
           <span className="material-symbols-outlined text-6xl text-red-400 mb-4">error</span>
           <p className="text-gray-600 font-medium mb-2">Error loading notifications</p>
@@ -352,7 +365,7 @@ const Notifications: React.FC = () => {
   }
 
   return (
-    <div className="p-8 space-y-10 bg-background-light dark:bg-background-dark min-h-full">
+    <div className="p-4 sm:p-8 space-y-6 sm:space-y-10 bg-background-light dark:bg-background-dark min-h-full">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <h2 className="text-3xl font-black text-gray-900 dark:text-gray-100 tracking-tight">Push Notifications</h2>
@@ -391,7 +404,7 @@ const Notifications: React.FC = () => {
       )}
 
       {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 sm:gap-6">
         <div className="bg-white dark:bg-surface-dark rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm p-6">
           <div className="text-3xl font-black text-gray-900 dark:text-gray-100">{stats.total}</div>
           <div className="text-sm text-gray-500 mt-1 font-medium">Total Notifications</div>
@@ -814,7 +827,7 @@ const Notifications: React.FC = () => {
       {showViewModal && selectedNotification && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
-            <div className="p-8 space-y-6">
+            <div className="p-4 sm:p-8 space-y-6">
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-black text-gray-900">Notification Details</h2>
                 <button
@@ -950,7 +963,7 @@ const Notifications: React.FC = () => {
       {showEditModal && selectedNotification && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
-            <div className="p-8 space-y-6">
+            <div className="p-4 sm:p-8 space-y-6">
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-black text-gray-900">Edit Notification</h2>
                 <button
@@ -1123,6 +1136,7 @@ const Notifications: React.FC = () => {
           </div>
         </div>
       )}
+      {confirmDialog}
     </div>
   );
 };

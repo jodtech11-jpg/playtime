@@ -29,10 +29,12 @@ const VenueDetail: React.FC = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [processing, setProcessing] = useState<string | null>(null);
 
-  // Filter bookings for venue managers
+  // Filter bookings for venue managers (empty managedVenues must not show all bookings)
   const filteredBookings = useMemo(() => {
-    if (!isVenueManager || !currentUser?.managedVenues) return bookings;
-    return bookings.filter(b => currentUser.managedVenues?.includes(b.venueId));
+    if (!isVenueManager) return bookings;
+    const allowed = currentUser?.managedVenues?.filter(Boolean) ?? [];
+    if (allowed.length === 0) return [];
+    return bookings.filter(b => allowed.includes(b.venueId));
   }, [bookings, isVenueManager, currentUser?.managedVenues]);
 
   const manager = useMemo(() => {
@@ -102,7 +104,7 @@ const VenueDetail: React.FC = () => {
   const primaryImage = venue.images && venue.images.length > 0 ? venue.images[0] : 'https://via.placeholder.com/800x400?text=No+Image';
 
   return (
-    <div className="p-8 space-y-10 bg-slate-50 dark:bg-slate-900 min-h-full">
+    <div className="p-4 sm:p-8 space-y-6 sm:space-y-10 bg-slate-50 dark:bg-slate-900 min-h-full">
       {/* Breadcrumb */}
       <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-widest">
         <button onClick={() => navigate('/venues')} className="hover:text-primary transition-colors">
@@ -224,7 +226,7 @@ const VenueDetail: React.FC = () => {
               <h2 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none">Facility Details</h2>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-8">
               <div className="space-y-6">
                 <div className="flex items-center gap-4">
                   <div className="size-10 rounded-xl bg-slate-50 dark:bg-slate-900 flex items-center justify-center text-slate-400">
@@ -405,7 +407,7 @@ const VenueDetail: React.FC = () => {
         </div>
 
         {/* Sidebar */}
-        <div className="space-y-8">
+        <div className="space-y-6 sm:space-y-8">
           {/* Manager Info */}
           <div className="ui-card p-6 group">
             <div className="flex items-center gap-2 mb-6">

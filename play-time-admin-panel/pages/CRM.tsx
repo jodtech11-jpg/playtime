@@ -13,11 +13,13 @@ import { getRelativeTime, getToday, getWeekStart, getWeekEnd, getMonthStart, get
 import { exportBookingsToPDF, exportUsersToCSV } from '../utils/exportUtils';
 import DateRangePicker from '../components/shared/DateRangePicker';
 import { serverTimestamp } from 'firebase/firestore';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 // Chart imports available for future enhancements
 // import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend } from 'recharts';
 
 const CRM: React.FC = () => {
   const { showSuccess, showError } = useToast();
+  const { openConfirm, confirmDialog } = useConfirmDialog();
   const [processing, setProcessing] = useState<string | null>(null);
   const [dateRangeType, setDateRangeType] = useState<'today' | 'week' | 'month' | 'custom'>('month');
   const [customDateRange, setCustomDateRange] = useState<{ start: Date; end: Date } | null>(null);
@@ -209,26 +211,32 @@ const CRM: React.FC = () => {
     }
   };
 
-  const handleRejectVenue = async (venueId: string) => {
-    if (!confirm('Are you sure you want to reject this venue?')) return;
-
-    try {
-      setProcessing(venueId);
-      await venuesCollection.update(venueId, {
-        status: 'Inactive',
-        updatedAt: serverTimestamp()
-      });
-    } catch (error: any) {
-      console.error('Error rejecting venue:', error);
-      showError('Failed to reject venue: ' + error.message);
-    } finally {
-      setProcessing(null);
-    }
+  const handleRejectVenue = (venueId: string) => {
+    openConfirm({
+      title: 'Reject venue?',
+      message: 'The venue will be marked inactive.',
+      variant: 'warning',
+      confirmLabel: 'Reject',
+      onConfirm: async () => {
+        try {
+          setProcessing(venueId);
+          await venuesCollection.update(venueId, {
+            status: 'Inactive',
+            updatedAt: serverTimestamp(),
+          });
+        } catch (error: any) {
+          console.error('Error rejecting venue:', error);
+          showError('Failed to reject venue: ' + error.message);
+        } finally {
+          setProcessing(null);
+        }
+      },
+    });
   };
 
   if (venuesLoading && venues.length === 0) {
     return (
-      <div className="p-8 flex items-center justify-center h-full">
+      <div className="p-4 sm:p-8 flex items-center justify-center h-full">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
           <p className="text-gray-600 dark:text-slate-400 font-medium">Loading CRM data...</p>
@@ -238,10 +246,10 @@ const CRM: React.FC = () => {
   }
 
   return (
-    <div className="p-8 space-y-10 bg-background-light dark:bg-background-dark">
-      <div className="max-w-[1400px] mx-auto space-y-10">
+    <div className="p-4 sm:p-8 space-y-6 sm:space-y-10 bg-background-light dark:bg-background-dark">
+      <div className="max-w-[1400px] mx-auto space-y-6 sm:space-y-10">
         {/* Tabs Navigation */}
-        <div className="flex items-center gap-2 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center gap-1 sm:gap-2 border-b border-gray-200 dark:border-gray-700 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 no-scrollbar">
           {[
             { id: 'overview', label: 'Overview', icon: 'dashboard' },
             { id: 'customers', label: 'Customers', icon: 'people' },
@@ -251,7 +259,7 @@ const CRM: React.FC = () => {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2 px-6 py-4 text-sm font-black uppercase tracking-widest border-b-2 transition-colors ${
+              className={`flex shrink-0 items-center gap-1.5 sm:gap-2 px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-black uppercase tracking-widest border-b-2 transition-colors ${
                 activeTab === tab.id
                   ? 'border-primary text-primary'
                   : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'
@@ -264,7 +272,7 @@ const CRM: React.FC = () => {
         </div>
 
         {/* Date Range Selector */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 sm:gap-6">
           <div className="space-y-2">
             <h3 className="text-3xl font-black text-gray-900 dark:text-gray-100 tracking-tight">
               {activeTab === 'overview' && 'Overview'}
@@ -381,7 +389,7 @@ const CRM: React.FC = () => {
         {/* Overview Tab Content */}
         {activeTab === 'overview' && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
               {[
                 { 
                   label: "Total Bookings", 
@@ -436,8 +444,8 @@ const CRM: React.FC = () => {
           ))}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm p-8 space-y-10">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8">
+          <div className="lg:col-span-2 bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 sm:p-8 space-y-6 sm:space-y-10">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-xl font-black text-gray-900 dark:text-gray-100 uppercase tracking-tight">Revenue Analytics</h3>
@@ -493,7 +501,7 @@ const CRM: React.FC = () => {
             </div>
           </div>
 
-          <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-8 flex flex-col gap-6">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-4 sm:p-8 flex flex-col gap-4 sm:gap-6">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-black text-gray-900 dark:text-white flex items-center gap-2 uppercase tracking-tight">
                 <span className="material-symbols-outlined text-orange-500">pending_actions</span>
@@ -599,6 +607,7 @@ const CRM: React.FC = () => {
         initialStartDate={customDateRange?.start}
         initialEndDate={customDateRange?.end}
       />
+      {confirmDialog}
     </div>
   );
 };
@@ -668,9 +677,9 @@ const CustomerInsightsSection: React.FC<{
   }, [topCustomers]);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       {/* Customer Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 sm:gap-6">
         {[
           { label: 'Total Customers', value: customerSegments.total.toLocaleString(), icon: 'people', color: 'text-blue-500' },
           { label: 'Active Customers', value: customerSegments.active.toLocaleString(), icon: 'person_check', color: 'text-green-500' },
@@ -688,7 +697,7 @@ const CustomerInsightsSection: React.FC<{
       </div>
 
       {/* Top Customers */}
-      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-8">
+      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-4 sm:p-8">
         <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight mb-6">Top Customers</h3>
         <div className="space-y-4">
           {topCustomers.length === 0 ? (
@@ -708,7 +717,7 @@ const CustomerInsightsSection: React.FC<{
                     <p className="text-xs text-gray-500 dark:text-slate-400">{customer.user.email}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-8">
+                <div className="flex items-center gap-4 sm:gap-8">
                   <div className="text-right">
                     <p className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest">Revenue</p>
                     <p className="text-sm font-black text-gray-900 dark:text-white">{formatCurrency(customer.revenue)}</p>
@@ -763,7 +772,7 @@ const ReportsSection: React.FC<{
   }, [bookings, dateRange]);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       {/* Report Type Selector */}
       <div className="flex items-center gap-3 bg-white dark:bg-slate-800 rounded-2xl p-2 border border-gray-100 dark:border-slate-700">
         {[
@@ -789,9 +798,9 @@ const ReportsSection: React.FC<{
 
       {/* Financial Report */}
       {selectedReport === 'financial' && (
-        <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-8">
+        <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-4 sm:p-8">
           <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight mb-6">Financial Report</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-8">
             {[
               { label: 'Total Revenue', value: formatCurrency(financialData.totalRevenue), icon: 'trending_up', color: 'text-green-600' },
               { label: 'Platform Commission', value: formatCurrency(financialData.platformCommission), icon: 'percent', color: 'text-blue-600' },
@@ -814,11 +823,11 @@ const ReportsSection: React.FC<{
 
       {/* Booking Report */}
       {selectedReport === 'booking' && (
-        <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-8 space-y-8">
+        <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-4 sm:p-8 space-y-6 sm:space-y-8">
           <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight">Booking Report</h3>
           
           {/* Booking Statistics */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 sm:gap-6">
             {(() => {
               const periodBookings = bookings.filter(b => {
                 const bookingDate = b.startTime?.toDate ? b.startTime.toDate() : new Date(b.date);
@@ -882,11 +891,11 @@ const ReportsSection: React.FC<{
 
       {/* User Report */}
       {selectedReport === 'user' && (
-        <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-8 space-y-8">
+        <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-4 sm:p-8 space-y-6 sm:space-y-8">
           <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight">User Report</h3>
           
           {/* User Statistics */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 sm:gap-6">
             {(() => {
               const activeUsers = new Set(bookings
                 .filter(b => {
@@ -929,11 +938,11 @@ const ReportsSection: React.FC<{
 
       {/* Venue Report */}
       {selectedReport === 'venue' && (
-        <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-8 space-y-8">
+        <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-4 sm:p-8 space-y-6 sm:space-y-8">
           <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight">Venue Performance Report</h3>
           
           {/* Venue Statistics */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 sm:gap-6">
             {[
               { label: 'Total Venues', value: venues.length.toLocaleString(), icon: 'location_city', color: 'text-blue-500' },
               { label: 'Active Venues', value: venues.filter(v => v.status === 'Active').length.toLocaleString(), icon: 'check_circle', color: 'text-green-500' },
@@ -1013,9 +1022,9 @@ const SupportSection: React.FC<{
   }, [tickets]);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       {/* Support Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 sm:gap-6">
         {[
           { label: 'Total Tickets', value: supportStats.total.toLocaleString(), icon: 'support_agent', color: 'text-blue-500' },
           { label: 'Open Tickets', value: supportStats.open.toLocaleString(), icon: 'pending', color: 'text-orange-500' },
@@ -1033,7 +1042,7 @@ const SupportSection: React.FC<{
       </div>
 
       {/* Recent Tickets */}
-      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-8">
+      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-4 sm:p-8">
         <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight mb-6">Recent Support Tickets</h3>
         <div className="space-y-4">
           {tickets.slice(0, 10).map(ticket => {

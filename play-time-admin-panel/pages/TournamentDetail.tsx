@@ -9,8 +9,10 @@ import { formatDate } from '../utils/dateUtils';
 import TournamentFormModal from '../components/modals/TournamentFormModal';
 import TeamRegistrationModal from '../components/modals/TeamRegistrationModal';
 import MatchManagementModal from '../components/modals/MatchManagementModal';
+import { useToast } from '../contexts/ToastContext';
 
 const TournamentDetail: React.FC = () => {
+  const { showInfo } = useToast();
   const { tournamentId } = useParams<{ tournamentId: string }>();
   const navigate = useNavigate();
 
@@ -176,7 +178,7 @@ const TournamentDetail: React.FC = () => {
 
   if (loading && tournaments.length === 0) {
     return (
-      <div className="p-8 flex items-center justify-center h-full bg-background-light dark:bg-background-dark">
+      <div className="p-4 sm:p-8 flex items-center justify-center h-full bg-background-light dark:bg-background-dark">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
           <p className="text-gray-500 dark:text-gray-400">Loading tournament...</p>
@@ -187,7 +189,7 @@ const TournamentDetail: React.FC = () => {
 
   if (!tournament) {
     return (
-      <div className="p-8 flex items-center justify-center h-full bg-background-light dark:bg-background-dark">
+      <div className="p-4 sm:p-8 flex items-center justify-center h-full bg-background-light dark:bg-background-dark">
         <div className="text-center">
           <span className="material-symbols-outlined text-6xl text-gray-300 dark:text-gray-600 mb-4 block">emoji_events</span>
           <p className="text-xl font-black text-gray-900 dark:text-gray-100 mb-2">Tournament not found</p>
@@ -210,8 +212,8 @@ const TournamentDetail: React.FC = () => {
   const regEnd = tournament.registrationEndDate?.toDate ? tournament.registrationEndDate.toDate() : new Date(tournament.registrationEndDate);
 
   return (
-    <div className="p-8 space-y-8 h-full bg-background-light dark:bg-background-dark">
-      <div className="max-w-7xl mx-auto space-y-8 pb-10">
+    <div className="p-4 sm:p-8 space-y-6 sm:space-y-8 h-full bg-background-light dark:bg-background-dark">
+      <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8 pb-10">
         {/* Breadcrumb */}
         <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">
           <button onClick={() => navigate('/tournaments')} className="hover:text-primary transition-colors">
@@ -299,8 +301,8 @@ const TournamentDetail: React.FC = () => {
         {/* Overview Tab - Tournament Details */}
         {activeTab === 'Overview' && (
           <div className="bg-white dark:bg-surface-dark border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm overflow-hidden">
-            <div className="p-8 space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="p-4 sm:p-8 space-y-6 sm:space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-8">
                 <div>
                   <h3 className="text-sm font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-2">Basic Information</h3>
                   <dl className="space-y-4">
@@ -599,13 +601,18 @@ const TournamentDetail: React.FC = () => {
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{tournament.bracketType || 'Single Elimination'} format</p>
               </div>
               <button
-                onClick={() => alert('Bracket generation feature coming soon. Please create matches manually in the Schedule tab.')}
+                onClick={() =>
+                  showInfo(
+                    'Bracket generation is coming soon. Create matches manually in the Schedule tab for now.',
+                    8000
+                  )
+                }
                 className="px-4 py-2 bg-primary text-primary-content rounded-xl text-xs font-black uppercase tracking-widest hover:shadow-lg transition-all flex items-center gap-2"
               >
                 <span className="material-symbols-outlined text-lg">auto_awesome</span> Generate Brackets
               </button>
             </div>
-            <div className="p-8">
+            <div className="p-4 sm:p-8">
               {filteredMatches.length > 0 ? (
                 <div className="space-y-6">
                   {['Finals', 'Semifinals', 'Quarterfinals', 'Round 1'].map((round) => {

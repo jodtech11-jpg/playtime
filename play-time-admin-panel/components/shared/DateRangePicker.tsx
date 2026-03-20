@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useToast } from '../../contexts/ToastContext';
 
 interface DateRangePickerProps {
   isOpen: boolean;
@@ -40,7 +41,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
     end.setHours(23, 59, 59, 999);
 
     if (start > end) {
-      alert('Start date must be before end date');
+      showError('Start date must be before end date');
       return;
     }
 

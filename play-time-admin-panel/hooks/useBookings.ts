@@ -29,7 +29,7 @@ export const useBookings = (options: UseBookingsOptions = {}) => {
 
   // Memoize user managed venues to prevent unnecessary re-renders
   const managedVenues = useMemo(() => {
-    return user?.managedVenues || [];
+    return user?.managedVenues?.filter(Boolean) ?? [];
   }, [user?.managedVenues?.join(',')]);
 
   useEffect(() => {
@@ -47,18 +47,41 @@ export const useBookings = (options: UseBookingsOptions = {}) => {
 
         const filters: any[] = [];
 
-        // Filter by venue if venue manager
-        if (isVenueManager && managedVenues.length > 0) {
-          filters.push({
-            field: 'venueId',
-            operator: 'in',
-            value: managedVenues
-          });
+        if (isVenueManager) {
+          if (managedVenues.length === 0) {
+            setBookings([]);
+            setLoading(false);
+            return;
+          }
+          if (options.venueId && !managedVenues.includes(options.venueId)) {
+            setBookings([]);
+            setLoading(false);
+            return;
+          }
+          if (options.venueId) {
+            filters.push({
+              field: 'venueId',
+              operator: '==',
+              value: options.venueId,
+            });
+          } else {
+            const ids = managedVenues.slice(0, 10);
+            if (managedVenues.length > 10) {
+              console.warn(
+                'useBookings: venue manager has more than 10 managedVenues; only the first 10 are queried (Firestore in limit).'
+              );
+            }
+            filters.push({
+              field: 'venueId',
+              operator: 'in',
+              value: ids,
+            });
+          }
         } else if (options.venueId) {
           filters.push({
             field: 'venueId',
             operator: '==',
-            value: options.venueId
+            value: options.venueId,
           });
         }
 

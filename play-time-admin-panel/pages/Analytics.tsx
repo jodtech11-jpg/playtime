@@ -69,7 +69,7 @@ const Analytics: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="p-8 flex items-center justify-center h-full">
+      <div className="p-4 sm:p-8 flex items-center justify-center h-full">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
           <p className="text-gray-600 dark:text-slate-400 font-medium">Loading analytics...</p>
@@ -79,9 +79,9 @@ const Analytics: React.FC = () => {
   }
 
   return (
-    <div className="p-8 space-y-8 bg-slate-50 dark:bg-slate-900 min-h-full">
+    <div className="p-4 sm:p-8 space-y-6 sm:space-y-8 bg-slate-50 dark:bg-slate-900 min-h-full">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 sm:gap-6">
         <div>
           <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-none">Advanced Analytics</h2>
           <p className="text-slate-500 dark:text-slate-400 mt-2 font-medium">
@@ -128,7 +128,7 @@ const Analytics: React.FC = () => {
 
       {/* Period Comparison Cards */}
       {periodComparison && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
           <div className="ui-card p-6 flex flex-col justify-between group hover:border-emerald-400/30 transition-all duration-300">
             <div className="flex items-center justify-between mb-1">
               <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Revenue Growth</span>
@@ -238,7 +238,7 @@ const Analytics: React.FC = () => {
       </div>
 
       {/* Booking Patterns - Hour and Day */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         <div className="ui-card p-6">
           <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-8">
             Hourly Heatmap
@@ -282,7 +282,7 @@ const Analytics: React.FC = () => {
 
       {/* Sport Distribution and Venue Performance */}
       {/* Sport Distribution and Venue Performance */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         <div className="ui-card p-6">
           <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-8">
             Sports Distribution

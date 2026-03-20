@@ -47,6 +47,10 @@ export interface User {
   totalXP?: number; // Total experience points
   city?: string; // User's city
   state?: string; // User's state
+  /** Set during vendor self-registration (pending approval) */
+  venueName?: string;
+  address?: string;
+  pincode?: string;
   achievements?: Array<{
     name: string;
     description?: string;

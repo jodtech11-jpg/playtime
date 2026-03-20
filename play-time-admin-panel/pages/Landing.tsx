@@ -79,7 +79,7 @@ const Landing: React.FC = () => {
             </div>
           </div>
 
-          <div className="hidden md:flex items-center gap-8 font-bold text-sm tracking-wide">
+          <div className="hidden md:flex items-center gap-4 md:gap-8 font-bold text-sm tracking-wide">
             <a href="#features" className="hover:text-primary transition-colors">Features</a>
             <a href="#mobile" className="hover:text-primary transition-colors">Mobile App</a>
             <a href="#testimonials" className="hover:text-primary transition-colors">Testimonials</a>
@@ -170,10 +170,10 @@ const Landing: React.FC = () => {
         <div className="max-w-7xl mx-auto px-6">
           <div
             ref={statsAnimation.ref}
-            className={`grid grid-cols-2 lg:grid-cols-4 gap-8 transition-all duration-1000 ${statsAnimation.isVisible ? 'opacity-100' : 'opacity-0'}`}
+            className={`grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8 transition-all duration-1000 ${statsAnimation.isVisible ? 'opacity-100' : 'opacity-0'}`}
           >
             {displayContent.stats?.map((stat, i) => (
-              <div key={i} className="glass-card p-8 rounded-3xl text-center hover:scale-105 transition-transform duration-500">
+              <div key={i} className="glass-card p-4 sm:p-8 rounded-3xl text-center hover:scale-105 transition-transform duration-500">
                 <div className="text-4xl md:text-5xl font-black text-primary mb-2 line-clamp-1">{stat.value}</div>
                 <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">{stat.label}</div>
               </div>
@@ -192,7 +192,7 @@ const Landing: React.FC = () => {
 
           <div
             ref={featuresAnimation.ref}
-            className="grid grid-cols-1 md:grid-cols-3 gap-8"
+            className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-8"
           >
             {displayContent.features?.map((feature, i) => (
               <div
@@ -260,7 +260,7 @@ const Landing: React.FC = () => {
 
           <div
             ref={testimonialsAnimation.ref}
-            className={`grid grid-cols-1 md:grid-cols-3 gap-8 transition-all duration-1000 ${testimonialsAnimation.isVisible ? 'opacity-100' : 'opacity-0'}`}
+            className={`grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-8 transition-all duration-1000 ${testimonialsAnimation.isVisible ? 'opacity-100' : 'opacity-0'}`}
           >
             {[
               { name: 'Arjun Reddy', role: 'Owner', venue: 'Olympia Courts', quote: 'The analytics changed how we price our peak hours. Revenue is up 35% in just 3 months.' },
@@ -303,7 +303,7 @@ const Landing: React.FC = () => {
 
       {/* Footer */}
       <footer className="py-20 border-t border-slate-200 dark:border-white/5 opacity-60">
-        <div className="max-w-7xl mx-auto px-6 h-20 flex flex-col md:flex-row items-center justify-between gap-8">
+        <div className="max-w-7xl mx-auto px-6 h-20 flex flex-col md:flex-row items-center justify-between gap-4 sm:gap-8">
           <div className="flex items-center gap-3 grayscale opacity-50">
             <div className="w-8 h-8 rounded-lg bg-slate-900 dark:bg-white flex items-center justify-center">
               <span className="material-symbols-outlined text-white dark:text-slate-900 text-xl font-bold">sports_tennis</span>

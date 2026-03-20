@@ -5,9 +5,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
 import { formatDate } from '../utils/dateUtils';
 import { serverTimestamp } from 'firebase/firestore';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 
 const PermissionManagement: React.FC = () => {
   const { user: currentUser } = useAuth();
+  const { showError, showWarning } = useToast();
+  const { openConfirm, confirmDialog } = useConfirmDialog();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [loading, setLoading] = useState(true);
@@ -188,48 +192,47 @@ const PermissionManagement: React.FC = () => {
     } catch (err: any) {
       console.error('Error saving permission:', err);
       setProcessing(null);
-      alert(`Failed to save permission: ${err.message}`);
+      showError(`Failed to save permission: ${err.message}`);
     }
   };
 
-  const handleDeletePermission = async (permissionId: string) => {
-    // Check if it's a default permission
-    const isDefault = defaultPermissions.some(p => p.id === permissionId);
+  const handleDeletePermission = (permissionId: string) => {
+    const isDefault = defaultPermissions.some((p) => p.id === permissionId);
     if (isDefault) {
-      alert('Default permissions cannot be deleted. They are system-defined.');
+      showWarning('Default permissions cannot be deleted. They are system-defined.');
       return;
     }
 
-    if (!confirm('Are you sure you want to delete this permission? This may affect roles using it.')) {
-      return;
-    }
+    openConfirm({
+      title: 'Delete permission?',
+      message: 'This may affect roles that use this permission.',
+      onConfirm: async () => {
+        try {
+          setProcessing(permissionId);
+          await permissionsCollection.delete(permissionId);
+          setProcessing(null);
 
-    try {
-      setProcessing(permissionId);
-      await permissionsCollection.delete(permissionId);
-      setProcessing(null);
-      
-      // Refresh permissions from Firestore
-      try {
-        const customPermissions = await permissionsCollection.getAll() as Permission[];
-        const permissionMap = new Map<string, Permission>();
-        defaultPermissions.forEach(perm => {
-          permissionMap.set(perm.id, perm);
-        });
-        customPermissions.forEach(perm => {
-          permissionMap.set(perm.id, perm);
-        });
-        setPermissions(Array.from(permissionMap.values()));
-      } catch (refreshErr) {
-        console.error('Error refreshing permissions:', refreshErr);
-        // Remove from local state if refresh fails
-        setPermissions(prevPermissions => prevPermissions.filter(p => p.id !== permissionId));
-      }
-    } catch (err: any) {
-      console.error('Error deleting permission:', err);
-      setProcessing(null);
-      alert(`Failed to delete permission: ${err.message}`);
-    }
+          try {
+            const customPermissions = await permissionsCollection.getAll() as Permission[];
+            const permissionMap = new Map<string, Permission>();
+            defaultPermissions.forEach((perm) => {
+              permissionMap.set(perm.id, perm);
+            });
+            customPermissions.forEach((perm) => {
+              permissionMap.set(perm.id, perm);
+            });
+            setPermissions(Array.from(permissionMap.values()));
+          } catch (refreshErr) {
+            console.error('Error refreshing permissions:', refreshErr);
+            setPermissions((prevPermissions) => prevPermissions.filter((p) => p.id !== permissionId));
+          }
+        } catch (err: any) {
+          console.error('Error deleting permission:', err);
+          setProcessing(null);
+          showError(`Failed to delete permission: ${err.message}`);
+        }
+      },
+    });
   };
 
   const categories = ['All', ...Array.from(new Set(permissions.map(p => p.category)))];
@@ -263,7 +266,7 @@ const PermissionManagement: React.FC = () => {
   }, {} as Record<string, Permission[]>);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -385,6 +388,7 @@ const PermissionManagement: React.FC = () => {
           onSave={handleSavePermission}
         />
       )}
+      {confirmDialog}
     </div>
   );
 };

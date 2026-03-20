@@ -10,9 +10,13 @@ import { formatCurrency, getStatusColor } from '../utils/formatUtils';
 import { formatDate } from '../utils/dateUtils';
 import TournamentFormModal from '../components/modals/TournamentFormModal';
 import SportManagementModal from '../components/modals/SportManagementModal';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 
 const Tournaments: React.FC = () => {
   const navigate = useNavigate();
+  const { showError } = useToast();
+  const { openConfirm, confirmDialog } = useConfirmDialog();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingTournament, setEditingTournament] = useState<Tournament | null>(null);
@@ -71,17 +75,19 @@ const Tournaments: React.FC = () => {
   };
 
   // Handle delete
-  const handleDelete = async (tournament: Tournament) => {
-    if (!window.confirm(`Are you sure you want to delete "${tournament.name}"? This action cannot be undone.`)) {
-      return;
-    }
-
-    try {
-      await tournamentsCollection.delete(tournament.id);
-    } catch (error: any) {
-      console.error('Error deleting tournament:', error);
-      alert('Failed to delete tournament: ' + error.message);
-    }
+  const handleDelete = (tournament: Tournament) => {
+    openConfirm({
+      title: 'Delete tournament?',
+      message: `"${tournament.name}" will be permanently removed.`,
+      onConfirm: async () => {
+        try {
+          await tournamentsCollection.delete(tournament.id);
+        } catch (error: any) {
+          console.error('Error deleting tournament:', error);
+          showError('Failed to delete tournament: ' + error.message);
+        }
+      },
+    });
   };
 
   // Handle edit
@@ -276,16 +282,16 @@ const Tournaments: React.FC = () => {
 
   if (loading && tournaments.length === 0) {
     return (
-      <div className="p-8 flex items-center justify-center h-full">
+      <div className="p-4 sm:p-8 flex items-center justify-center h-full">
         <div className="text-gray-500">Loading tournaments...</div>
       </div>
     );
   }
 
   return (
-    <div className="p-8 space-y-8 h-full bg-background-light dark:bg-background-dark">
-      <div className="max-w-7xl mx-auto space-y-8 pb-10">
-        <div className="flex flex-wrap justify-between items-end gap-6">
+    <div className="p-4 sm:p-8 space-y-6 sm:space-y-8 h-full bg-background-light dark:bg-background-dark">
+      <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8 pb-10">
+        <div className="flex flex-wrap justify-between items-end gap-4 sm:gap-6">
           <div className="space-y-2">
             <h1 className="text-4xl font-black text-gray-900 dark:text-gray-100 tracking-tight">
               Tournaments
@@ -311,7 +317,7 @@ const Tournaments: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           {[
             { 
               label: "Total Teams", 
@@ -536,6 +542,7 @@ const Tournaments: React.FC = () => {
           // Sports will update automatically via realtime subscription
         }}
       />
+      {confirmDialog}
     </div>
   );
 };

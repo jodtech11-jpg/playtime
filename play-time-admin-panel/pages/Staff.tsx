@@ -10,9 +10,13 @@ import { formatCurrency, getStatusColor } from '../utils/formatUtils';
 import { formatDate, getRelativeTime } from '../utils/dateUtils';
 import StaffFormModal from '../components/modals/StaffFormModal';
 import { serverTimestamp } from 'firebase/firestore';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 
 const Staff: React.FC = () => {
   const { user } = useAuth();
+  const { showError, showWarning } = useToast();
+  const { openConfirm, confirmDialog } = useConfirmDialog();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
   const { staff, loading: staffLoading } = useStaff({ realtime: true });
   const { staff: activeStaff } = useActiveStaff();
@@ -112,26 +116,28 @@ const Staff: React.FC = () => {
     }
   };
 
-  const handleDeleteStaff = async (staffId: string) => {
-    if (!confirm('Are you sure you want to delete this staff member? This action cannot be undone.')) {
-      return;
-    }
-
-    try {
-      setProcessing(staffId);
-      await staffCollection.delete(staffId);
-    } catch (error: any) {
-      console.error('Error deleting staff:', error);
-      alert('Failed to delete staff: ' + error.message);
-    } finally {
-      setProcessing(null);
-    }
+  const handleDeleteStaff = (staffId: string) => {
+    openConfirm({
+      title: 'Delete staff member?',
+      message: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          setProcessing(staffId);
+          await staffCollection.delete(staffId);
+        } catch (error: any) {
+          console.error('Error deleting staff:', error);
+          showError('Failed to delete staff: ' + error.message);
+        } finally {
+          setProcessing(null);
+        }
+      },
+    });
   };
 
   const handleLogExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !expenseForm.staffId || !expenseForm.title || expenseForm.amount <= 0) {
-      alert('Please fill in all required fields');
+      showWarning('Please fill in all required fields');
       return;
     }
 
@@ -165,7 +171,7 @@ const Staff: React.FC = () => {
       });
     } catch (error: any) {
       console.error('Error logging expense:', error);
-      alert('Failed to log expense: ' + error.message);
+      showError('Failed to log expense: ' + error.message);
     } finally {
       setExpenseLoading(false);
     }
@@ -185,7 +191,7 @@ const Staff: React.FC = () => {
   }
 
   return (
-    <div className="p-8 space-y-10">
+    <div className="p-4 sm:p-8 space-y-6 sm:space-y-10">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h2 className="text-3xl font-black tracking-tight text-gray-900 dark:text-gray-100">Staff & Trainer Management</h2>
@@ -200,7 +206,7 @@ const Staff: React.FC = () => {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
         {[
           {
             label: "Monthly Payroll",
@@ -242,7 +248,7 @@ const Staff: React.FC = () => {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8">
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-white dark:bg-surface-dark p-4 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm flex items-center gap-4">
             <div className="relative flex-1">
@@ -477,6 +483,7 @@ className="w-full rounded-xl border-gray-100 dark:border-gray-700 bg-background-
         }}
         onSave={handleSaveStaff}
       />
+      {confirmDialog}
     </div>
   );
 };

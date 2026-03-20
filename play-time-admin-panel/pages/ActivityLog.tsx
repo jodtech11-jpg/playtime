@@ -45,7 +45,7 @@ const ActivityLog: React.FC = () => {
   }, [userIdFilter, actionFilter]);
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
       <div className="flex flex-col gap-4 mb-6">
         <h1 className="text-2xl font-bold text-foreground-light dark:text-foreground-dark">
           Activity log

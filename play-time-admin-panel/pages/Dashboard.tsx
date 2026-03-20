@@ -254,7 +254,7 @@ const Dashboard: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="p-8 flex items-center justify-center h-full">
+      <div className="p-4 sm:p-8 flex items-center justify-center h-full">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
           <p className="text-gray-600 dark:text-gray-400 font-medium">Loading dashboard...</p>
@@ -264,7 +264,7 @@ const Dashboard: React.FC = () => {
   }
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-4 sm:p-8 space-y-6 sm:space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
@@ -327,7 +327,7 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {[
           {
             label: dateRangeType === 'today' ? "Today's Bookings" : "Bookings",
@@ -396,7 +396,7 @@ const Dashboard: React.FC = () => {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         <div className="lg:col-span-2 ui-card p-6">
           <div className="flex items-center justify-between mb-8">
             <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Revenue Trend</h3>
@@ -444,7 +444,7 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         <div className="lg:col-span-2 ui-card overflow-hidden">
           <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
             <h3 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-tight">Recent Activity</h3>
@@ -520,7 +520,7 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         <div className="ui-card overflow-hidden">
           <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
             <h3 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-tight">Top Venues by Bookings</h3>

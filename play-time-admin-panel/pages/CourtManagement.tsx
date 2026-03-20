@@ -7,6 +7,7 @@ import { Court, Venue } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
 import { useToast } from '../contexts/ToastContext';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import { formatCurrency, getStatusColor } from '../utils/formatUtils';
 import CourtFormModal from '../components/modals/CourtFormModal';
 import CourtViewModal from '../components/modals/CourtViewModal';
@@ -20,6 +21,7 @@ const CourtManagement: React.FC = () => {
   const { user, isSuperAdmin, isVenueManager } = useAuth();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
   const { showSuccess, showError } = useToast();
+  const { openConfirm, confirmDialog } = useConfirmDialog();
   const { venues, loading: venuesLoading } = useVenues({ realtime: true });
   
   // Filter venues for venue managers
@@ -151,40 +153,52 @@ const CourtManagement: React.FC = () => {
   };
 
   /** Sync courts from collection to every venue doc so mobile app shows time slots. */
-  const handleSyncAllVenuesCourts = async () => {
+  const handleSyncAllVenuesCourts = () => {
     if (!isSuperAdmin) return;
-    if (!confirm('Sync courts to all venue documents? This updates each venue so the mobile app can show available time slots.')) return;
-    setSyncingAllVenues(true);
-    try {
-      const { synced, failed } = await syncAllVenuesCourts();
-      if (failed.length > 0) {
-        showError(`Synced ${synced} venue(s). Failed: ${failed.join(', ')}`);
-      } else {
-        showSuccess(`Synced courts for ${synced} venue(s). The mobile app should now show time slots.`);
-      }
-    } catch (err: any) {
-      console.error('Sync all venues courts:', err);
-      showError('Sync failed: ' + (err?.message || err));
-    } finally {
-      setSyncingAllVenues(false);
-    }
+    openConfirm({
+      title: 'Sync all venues?',
+      message:
+        'This updates each venue document so the mobile app can show available time slots.',
+      variant: 'default',
+      confirmLabel: 'Sync all',
+      onConfirm: async () => {
+        setSyncingAllVenues(true);
+        try {
+          const { synced, failed } = await syncAllVenuesCourts();
+          if (failed.length > 0) {
+            showError(`Synced ${synced} venue(s). Failed: ${failed.join(', ')}`);
+          } else {
+            showSuccess(
+              `Synced courts for ${synced} venue(s). The mobile app should now show time slots.`
+            );
+          }
+        } catch (err: any) {
+          console.error('Sync all venues courts:', err);
+          showError('Sync failed: ' + (err?.message || err));
+        } finally {
+          setSyncingAllVenues(false);
+        }
+      },
+    });
   };
 
-  const handleDeleteCourt = async (courtId: string) => {
-    if (!confirm('Are you sure you want to delete this court? This action cannot be undone.')) {
-      return;
-    }
-
-    try {
-      setProcessing(courtId);
-      await courtsCollection.delete(courtId);
-      await syncVenueCourts(selectedVenueId);
-    } catch (error: any) {
-      console.error('Error deleting court:', error);
-      showError('Failed to delete court: ' + error.message);
-    } finally {
-      setProcessing(null);
-    }
+  const handleDeleteCourt = (courtId: string) => {
+    openConfirm({
+      title: 'Delete court?',
+      message: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          setProcessing(courtId);
+          await courtsCollection.delete(courtId);
+          await syncVenueCourts(selectedVenueId);
+        } catch (error: any) {
+          console.error('Error deleting court:', error);
+          showError('Failed to delete court: ' + error.message);
+        } finally {
+          setProcessing(null);
+        }
+      },
+    });
   };
 
   // Update selectedVenueId when venueIdParam changes
@@ -222,7 +236,7 @@ const CourtManagement: React.FC = () => {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -384,7 +398,7 @@ const CourtManagement: React.FC = () => {
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
               {filteredCourts.map((court) => {
                 const statusColors = getStatusColor(court.status);
                 return (
@@ -485,6 +499,7 @@ const CourtManagement: React.FC = () => {
           onSave={handleSaveCourt}
         />
       )}
+      {confirmDialog}
     </div>
   );
 };

@@ -11,9 +11,11 @@ import { formatCurrency } from '../utils/formatUtils';
 import { formatDate, getRelativeTime } from '../utils/dateUtils';
 import SettlementConfirmationModal from '../components/modals/SettlementConfirmationModal';
 import { createOfflinePayment } from '../services/paymentService';
+import { useToast } from '../contexts/ToastContext';
 
 const Payments: React.FC = () => {
   const { user, isSuperAdmin, isVenueManager } = useAuth();
+  const { showError } = useToast();
   const [paymentFilter, setPaymentFilter] = useState<'All' | 'Online' | 'Offline'>('All');
   const [directionFilter, setDirectionFilter] = useState<'All' | 'UserToVenue' | 'VenueToPlatform'>('All');
   const [statusFilter, setStatusFilter] = useState<'All' | Payment['status']>('All');
@@ -96,7 +98,7 @@ const Payments: React.FC = () => {
       setSelectedSettlement(null);
     } catch (error: any) {
       console.error('Error confirming settlement:', error);
-      alert('Failed to confirm settlement: ' + error.message);
+      showError('Failed to confirm settlement: ' + error.message);
     }
   };
 
@@ -104,7 +106,7 @@ const Payments: React.FC = () => {
 
   if (loading && payments.length === 0 && settlements.length === 0) {
     return (
-      <div className="p-8 flex items-center justify-center h-full">
+      <div className="p-4 sm:p-8 flex items-center justify-center h-full">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
           <p className="text-gray-600 font-medium">Loading payments...</p>
@@ -114,8 +116,8 @@ const Payments: React.FC = () => {
   }
 
   return (
-    <div className="p-8 space-y-10 bg-background-light dark:bg-background-dark min-h-full">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+    <div className="p-4 sm:p-8 space-y-6 sm:space-y-10 bg-background-light dark:bg-background-dark min-h-full">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 sm:gap-6">
         <div>
           <h2 className="text-3xl font-black text-gray-900 dark:text-gray-100 tracking-tight">Payment Management</h2>
           <p className="text-gray-500 mt-1">
@@ -125,7 +127,7 @@ const Payments: React.FC = () => {
       </div>
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 sm:gap-6">
         {[
           {
             label: 'Online Payments',

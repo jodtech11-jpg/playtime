@@ -248,7 +248,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-8 custom-scrollbar">
           <form id="invoice-form" onSubmit={handleSubmit} className="space-y-10">
             {error && (
               <div className="bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 px-5 py-4 rounded-xl text-xs font-bold flex items-center gap-3">

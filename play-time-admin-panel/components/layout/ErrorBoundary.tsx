@@ -56,7 +56,7 @@ class ErrorBoundary extends Component<Props, State> {
 
       return (
         <div className="flex items-center justify-center min-h-screen bg-background-light dark:bg-background-dark p-4">
-          <div className="max-w-2xl w-full bg-white dark:bg-surface-dark rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-8">
+          <div className="max-w-2xl w-full bg-white dark:bg-surface-dark rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-4 sm:p-8">
             <div className="flex items-center gap-4 mb-6">
               <div className="flex-shrink-0">
                 <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">

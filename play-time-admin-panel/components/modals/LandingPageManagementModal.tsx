@@ -27,7 +27,7 @@ const LandingPageManagementModal: React.FC<LandingPageManagementModalProps> = ({
   if (!isSuperAdmin) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full p-8">
+        <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full p-4 sm:p-8">
           <div className="text-center">
             <span className="material-symbols-outlined text-6xl text-red-500 mb-4">block</span>
             <h3 className="text-2xl font-black text-gray-900 mb-2">Access Denied</h3>
@@ -181,7 +181,7 @@ const LandingPageManagementModal: React.FC<LandingPageManagementModalProps> = ({
   if (loading) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-        <div className="bg-white rounded-3xl shadow-2xl p-8">
+        <div className="bg-white rounded-3xl shadow-2xl p-4 sm:p-8">
           <div className="text-center">
             <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
             <p className="text-gray-600 font-medium">Loading...</p>
@@ -209,7 +209,7 @@ const LandingPageManagementModal: React.FC<LandingPageManagementModalProps> = ({
         </div>
 
         {/* Content */}
-        <div className="p-8 space-y-8">
+        <div className="p-4 sm:p-8 space-y-8">
           {/* Hero Section */}
           <section className="space-y-4">
             <h4 className="text-lg font-black text-gray-900 uppercase tracking-tight flex items-center gap-2">

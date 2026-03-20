@@ -278,7 +278,7 @@ const Venues: React.FC = () => {
 
   if (venuesLoading) {
     return (
-      <div className="p-8 flex items-center justify-center h-full">
+      <div className="p-4 sm:p-8 flex items-center justify-center h-full">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
           <p className="text-gray-600 dark:text-gray-400 font-medium">Loading venues...</p>
@@ -292,9 +292,9 @@ const Venues: React.FC = () => {
   };
 
   return (
-    <div className="p-8 space-y-8 bg-slate-50 dark:bg-slate-900 min-h-full">
+    <div className="p-4 sm:p-8 space-y-6 sm:space-y-8 bg-slate-50 dark:bg-slate-900 min-h-full">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
         <div>
           <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-none">Venues</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-2 font-medium">Manage your sports facilities and court bookings.</p>
@@ -312,7 +312,7 @@ const Venues: React.FC = () => {
 
       {/* Statistics Cards */}
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <div className="ui-card p-6 flex flex-col justify-between group hover:border-blue-400/30 transition-all duration-300">
           <div className="flex justify-between items-start">
             <div>
@@ -505,7 +505,7 @@ const Venues: React.FC = () => {
           </button>
         </div>
       ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {paginatedVenues.map((venue) => {
             const stats = venueStats.get(venue.id) || { occupancy: 0, revenue: 0 };
             const statusColors = getStatusColor(venue.status);

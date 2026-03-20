@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { leaderboardsCollection } from '../services/firebase';
 import { serverTimestamp } from 'firebase/firestore';
 import { useToast } from '../contexts/ToastContext';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import LeaderboardFormModal from '../components/modals/LeaderboardFormModal';
 
 const Leaderboards: React.FC = () => {
@@ -67,28 +68,30 @@ const Leaderboards: React.FC = () => {
     }
   };
 
-  const handleDeleteLeaderboard = async (leaderboardId: string) => {
-    if (!confirm('Are you sure you want to delete this leaderboard?')) {
-      return;
-    }
-
-    try {
-      setProcessing(leaderboardId);
-      await leaderboardsCollection.delete(leaderboardId);
-      showSuccess('Leaderboard deleted successfully');
-    } catch (error: any) {
-      console.error('Error deleting leaderboard:', error);
-      showError('Failed to delete leaderboard: ' + error.message);
-    } finally {
-      setProcessing(null);
-    }
+  const handleDeleteLeaderboard = (leaderboardId: string) => {
+    openConfirm({
+      title: 'Delete leaderboard?',
+      message: 'This cannot be undone.',
+      onConfirm: async () => {
+        try {
+          setProcessing(leaderboardId);
+          await leaderboardsCollection.delete(leaderboardId);
+          showSuccess('Leaderboard deleted successfully');
+        } catch (error: any) {
+          console.error('Error deleting leaderboard:', error);
+          showError('Failed to delete leaderboard: ' + error.message);
+        } finally {
+          setProcessing(null);
+        }
+      },
+    });
   };
 
   const sports = ['All', 'Football', 'Cricket', 'Badminton', 'Tennis', 'Basketball'];
   const types = ['All', 'Global', 'Venue', 'Monthly', 'All-Time'];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -217,6 +220,7 @@ const Leaderboards: React.FC = () => {
         onSave={handleSaveLeaderboard}
         leaderboard={selectedLeaderboard}
       />
+      {confirmDialog}
     </div>
   );
 };

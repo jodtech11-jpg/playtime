@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { flashDealsCollection } from '../services/firebase';
 import { serverTimestamp } from 'firebase/firestore';
 import { useToast } from '../contexts/ToastContext';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import FlashDealFormModal from '../components/modals/FlashDealFormModal';
 import { formatDate, formatTime } from '../utils/dateUtils';
 import { formatCurrency } from '../utils/formatUtils';
@@ -12,6 +13,7 @@ import { formatCurrency } from '../utils/formatUtils';
 const FlashDeals: React.FC = () => {
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
+  const { openConfirm, confirmDialog } = useConfirmDialog();
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedDeal, setSelectedDeal] = useState<FlashDeal | null>(null);
@@ -102,21 +104,23 @@ const FlashDeals: React.FC = () => {
     }
   };
 
-  const handleDeleteDeal = async (dealId: string) => {
-    if (!confirm('Are you sure you want to delete this flash deal?')) {
-      return;
-    }
-
-    try {
-      setProcessing(dealId);
-      await flashDealsCollection.delete(dealId);
-      showSuccess('Flash deal deleted successfully');
-    } catch (error: any) {
-      console.error('Error deleting flash deal:', error);
-      showError('Failed to delete flash deal: ' + error.message);
-    } finally {
-      setProcessing(null);
-    }
+  const handleDeleteDeal = (dealId: string) => {
+    openConfirm({
+      title: 'Delete flash deal?',
+      message: 'This cannot be undone.',
+      onConfirm: async () => {
+        try {
+          setProcessing(dealId);
+          await flashDealsCollection.delete(dealId);
+          showSuccess('Flash deal deleted successfully');
+        } catch (error: any) {
+          console.error('Error deleting flash deal:', error);
+          showError('Failed to delete flash deal: ' + error.message);
+        } finally {
+          setProcessing(null);
+        }
+      },
+    });
   };
 
   const handleUpdateStatus = async (dealId: string, newStatus: FlashDeal['status']) => {
@@ -153,7 +157,7 @@ const FlashDeals: React.FC = () => {
   const statuses = ['All', 'Upcoming', 'Active', 'Expired', 'Cancelled'];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -311,6 +315,7 @@ const FlashDeals: React.FC = () => {
         onSave={handleSaveDeal}
         deal={selectedDeal}
       />
+      {confirmDialog}
     </div>
   );
 };

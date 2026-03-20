@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Category } from '../../types';
 import { categoriesCollection } from '../../services/firebase';
 import { serverTimestamp } from 'firebase/firestore';
+import { useToast } from '../../contexts/ToastContext';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 
 interface CategoryManagementModalProps {
   isOpen: boolean;
@@ -26,6 +28,8 @@ const CategoryManagementModal: React.FC<CategoryManagementModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
+  const { showError } = useToast();
+  const { openConfirm, confirmDialog } = useConfirmDialog();
 
   useEffect(() => {
     if (editingCategory) {
@@ -96,20 +100,22 @@ const CategoryManagementModal: React.FC<CategoryManagementModalProps> = ({
     setEditingCategory(category);
   };
 
-  const handleDelete = async (categoryId: string) => {
-    if (!confirm('Are you sure you want to delete this category? Products using this category will need to be updated.')) {
-      return;
-    }
-
-    try {
-      setProcessing(categoryId);
-      await categoriesCollection.delete(categoryId);
-      onUpdate();
-    } catch (err: any) {
-      alert('Failed to delete category: ' + err.message);
-    } finally {
-      setProcessing(null);
-    }
+  const handleDelete = (categoryId: string) => {
+    openConfirm({
+      title: 'Delete category?',
+      message: 'Products using this category will need to be updated.',
+      onConfirm: async () => {
+        try {
+          setProcessing(categoryId);
+          await categoriesCollection.delete(categoryId);
+          onUpdate();
+        } catch (err: any) {
+          showError('Failed to delete category: ' + err.message);
+        } finally {
+          setProcessing(null);
+        }
+      },
+    });
   };
 
   const handleToggleActive = async (category: Category) => {
@@ -121,7 +127,7 @@ const CategoryManagementModal: React.FC<CategoryManagementModalProps> = ({
       });
       onUpdate();
     } catch (err: any) {
-      alert('Failed to update category: ' + err.message);
+      showError('Failed to update category: ' + err.message);
     } finally {
       setProcessing(null);
     }
@@ -130,6 +136,8 @@ const CategoryManagementModal: React.FC<CategoryManagementModalProps> = ({
   if (!isOpen) return null;
 
   return (
+    <>
+      {confirmDialog}
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
@@ -371,6 +379,7 @@ const CategoryManagementModal: React.FC<CategoryManagementModalProps> = ({
         </div>
       </div>
     </div>
+    </>
   );
 };
 

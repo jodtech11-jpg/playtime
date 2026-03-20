@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { appSettingsCollection } from '../../services/firebase';
 import { AppSettings } from '../../types';
 import { serverTimestamp } from 'firebase/firestore';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 
 interface HelpCenterDocsModalProps {
   isOpen: boolean;
@@ -22,6 +23,7 @@ const HelpCenterDocsModal: React.FC<HelpCenterDocsModalProps> = ({ isOpen, onClo
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { openConfirm, confirmDialog } = useConfirmDialog();
 
   useEffect(() => {
     if (isOpen) {
@@ -104,33 +106,39 @@ const HelpCenterDocsModal: React.FC<HelpCenterDocsModalProps> = ({ isOpen, onClo
     }
   };
 
-  const handleDeleteDoc = async (docId: string) => {
-    if (!confirm('Are you sure you want to delete this help document?')) return;
+  const handleDeleteDoc = (docId: string) => {
+    openConfirm({
+      title: 'Delete help document?',
+      message: 'This cannot be undone.',
+      onConfirm: async () => {
+        try {
+          setLoading(true);
+          const settings = await appSettingsCollection.get() as AppSettings | null;
+          if (!settings) return;
 
-    try {
-      setLoading(true);
-      const settings = await appSettingsCollection.get() as AppSettings | null;
-      if (!settings) return;
+          const currentDocs = (settings.helpCenterDocs || []) as HelpDoc[];
+          const updatedDocs = currentDocs.filter((d) => d.id !== docId);
 
-      const currentDocs = (settings.helpCenterDocs || []) as HelpDoc[];
-      const updatedDocs = currentDocs.filter(d => d.id !== docId);
+          await appSettingsCollection.update({
+            helpCenterDocs: updatedDocs,
+            updatedAt: serverTimestamp(),
+          });
 
-      await appSettingsCollection.update({
-        helpCenterDocs: updatedDocs,
-        updatedAt: serverTimestamp()
-      });
-
-      await loadDocs();
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete document');
-    } finally {
-      setLoading(false);
-    }
+          await loadDocs();
+        } catch (err: any) {
+          setError(err.message || 'Failed to delete document');
+        } finally {
+          setLoading(false);
+        }
+      },
+    });
   };
 
   if (!isOpen) return null;
 
   return (
+    <>
+      {confirmDialog}
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white z-10">
@@ -234,6 +242,7 @@ const HelpCenterDocsModal: React.FC<HelpCenterDocsModalProps> = ({ isOpen, onClo
         </div>
       </div>
     </div>
+    </>
   );
 };
 

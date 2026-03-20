@@ -12,42 +12,42 @@ const ToastContainer: React.FC = () => {
     switch (type) {
       case 'success':
         return {
-          bg: 'bg-emerald-50',
-          border: 'border-emerald-200',
-          text: 'text-emerald-800',
+          bg: 'bg-emerald-50 dark:bg-emerald-950/50',
+          border: 'border-emerald-200 dark:border-emerald-800',
+          text: 'text-emerald-800 dark:text-emerald-100',
           icon: 'check_circle',
-          iconColor: 'text-emerald-600',
+          iconColor: 'text-emerald-600 dark:text-emerald-400',
         };
       case 'error':
         return {
-          bg: 'bg-red-50',
-          border: 'border-red-200',
-          text: 'text-red-800',
+          bg: 'bg-red-50 dark:bg-red-950/50',
+          border: 'border-red-200 dark:border-red-800',
+          text: 'text-red-800 dark:text-red-100',
           icon: 'error',
-          iconColor: 'text-red-600',
+          iconColor: 'text-red-600 dark:text-red-400',
         };
       case 'warning':
         return {
-          bg: 'bg-amber-50',
-          border: 'border-amber-200',
-          text: 'text-amber-800',
+          bg: 'bg-amber-50 dark:bg-amber-950/50',
+          border: 'border-amber-200 dark:border-amber-800',
+          text: 'text-amber-800 dark:text-amber-100',
           icon: 'warning',
-          iconColor: 'text-amber-600',
+          iconColor: 'text-amber-600 dark:text-amber-400',
         };
       case 'info':
       default:
         return {
-          bg: 'bg-blue-50',
-          border: 'border-blue-200',
-          text: 'text-blue-800',
+          bg: 'bg-blue-50 dark:bg-blue-950/50',
+          border: 'border-blue-200 dark:border-blue-800',
+          text: 'text-blue-800 dark:text-blue-100',
           icon: 'info',
-          iconColor: 'text-blue-600',
+          iconColor: 'text-blue-600 dark:text-blue-400',
         };
     }
   };
 
   return (
-    <div className="fixed top-4 right-4 z-50 space-y-3 max-w-md w-full">
+    <div className="fixed z-50 space-y-3 w-full max-w-none px-4 sm:px-0 sm:max-w-md sm:w-full top-[max(1rem,env(safe-area-inset-top))] left-0 right-0 sm:left-auto sm:right-4 sm:top-4">
       {toasts.map((toast) => {
         const styles = getToastStyles(toast.type);
 
@@ -73,7 +73,7 @@ const ToastContainer: React.FC = () => {
             </div>
             <button
               onClick={() => removeToast(toast.id)}
-              className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
+              className="flex-shrink-0 text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300 transition-colors"
               aria-label="Close notification"
             >
               <span className="material-symbols-outlined text-xl">close</span>
