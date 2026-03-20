@@ -113,6 +113,7 @@ const Header: React.FC = () => {
       'quick-matches': 'Quick Matches',
       'flash-deals': 'Flash Deals',
       'activity-log': 'Activity log',
+      'user-manual': 'User manual',
     };
 
     if (first === 'users' && second) {

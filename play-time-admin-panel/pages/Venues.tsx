@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useVenues } from '../hooks/useVenues';
 import { useBookings } from '../hooks/useBookings';
 import { useUsers } from '../hooks/useUsers';
-import { venuesCollection } from '../services/firebase';
+import { venuesCollection, logActivity } from '../services/firebase';
 import { Venue } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
@@ -16,7 +16,7 @@ import { serverTimestamp } from 'firebase/firestore';
 
 const Venues: React.FC = () => {
   const navigate = useNavigate();
-  const { user, isSuperAdmin } = useAuth();
+  const { user, firebaseUser, isSuperAdmin } = useAuth();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
   const { showSuccess, showError } = useToast();
   const { venues, loading: venuesLoading } = useVenues({ realtime: true });
@@ -191,6 +191,9 @@ const Venues: React.FC = () => {
         return obj;
       };
 
+      const actorId = firebaseUser?.uid ?? user?.id;
+      const actorEmail = user?.email ?? firebaseUser?.email ?? undefined;
+
       if (selectedVenue) {
         // Update existing venue
         const updateData = removeUndefined(venueData);
@@ -198,6 +201,16 @@ const Venues: React.FC = () => {
           ...updateData,
           updatedAt: serverTimestamp()
         });
+        if (actorId) {
+          await logActivity({
+            userId: actorId,
+            userEmail: actorEmail,
+            action: 'venue_updated',
+            targetType: 'venue',
+            targetId: selectedVenue.id,
+            details: { name: venueData.name ?? selectedVenue.name },
+          });
+        }
       } else {
         // Create new venue - generate ID first
         const venueId = `VEN-${Date.now()}`;
@@ -230,6 +243,16 @@ const Venues: React.FC = () => {
         // managerId is NOT included if undefined - it's excluded from the spread
 
         await venuesCollection.create(venueId, venuePayload);
+        if (actorId) {
+          await logActivity({
+            userId: actorId,
+            userEmail: actorEmail,
+            action: 'venue_created',
+            targetType: 'venue',
+            targetId: venueId,
+            details: { name: venuePayload.name },
+          });
+        }
       }
 
       setIsModalOpen(false);
@@ -246,6 +269,17 @@ const Venues: React.FC = () => {
     try {
       setProcessing(venueId);
       await venuesCollection.delete(venueId);
+      const actorId = firebaseUser?.uid ?? user?.id;
+      if (actorId) {
+        await logActivity({
+          userId: actorId,
+          userEmail: user?.email ?? firebaseUser?.email ?? undefined,
+          action: 'venue_deleted',
+          targetType: 'venue',
+          targetId: venueId,
+          details: {},
+        });
+      }
       setShowDeleteConfirm(null);
       showSuccess('Venue deleted successfully.');
     } catch (error: any) {
@@ -267,6 +301,17 @@ const Venues: React.FC = () => {
         status: 'Active',
         updatedAt: serverTimestamp()
       });
+      const actorId = firebaseUser?.uid ?? user?.id;
+      if (actorId) {
+        await logActivity({
+          userId: actorId,
+          userEmail: user?.email ?? firebaseUser?.email ?? undefined,
+          action: 'venue_updated',
+          targetType: 'venue',
+          targetId: venueId,
+          details: { status: 'Active', approved: true },
+        });
+      }
       showSuccess('Venue approved successfully.');
     } catch (error: any) {
       console.error('Error approving venue:', error);

@@ -38,6 +38,7 @@ import CmsPageView from './pages/CmsPageView';
 import Notifications from './pages/Notifications';
 import Payments from './pages/Payments';
 import ActivityLog from './pages/ActivityLog';
+import UserManual from './pages/UserManual';
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
 import ProtectedRoute from './components/layout/ProtectedRoute';
@@ -90,6 +91,7 @@ const AppRoutes: React.FC = () => {
               <Route path="/users/roles" element={<ProtectedRoute requireSuperAdmin><RoleManagement /></ProtectedRoute>} />
               <Route path="/users/permissions" element={<ProtectedRoute requireSuperAdmin><PermissionManagement /></ProtectedRoute>} />
               <Route path="/activity-log" element={<ProtectedRoute requireSuperAdmin><ActivityLog /></ProtectedRoute>} />
+              <Route path="/user-manual" element={<ProtectedRoute><UserManual /></ProtectedRoute>} />
               <Route path="/moderation" element={<ProtectedRoute requireSuperAdmin><Moderation /></ProtectedRoute>} />
               <Route path="/tournaments" element={<ProtectedRoute requireSuperAdmin><Tournaments /></ProtectedRoute>} />
               <Route path="/tournaments/:tournamentId" element={<ProtectedRoute requireSuperAdmin><TournamentDetail /></ProtectedRoute>} />

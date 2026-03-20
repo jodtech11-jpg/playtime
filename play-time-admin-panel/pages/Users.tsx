@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUsers } from '../hooks/useUsers';
 import { useVenues } from '../hooks/useVenues';
-import { usersCollection } from '../services/firebase';
+import { usersCollection, logActivity } from '../services/firebase';
 import { User } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
@@ -16,7 +16,7 @@ import { serverTimestamp } from 'firebase/firestore';
 
 const Users: React.FC = () => {
   const navigate = useNavigate();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, firebaseUser } = useAuth();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
   const { showSuccess, showError } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
@@ -147,6 +147,17 @@ const Users: React.FC = () => {
         }
 
         await usersCollection.update(selectedUser.id, updateData);
+        const actorId = firebaseUser?.uid ?? currentUser?.id;
+        if (actorId && userData.role && userData.role !== selectedUser.role) {
+          await logActivity({
+            userId: actorId,
+            userEmail: currentUser?.email ?? firebaseUser?.email ?? undefined,
+            action: 'user_role_changed',
+            targetType: 'user',
+            targetId: selectedUser.id,
+            details: { fromRole: selectedUser.role, toRole: userData.role },
+          });
+        }
       } else {
         // Create new user - Note: This only creates Firestore document
         // Actual Firebase Auth user creation should be done via admin script or backend
@@ -171,6 +182,17 @@ const Users: React.FC = () => {
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
+        const actorId = firebaseUser?.uid ?? currentUser?.id;
+        if (actorId) {
+          await logActivity({
+            userId: actorId,
+            userEmail: currentUser?.email ?? firebaseUser?.email ?? undefined,
+            action: 'user_created',
+            targetType: 'user',
+            targetId: newUserId,
+            details: { email: userData.email, role: userData.role },
+          });
+        }
       }
 
       setIsModalOpen(false);
@@ -193,6 +215,17 @@ const Users: React.FC = () => {
         setProcessing(userId);
         try {
           await usersCollection.delete(userId);
+          const actorId = firebaseUser?.uid ?? currentUser?.id;
+          if (actorId) {
+            await logActivity({
+              userId: actorId,
+              userEmail: currentUser?.email ?? firebaseUser?.email ?? undefined,
+              action: 'user_deleted',
+              targetType: 'user',
+              targetId: userId,
+              details: {},
+            });
+          }
           showSuccess('User deleted successfully.');
         } catch (err: any) {
           console.error('Error deleting user:', err);
@@ -213,6 +246,17 @@ const Users: React.FC = () => {
         status: newStatus,
         updatedAt: serverTimestamp()
       });
+      const actorId = firebaseUser?.uid ?? currentUser?.id;
+      if (actorId) {
+        await logActivity({
+          userId: actorId,
+          userEmail: currentUser?.email ?? firebaseUser?.email ?? undefined,
+          action: 'user_status_changed',
+          targetType: 'user',
+          targetId: userId,
+          details: { status: newStatus },
+        });
+      }
       setProcessing(null);
     } catch (err: any) {
       console.error('Error updating user status:', err);

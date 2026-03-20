@@ -1,6 +1,14 @@
 # 📚 Documentation
 
-This directory contains all documentation for the Play Time Admin Panel.
+This directory contains technical documentation for the Play Time Admin Panel.
+
+## 📘 User manual (product guide)
+
+The **Play Time User Manual** — for players, venue managers, and super admins — is maintained at the **repository root** (not in this folder):
+
+- **[USER_MANUAL.md](../../USER_MANUAL.md)** — mobile app guide, admin workflows, payments, FAQ, troubleshooting, glossary
+
+---
 
 ## 📁 Directory Structure
 
@@ -55,6 +63,9 @@ Firebase-specific documentation:
 
 ## 📖 Quick Links
 
+### Product documentation
+- [User Manual — full product guide](../../USER_MANUAL.md)
+
 ### Getting Started
 - [Setup Instructions](./guides/SETUP_INSTRUCTIONS.md)
 - [Environment Setup](./guides/ENV_SETUP.md)
@@ -90,5 +101,5 @@ Firebase-specific documentation:
 
 ---
 
-**Last Updated**: 2024-12-19
+**Last Updated**: 2026-03-20
 

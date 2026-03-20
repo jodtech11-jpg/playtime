@@ -22,7 +22,9 @@ const Bookings: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
   const { showSuccess, showError } = useToast();
-  const { user } = useAuth();
+  const { user, firebaseUser } = useAuth();
+  const actorId = firebaseUser?.uid ?? user?.id;
+  const actorEmail = user?.email ?? firebaseUser?.email ?? undefined;
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>(() => {
     const v = searchParams.get('view');
     return VIEW_MODES.includes(v as any) ? (v as 'day' | 'week' | 'month') : 'week';
@@ -218,6 +220,16 @@ const Bookings: React.FC = () => {
           body: `Booking #${bookingId.slice(0, 8)} has been confirmed.`
         });
       }
+      if (actorId) {
+        await logActivity({
+          userId: actorId,
+          userEmail: actorEmail,
+          action: 'booking_confirmed',
+          targetType: 'booking',
+          targetId: bookingId,
+          details: { status: 'Confirmed' },
+        });
+      }
       setIsModalOpen(false);
       setSelectedBooking(null);
     } catch (error: any) {
@@ -256,10 +268,10 @@ const Bookings: React.FC = () => {
           body: `Booking #${bookingId.slice(0, 8)} was rejected.`
         });
       }
-      if (user) {
+      if (actorId) {
         await logActivity({
-          userId: user.uid,
-          userEmail: user.email ?? undefined,
+          userId: actorId,
+          userEmail: actorEmail,
           action: 'booking_rejected',
           targetType: 'booking',
           targetId: bookingId,
@@ -303,10 +315,10 @@ const Bookings: React.FC = () => {
           body: `Booking #${bookingId.slice(0, 8)} was cancelled.`
         });
       }
-      if (user) {
+      if (actorId) {
         await logActivity({
-          userId: user.uid,
-          userEmail: user.email ?? undefined,
+          userId: actorId,
+          userEmail: actorEmail,
           action: 'booking_cancelled',
           targetType: 'booking',
           targetId: bookingId,
@@ -377,10 +389,10 @@ const Bookings: React.FC = () => {
             body: `Booking #${bookingId.slice(0, 8)} has been confirmed.`,
           });
         }
-        if (user) {
+        if (actorId) {
           await logActivity({
-            userId: user.uid,
-            userEmail: user.email ?? undefined,
+            userId: actorId,
+            userEmail: actorEmail,
             action: 'booking_confirmed',
             targetType: 'booking',
             targetId: bookingId,
@@ -431,10 +443,10 @@ const Bookings: React.FC = () => {
             body: `Booking #${bookingId.slice(0, 8)} was cancelled.`,
           });
         }
-        if (user) {
+        if (actorId) {
           await logActivity({
-            userId: user.uid,
-            userEmail: user.email ?? undefined,
+            userId: actorId,
+            userEmail: actorEmail,
             action: 'booking_cancelled',
             targetType: 'booking',
             targetId: bookingId,

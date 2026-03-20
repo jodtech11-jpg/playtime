@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Court, Venue } from '../../types';
 import { useCourts } from '../../hooks/useCourts';
-import { courtsCollection, syncVenueCourts } from '../../services/firebase';
+import { courtsCollection, syncVenueCourts, logActivity } from '../../services/firebase';
 import { formatCurrency, getStatusColor } from '../../utils/formatUtils';
 import CourtFormModal from './CourtFormModal';
 import { serverTimestamp } from 'firebase/firestore';
 import { useToast } from '../../contexts/ToastContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 
 interface CourtManagementModalProps {
@@ -20,6 +21,9 @@ const CourtManagementModal: React.FC<CourtManagementModalProps> = ({
   onClose
 }) => {
   const { courts, loading } = useCourts({ venueId: venue.id, realtime: true });
+  const { showError } = useToast();
+  const { user, firebaseUser } = useAuth();
+  const { openConfirm, confirmDialog } = useConfirmDialog();
   const [isCourtModalOpen, setIsCourtModalOpen] = useState(false);
   const [selectedCourt, setSelectedCourt] = useState<Court | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
@@ -37,19 +41,41 @@ const CourtManagementModal: React.FC<CourtManagementModalProps> = ({
   const handleSaveCourt = async (courtData: Partial<Court>) => {
     try {
       setProcessing('saving');
+      const actorId = firebaseUser?.uid ?? user?.id;
+      const actorEmail = user?.email ?? firebaseUser?.email ?? undefined;
 
       if (selectedCourt) {
         await courtsCollection.update(selectedCourt.id, {
           ...courtData,
           updatedAt: serverTimestamp()
         });
+        if (actorId) {
+          await logActivity({
+            userId: actorId,
+            userEmail: actorEmail,
+            action: 'court_updated',
+            targetType: 'court',
+            targetId: selectedCourt.id,
+            details: { venueId: venue.id, name: courtData.name ?? selectedCourt.name },
+          });
+        }
       } else {
-        await courtsCollection.create({
+        const newCourtId = await courtsCollection.create({
           ...courtData,
           venueId: venue.id,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
+        if (actorId) {
+          await logActivity({
+            userId: actorId,
+            userEmail: actorEmail,
+            action: 'court_created',
+            targetType: 'court',
+            targetId: newCourtId,
+            details: { venueId: venue.id, name: courtData.name },
+          });
+        }
       }
 
       await syncVenueCourts(venue.id);
@@ -72,6 +98,17 @@ const CourtManagementModal: React.FC<CourtManagementModalProps> = ({
           setProcessing(courtId);
           await courtsCollection.delete(courtId);
           await syncVenueCourts(venue.id);
+          const actorId = firebaseUser?.uid ?? user?.id;
+          if (actorId) {
+            await logActivity({
+              userId: actorId,
+              userEmail: user?.email ?? firebaseUser?.email ?? undefined,
+              action: 'court_deleted',
+              targetType: 'court',
+              targetId: courtId,
+              details: { venueId: venue.id },
+            });
+          }
         } catch (error: any) {
           console.error('Error deleting court:', error);
           showError('Failed to delete court: ' + error.message);

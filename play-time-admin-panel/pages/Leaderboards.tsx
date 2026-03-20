@@ -11,6 +11,7 @@ import LeaderboardFormModal from '../components/modals/LeaderboardFormModal';
 const Leaderboards: React.FC = () => {
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
+  const { openConfirm, confirmDialog } = useConfirmDialog();
   const [typeFilter, setTypeFilter] = useState<string>('All');
   const [sportFilter, setSportFilter] = useState<string>('All');
   const [showCreateModal, setShowCreateModal] = useState(false);

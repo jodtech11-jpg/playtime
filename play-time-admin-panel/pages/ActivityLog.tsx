@@ -8,9 +8,15 @@ const ACTIVITY_ACTIONS = [
   'booking_cancelled',
   'booking_rejected',
   'booking_confirmed',
+  'user_created',
+  'user_deleted',
   'user_role_changed',
+  'user_status_changed',
+  'venue_created',
   'venue_updated',
+  'venue_deleted',
   'court_created',
+  'court_updated',
   'court_deleted',
 ];
 
@@ -104,8 +110,12 @@ const ActivityLog: React.FC = () => {
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" />
         </div>
       ) : logs.length === 0 ? (
-        <div className="text-center py-12 text-muted-light dark:text-muted-dark">
-          No activity log entries found.
+        <div className="text-center py-12 text-muted-light dark:text-muted-dark max-w-lg mx-auto space-y-2">
+          <p>No activity log entries found.</p>
+          <p className="text-xs">
+            Entries are created when admins confirm or cancel bookings, change users or venues, or manage courts.
+            Perform one of those actions and refresh this page—older actions were not recorded.
+          </p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border-light dark:border-border-dark">

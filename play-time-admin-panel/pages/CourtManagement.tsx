@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useVenues } from '../hooks/useVenues';
 import { useCourts } from '../hooks/useCourts';
-import { courtsCollection, syncVenueCourts, syncAllVenuesCourts } from '../services/firebase';
+import { courtsCollection, syncVenueCourts, syncAllVenuesCourts, logActivity } from '../services/firebase';
 import { Court, Venue } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
@@ -18,7 +18,7 @@ const CourtManagement: React.FC = () => {
   const [searchParams] = useSearchParams();
   const venueIdParam = searchParams.get('venueId');
   
-  const { user, isSuperAdmin, isVenueManager } = useAuth();
+  const { user, firebaseUser, isSuperAdmin, isVenueManager } = useAuth();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
   const { showSuccess, showError } = useToast();
   const { openConfirm, confirmDialog } = useConfirmDialog();
@@ -126,19 +126,41 @@ const CourtManagement: React.FC = () => {
   const handleSaveCourt = async (courtData: Partial<Court>) => {
     try {
       setProcessing('saving');
+      const actorId = firebaseUser?.uid ?? user?.id;
+      const actorEmail = user?.email ?? firebaseUser?.email ?? undefined;
 
       if (selectedCourt) {
         await courtsCollection.update(selectedCourt.id, {
           ...courtData,
           updatedAt: serverTimestamp()
         });
+        if (actorId) {
+          await logActivity({
+            userId: actorId,
+            userEmail: actorEmail,
+            action: 'court_updated',
+            targetType: 'court',
+            targetId: selectedCourt.id,
+            details: { venueId: selectedVenueId, name: courtData.name ?? selectedCourt.name },
+          });
+        }
       } else {
-        await courtsCollection.create({
+        const newCourtId = await courtsCollection.create({
           ...courtData,
           venueId: selectedVenueId,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
+        if (actorId) {
+          await logActivity({
+            userId: actorId,
+            userEmail: actorEmail,
+            action: 'court_created',
+            targetType: 'court',
+            targetId: newCourtId,
+            details: { venueId: selectedVenueId, name: courtData.name },
+          });
+        }
       }
 
       await syncVenueCourts(selectedVenueId);
@@ -191,6 +213,17 @@ const CourtManagement: React.FC = () => {
           setProcessing(courtId);
           await courtsCollection.delete(courtId);
           await syncVenueCourts(selectedVenueId);
+          const actorId = firebaseUser?.uid ?? user?.id;
+          if (actorId) {
+            await logActivity({
+              userId: actorId,
+              userEmail: user?.email ?? firebaseUser?.email ?? undefined,
+              action: 'court_deleted',
+              targetType: 'court',
+              targetId: courtId,
+              details: { venueId: selectedVenueId },
+            });
+          }
         } catch (error: any) {
           console.error('Error deleting court:', error);
           showError('Failed to delete court: ' + error.message);

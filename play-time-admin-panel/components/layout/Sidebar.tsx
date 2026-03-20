@@ -95,11 +95,13 @@ const Sidebar: React.FC = () => {
     { to: '/analytics', icon: 'analytics', label: 'Analytics' },
     { to: '/frontend-cms', icon: 'web', label: 'Frontend CMS' },
     { to: '/settings', icon: 'settings', label: 'Settings' },
+    { to: '/user-manual', icon: 'menu_book', label: 'User manual' },
   ];
 
   // Venue Manager only menu items (excluding venues which is now nested)
   const venueManagerNavItems = [
     { to: '/support', icon: 'support_agent', label: 'Support & Disputes' },
+    { to: '/user-manual', icon: 'menu_book', label: 'User manual' },
   ];
 
   const flyoutClass =
@@ -171,6 +173,7 @@ const Sidebar: React.FC = () => {
                 onClick={() => {
                   setUsersMenuOpen(false);
                   setVenuesMenuOpen(false);
+                  setMobileMenuOpen(false);
                   closeCollapsedFlyout();
                 }}
                 className={({ isActive }) =>
