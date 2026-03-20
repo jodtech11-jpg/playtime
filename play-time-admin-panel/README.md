@@ -4,7 +4,7 @@ Admin panel for managing Play Time sports booking platform.
 
 ## 📚 Documentation
 
-- **User manual (players, venue managers, super admins):** In the app, sign in and open **User manual** in the sidebar (`#/user-manual`). Markdown source: [`../USER_MANUAL.md`](../USER_MANUAL.md) at repository root (bundled at build time).
+- **User manual (players, venue managers, super admins):** In the app, sign in and open **User manual** in the sidebar (`#/user-manual`). Markdown source: [`USER_MANUAL.md`](./USER_MANUAL.md) in this folder (bundled at build time).
 
 All technical documentation for this app is in the `/docs` directory:
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import manualMarkdown from '../../USER_MANUAL.md?raw';
+import manualMarkdown from '../USER_MANUAL.md?raw';
 
 /** Matches long-form styling in `CmsPageView` (CMS pages) so the manual feels like the rest of the app. */
 const manualProseClassName = [
@@ -30,8 +30,9 @@ const UserManual: React.FC = () => {
           User manual
         </h1>
         <p className="text-slate-500 dark:text-gray-400 text-sm font-medium max-w-2xl">
-          Play Time product guide — mobile app, venue managers, and super admins. Updated with the same
-          documentation file shipped in the repository.
+          Play Time product guide — mobile app, venue managers, and super admins. Content comes from{' '}
+          <code className="text-xs font-mono bg-slate-200/60 dark:bg-slate-800 px-1.5 py-0.5 rounded">USER_MANUAL.md</code>{' '}
+          in this app (included in production builds).
         </p>
       </div>
 
