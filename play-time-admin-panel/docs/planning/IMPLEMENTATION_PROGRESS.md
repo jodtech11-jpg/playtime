@@ -1,5 +1,13 @@
 # 🚀 Implementation Progress - Play Time Admin Panel
 
+> **⚠️ HISTORICAL DOCUMENT — do not use as current status.**
+> This file was last updated on 2024-12-19 and no longer reflects the
+> codebase. Most items listed here as "in progress" are already shipped
+> (auth, Razorpay, bookings, analytics, FCM, WhatsApp, exports, CMS).
+> Treat this only as a historical record; rely on git log and the
+> in-app state for current status.
+
+
 **Last Updated**: 2024-12-19
 
 ---

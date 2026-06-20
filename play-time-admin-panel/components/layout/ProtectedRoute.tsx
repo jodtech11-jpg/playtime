@@ -7,14 +7,27 @@ interface ProtectedRouteProps {
   children: React.ReactNode;
   requireSuperAdmin?: boolean;
   requireVenueManager?: boolean;
+  /**
+   * Require the signed-in user to have ALL of the listed custom permissions
+   * (stored in `users/{uid}.customPermissions`). Super admins implicitly pass.
+   */
+  requiredPermissions?: string[];
 }
 
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ 
-  children, 
+const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
+  children,
   requireSuperAdmin = false,
-  requireVenueManager = false 
+  requireVenueManager = false,
+  requiredPermissions,
 }) => {
-  const { isAuthenticated, loading, isSuperAdmin, isVenueManager, error: authError } = useAuth();
+  const { isAuthenticated, loading, isSuperAdmin, isVenueManager, user, error: authError } = useAuth();
+
+  const hasAllCustomPermissions = (() => {
+    if (!requiredPermissions || requiredPermissions.length === 0) return true;
+    if (isSuperAdmin) return true;
+    const granted = new Set((user as any)?.customPermissions ?? []);
+    return requiredPermissions.every((p) => granted.has(p));
+  })();
 
   if (loading === 'loading') {
     return <FullScreenLoader />;
@@ -75,6 +88,28 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
           <span className="material-symbols-outlined text-6xl text-red-500 mb-4">block</span>
           <h2 className="text-2xl font-black text-gray-900 dark:text-gray-100 mb-2">Access Denied</h2>
           <p className="text-gray-600 dark:text-gray-400 mb-6">You don&apos;t have permission to access this page.</p>
+          <Link
+            to="/"
+            className="inline-flex items-center justify-center rounded-xl bg-primary text-primary-content px-6 py-3 font-semibold hover:opacity-90"
+          >
+            Back to dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasAllCustomPermissions) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-background-light dark:bg-background-dark">
+        <div className="text-center p-4 sm:p-8 bg-white dark:bg-surface-dark rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm max-w-md">
+          <span className="material-symbols-outlined text-6xl text-red-500 mb-4">block</span>
+          <h2 className="text-2xl font-black text-gray-900 dark:text-gray-100 mb-2">Missing permission</h2>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">
+            You need additional permissions to view this page. Ask a super admin to grant:
+            {' '}
+            <code className="font-mono text-sm">{(requiredPermissions || []).join(', ')}</code>
+          </p>
           <Link
             to="/"
             className="inline-flex items-center justify-center rounded-xl bg-primary text-primary-content px-6 py-3 font-semibold hover:opacity-90"

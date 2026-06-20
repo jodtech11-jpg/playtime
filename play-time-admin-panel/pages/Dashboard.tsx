@@ -52,9 +52,13 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     let mounted = true;
-    usersCollection.getRecent(8).then((users) => {
-      if (mounted) setRecentSignups(users as User[]);
-    }).catch(() => {});
+    usersCollection.getRecent(8)
+      .then((users) => {
+        if (mounted) setRecentSignups(users as User[]);
+      })
+      .catch((err) => {
+        console.error('Dashboard: failed to load recent signups', err);
+      });
     return () => { mounted = false; };
   }, []);
 

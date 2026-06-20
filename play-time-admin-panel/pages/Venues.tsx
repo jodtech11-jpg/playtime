@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useVenues } from '../hooks/useVenues';
 import { useBookings } from '../hooks/useBookings';
 import { useUsers } from '../hooks/useUsers';
-import { venuesCollection, logActivity } from '../services/firebase';
+import { venuesCollection, logActivity, usersCollection } from '../services/firebase';
 import { Venue } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
@@ -243,6 +243,18 @@ const Venues: React.FC = () => {
         // managerId is NOT included if undefined - it's excluded from the spread
 
         await venuesCollection.create(venueId, venuePayload);
+
+        // Link venue to vendor's managedVenues so they can manage it immediately
+        if (!isSuperAdmin && user?.id) {
+          const currentManaged = user.managedVenues?.filter(Boolean) ?? [];
+          if (!currentManaged.includes(venueId)) {
+            await usersCollection.update(user.id, {
+              managedVenues: [...currentManaged, venueId],
+              updatedAt: serverTimestamp(),
+            });
+          }
+        }
+
         if (actorId) {
           await logActivity({
             userId: actorId,

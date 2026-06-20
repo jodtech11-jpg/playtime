@@ -906,7 +906,7 @@
         },
         {
           "fieldPath": "status",
-          "arrayConfig": "CONTAINS"
+          "order": "ASCENDING"
         },
         {
           "fieldPath": "startTime",
@@ -915,7 +915,7 @@
       ]
     },
     {
-      "collectionGroup": "posts",
+      "collectionGroup": "bookings",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -923,8 +923,34 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
+          "fieldPath": "courtId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startTime",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "venueId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "courtId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "startTime",
+          "order": "ASCENDING"
         }
       ]
     },
@@ -1081,20 +1107,6 @@
         {
           "fieldPath": "status",
           "arrayConfig": "CONTAINS"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "courts",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "venueId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
         }
       ]
     },

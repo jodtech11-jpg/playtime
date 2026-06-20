@@ -1,5 +1,11 @@
 # 🔍 Play Time Admin Panel - Missing Features Analysis
 
+> **⚠️ HISTORICAL DOCUMENT — obsolete.**
+> This analysis predates most of the current codebase. Firebase auth,
+> Firestore, FCM, Razorpay webhook (Cloud Function), exports, and rule-
+> based role enforcement are implemented. Kept only for history.
+
+
 ## Executive Summary
 This document outlines all missing features and implementations needed to complete the Play Time Admin Panel based on the project documentation.
 

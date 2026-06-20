@@ -38,7 +38,11 @@ See [Documentation README](./docs/README.md) for complete documentation index.
 
 - **Build**: `npm run build` → output in `dist/`
 - **Preview build locally**: `npm run preview` or `npm run preview:prod`
-- **Deploy to Firebase**: `npm run deploy` (full) or `npm run deploy:hosting` (app only)
+- **Deploy to Firebase**:
+  - `npm run deploy` — Build + deploy Hosting, Firestore rules, Storage rules, Functions
+  - `npm run deploy:hosting` — Build + deploy Hosting only
+  - `npm run deploy:rules` — Deploy Firestore + Storage rules only
+  - `npm run deploy:functions` — Deploy Cloud Functions only
 
 See **[PRODUCTION_COMMANDS.md](./PRODUCTION_COMMANDS.md)** for full production and deploy commands.
 

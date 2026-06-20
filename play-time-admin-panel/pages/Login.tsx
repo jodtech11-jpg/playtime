@@ -62,7 +62,9 @@ const Login: React.FC = () => {
       if (recaptchaVerifier) {
         try {
           recaptchaVerifier.clear();
-        } catch (e) {}
+        } catch (e) {
+          console.warn('reCAPTCHA clear failed (safe to ignore on unmount):', e);
+        }
       }
     };
   }, [authMethod, recaptchaVerifier]);

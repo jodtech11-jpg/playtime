@@ -11,8 +11,10 @@
     "update-user-role": "node scripts/update-user-role.js",
     "list-users": "node scripts/list-users.js",
     "initialize-sports": "node scripts/initialize-sports.js",
-    "deploy": "firebase deploy --only firestore",
+    "deploy": "npm run build && firebase deploy --only hosting,firestore,storage,functions",
     "deploy:hosting": "npm run build && firebase deploy --only hosting",
+    "deploy:rules": "firebase deploy --only firestore:rules,storage",
+    "deploy:functions": "firebase deploy --only functions",
     "preview:prod": "npm run build && vite preview"
   },
   "dependencies": {

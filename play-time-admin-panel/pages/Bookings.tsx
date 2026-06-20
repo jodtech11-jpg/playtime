@@ -11,6 +11,9 @@ import { formatDate, formatTime, getWeekStart, getWeekEnd, getToday } from '../u
 import { formatCurrency, getStatusColor } from '../utils/formatUtils';
 import { exportBookingsToCSV, exportBookingsToPDF } from '../utils/exportUtils';
 import BookingDetailsModal from '../components/modals/BookingDetailsModal';
+import BookingFormModal from '../components/modals/BookingFormModal';
+import SportManagementModal from '../components/modals/SportManagementModal';
+import { useSports } from '../hooks/useSports';
 import DatePicker from '../components/shared/DatePicker';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import { serverTimestamp } from 'firebase/firestore';
@@ -42,6 +45,9 @@ const Bookings: React.FC = () => {
   const [selectedStatus, setSelectedStatus] = useState<string>(() => searchParams.get('status') || 'All');
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [showSportModal, setShowSportModal] = useState(false);
+  const { sports } = useSports({ activeOnly: false, realtime: true });
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [processing, setProcessing] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -470,9 +476,50 @@ const Bookings: React.FC = () => {
   };
 
   const handleCreateBooking = () => {
-    // Open modal with empty booking for creation
-    setSelectedBooking(null);
-    setIsModalOpen(true);
+    setIsCreateModalOpen(true);
+  };
+
+  const handleSaveBooking = async (bookingData: Partial<Booking>) => {
+    try {
+      setProcessing('creating');
+      const bookingId = await bookingsCollection.create({
+        ...bookingData,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      if (actorId) {
+        await logActivity({
+          userId: actorId,
+          userEmail: actorEmail,
+          action: 'booking_created',
+          targetType: 'booking',
+          targetId: bookingId,
+          details: {
+            user: bookingData.user,
+            venueId: bookingData.venueId,
+            court: bookingData.court,
+            status: bookingData.status,
+          },
+        });
+      }
+      if (bookingData.venueId) {
+        await notifyVenueManagersOfBookingEvent({
+          venueId: bookingData.venueId,
+          bookingId,
+          eventType: 'booking_created',
+          title: 'New reservation',
+          body: `Force reservation for ${bookingData.user} at ${bookingData.court}.`,
+        });
+      }
+      showSuccess('Booking created successfully.');
+      setIsCreateModalOpen(false);
+    } catch (error: any) {
+      console.error('Error creating booking:', error);
+      showError('Failed to create booking: ' + error.message);
+      throw error;
+    } finally {
+      setProcessing(null);
+    }
   };
 
   // Keyboard shortcut: Ctrl+N / Cmd+N → new booking
@@ -503,14 +550,74 @@ const Bookings: React.FC = () => {
     };
   }, [setNewEntryHandler, unsetNewEntryHandler]);
 
+  const modals = (
+    <>
+      <BookingDetailsModal
+        booking={selectedBooking}
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setSelectedBooking(null);
+        }}
+        onAccept={handleAccept}
+        onReject={handleReject}
+        onCancel={handleCancel}
+      />
+
+      <BookingFormModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSave={handleSaveBooking}
+      />
+
+      <SportManagementModal
+        isOpen={showSportModal}
+        onClose={() => setShowSportModal(false)}
+        sports={sports}
+        onUpdate={() => {}}
+      />
+
+      <DatePicker
+        isOpen={showDatePicker}
+        onClose={() => setShowDatePicker(false)}
+        onSelect={handleDateSelect}
+        initialDate={selectedDate}
+        viewMode={viewMode}
+      />
+
+      <ConfirmDialog
+        isOpen={!!confirmDialog}
+        title={confirmDialog?.title || ''}
+        message={confirmDialog?.message || ''}
+        confirmLabel={confirmDialog?.confirmLabel || 'Confirm'}
+        variant={confirmDialog?.variant || 'danger'}
+        loading={confirmLoading}
+        onConfirm={async () => {
+          if (!confirmDialog) return;
+          setConfirmLoading(true);
+          try {
+            await confirmDialog.onConfirm();
+          } finally {
+            setConfirmLoading(false);
+            setConfirmDialog(null);
+          }
+        }}
+        onCancel={() => setConfirmDialog(null)}
+      />
+    </>
+  );
+
   if (bookingsLoading) {
     return (
-      <div className="p-4 sm:p-8 flex items-center justify-center h-full">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
-          <p className="text-gray-600 font-medium">Loading bookings...</p>
+      <>
+        <div className="p-4 sm:p-8 flex items-center justify-center h-full">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+            <p className="text-gray-600 font-medium">Loading bookings...</p>
+          </div>
         </div>
-      </div>
+        {modals}
+      </>
     );
   }
 
@@ -605,27 +712,37 @@ const Bookings: React.FC = () => {
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
-            <select
-              value={selectedSport}
-              onChange={(e) => setSelectedSport(e.target.value)}
-              className="h-12 px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-[10px] font-black uppercase tracking-widest rounded-xl outline-none focus:ring-2 focus:ring-primary/20 transition-all shadow-sm cursor-pointer"
-            >
-              <option>All Sports</option>
-              {availableSports.map(sport => (
-                <option key={sport} value={sport}>{sport}</option>
-              ))}
-            </select>
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedSport}
+                onChange={(e) => setSelectedSport(e.target.value)}
+                className="h-12 px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-[10px] font-black uppercase tracking-widest rounded-xl outline-none focus:ring-2 focus:ring-primary/20 transition-all shadow-sm cursor-pointer min-w-[120px]"
+              >
+                <option>All Sports</option>
+                {availableSports.map(sport => (
+                  <option key={sport} value={sport}>{sport}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => setShowSportModal(true)}
+                className="size-12 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-primary rounded-xl shadow-sm hover:scale-105 transition-all flex items-center justify-center shrink-0"
+                aria-label="Manage sports"
+                title="Add / manage sports"
+              >
+                <span className="material-symbols-outlined font-black">add</span>
+              </button>
+            </div>
 
             <div className="h-12 w-px bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block"></div>
 
             <div className="flex items-center gap-2">
               <button
                 onClick={handleCreateBooking}
-                className="size-12 bg-primary text-white rounded-xl shadow-lg shadow-primary/20 hover:scale-105 transition-all flex items-center justify-center"
+                className="size-12 bg-primary text-white rounded-xl shadow-lg shadow-primary/20 hover:scale-105 transition-all flex items-center justify-center shrink-0"
                 aria-label="Force Reservation"
                 title="Force Reservation"
               >
-                <span className="material-symbols-outlined font-black">add</span>
+                <span className="material-symbols-outlined font-black">event_available</span>
               </button>
 
               <div className="relative group">
@@ -660,9 +777,9 @@ const Bookings: React.FC = () => {
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 sm:gap-6 xl:gap-8 flex-1 min-h-0 overflow-hidden">
         {/* Calendar View */}
-        <div className="xl:col-span-8 ui-card flex flex-col min-h-0 overflow-hidden bg-white dark:bg-slate-800">
+        <div className="xl:col-span-8 ui-card flex flex-col min-h-0 min-w-0 overflow-hidden bg-white dark:bg-slate-800">
           {/* Header Row */}
-          <div className="grid grid-cols-8 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+          <div className="grid grid-cols-8 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 min-w-[720px]">
             <div className="p-4 border-r border-slate-100 dark:border-slate-700 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center">
               TIMELINE
             </div>
@@ -683,8 +800,8 @@ const Bookings: React.FC = () => {
           </div>
 
           {/* Calendar Grid */}
-          <div className="flex-1 min-h-0 overflow-y-auto scrollbar-visible relative bg-white dark:bg-slate-900">
-            <div className="grid grid-cols-8 min-h-full">
+          <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto scrollbar-visible relative bg-white dark:bg-slate-900">
+            <div className="grid grid-cols-8 min-h-full min-w-[720px]">
               {/* Time Column */}
               <div className="col-span-1 border-r border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
                 {timeSlots.map((slot, idx) => (
@@ -908,48 +1025,7 @@ const Bookings: React.FC = () => {
         </div>
       </div>
 
-      {/* Booking Details Modal */}
-      <BookingDetailsModal
-        booking={selectedBooking}
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setSelectedBooking(null);
-        }}
-        onAccept={handleAccept}
-        onReject={handleReject}
-        onCancel={handleCancel}
-      />
-
-      {/* Date Picker Modal */}
-      <DatePicker
-        isOpen={showDatePicker}
-        onClose={() => setShowDatePicker(false)}
-        onSelect={handleDateSelect}
-        initialDate={selectedDate}
-        viewMode={viewMode}
-      />
-
-      {/* Confirm Dialog */}
-      <ConfirmDialog
-        isOpen={!!confirmDialog}
-        title={confirmDialog?.title || ''}
-        message={confirmDialog?.message || ''}
-        confirmLabel={confirmDialog?.confirmLabel || 'Confirm'}
-        variant={confirmDialog?.variant || 'danger'}
-        loading={confirmLoading}
-        onConfirm={async () => {
-          if (!confirmDialog) return;
-          setConfirmLoading(true);
-          try {
-            await confirmDialog.onConfirm();
-          } finally {
-            setConfirmLoading(false);
-            setConfirmDialog(null);
-          }
-        }}
-        onCancel={() => setConfirmDialog(null)}
-      />
+      {modals}
     </div>
   );
 };

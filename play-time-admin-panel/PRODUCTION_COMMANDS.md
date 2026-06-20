@@ -38,7 +38,7 @@ npm run preview:prod
 
 ## Deploy to Firebase
 
-**Full deploy** (Hosting + Firestore rules + Storage rules + Functions):
+**Full deploy** (builds + deploys Hosting + Firestore rules + Storage rules + Functions):
 
 ```bash
 npm run deploy
@@ -50,8 +50,35 @@ npm run deploy
 npm run deploy:hosting
 ```
 
-- Both commands run `npm run build` first, then deploy.
+**Only rules** (Firestore + Storage, no build):
+
+```bash
+npm run deploy:rules
+```
+
+**Only Cloud Functions** (no build):
+
+```bash
+npm run deploy:functions
+```
+
+- `deploy` and `deploy:hosting` run `npm run build` first, then deploy.
+- `deploy:rules` and `deploy:functions` do not run a build — they deploy backend config/code only.
 - Requires Firebase CLI: `npm i -g firebase-tools` and `firebase login`.
+
+### Required Cloud Function secrets
+
+Before deploying `functions`, set:
+
+```bash
+# Razorpay webhook HMAC secret (match what you configure in the Razorpay dashboard)
+firebase functions:config:set razorpay.webhook_secret="<your-secret>"
+
+# (Optional) restrict allowed CORS origins for admin FCM endpoints
+firebase functions:config:set admin.allowed_origins="https://admin.yourdomain.com,https://your-admin.web.app"
+```
+
+Or set env vars `RAZORPAY_WEBHOOK_SECRET` / `ALLOWED_ORIGINS` in the functions runtime.
 
 ---
 
@@ -82,8 +109,10 @@ To run the app in “production” on the server (e.g. with PM2 or plain Node), 
 | `npm run build`         | Production build → `dist/`                   |
 | `npm run preview`       | Serve `dist/` locally (no build)             |
 | `npm run preview:prod`  | Build then serve `dist/` locally             |
-| `npm run deploy`        | Build + deploy everything to Firebase        |
-| `npm run deploy:hosting`| Build + deploy only Hosting (admin app)     |
+| `npm run deploy`        | Build + deploy Hosting, Firestore rules, Storage rules, Functions |
+| `npm run deploy:hosting`| Build + deploy only Hosting (admin app)       |
+| `npm run deploy:rules`  | Deploy only Firestore rules + Storage rules (no build) |
+| `npm run deploy:functions` | Deploy only Cloud Functions (no build)     |
 
 ---
 

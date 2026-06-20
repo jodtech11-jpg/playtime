@@ -1,119 +1,138 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Helper functions
+
+    // ---------- Helpers ----------
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
     function getUserData() {
       return exists(/databases/$(database)/documents/users/$(request.auth.uid)) ?
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data :
              null;
     }
-    
+
     function isSuperAdmin() {
-      return isAuthenticated() && 
+      return isAuthenticated() &&
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
              getUserData() != null &&
              getUserData().role == 'super_admin';
     }
-    
+
     function isVenueManager() {
-      return isAuthenticated() && 
+      return isAuthenticated() &&
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
              getUserData() != null &&
              getUserData().role == 'venue_manager';
     }
-    
+
     function ownsVenue(venueId) {
       return isAuthenticated() && (
         isSuperAdmin() ||
-        (isVenueManager() && 
+        (isVenueManager() &&
          getUserData() != null &&
          'managedVenues' in getUserData() &&
          venueId in getUserData().managedVenues)
       );
     }
-    
-    
-    // Users collection
+
+    // Create-time binding: the new document's userId must equal the caller's uid.
+    function createdByCaller() {
+      return request.resource.data.userId == request.auth.uid;
+    }
+
+    // Pending/Confirmed bookings expose time window only (for slot availability queries).
+    function isActiveBooking() {
+      return resource.data.status == 'Pending' || resource.data.status == 'Confirmed';
+    }
+
+    // ---------- Users ----------
     match /users/{userId} {
-      // Allow users to read their own document, or super admins/venue managers to read any
       allow read: if isAuthenticated() && (
-        userId == request.auth.uid || 
+        userId == request.auth.uid ||
+        (request.auth.token.phone_number != null &&
+         resource.data.phone == request.auth.token.phone_number) ||
+        (request.auth.token.email != null &&
+         resource.data.email == request.auth.token.email) ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (isSuperAdmin() || isVenueManager()))
       );
-      // Allow unauthenticated users to create their own document with status 'Pending' (vendor signup)
-      // Also allow authenticated users to create their own document, or super admins/venue managers to create any
+      // - Unauthenticated vendor signup: status=Pending, role=venue_manager, self-id.
+      // - Authenticated self-signup: role=player or null.
+      // - Admins/venue_managers can create any user.
       allow create: if (
-        // Unauthenticated vendor signup - must have status 'Pending' and role 'venue_manager'
-        (request.auth == null && 
-         request.resource.data.status == 'Pending' && 
+        (request.auth == null &&
+         request.resource.data.status == 'Pending' &&
          request.resource.data.role == 'venue_manager' &&
          userId == request.resource.data.id) ||
-        // Authenticated user creating their own document (mobile app signup - must be 'player' role)
-        (isAuthenticated() && userId == request.auth.uid && 
+        (isAuthenticated() && userId == request.auth.uid &&
          (request.resource.data.role == 'player' || request.resource.data.role == null)) ||
-        // Super admins/venue managers creating any user
-        (isAuthenticated() && 
-         exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        (isAuthenticated() &&
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
          (isSuperAdmin() || isVenueManager()))
       );
-      // Allow users to update their own document, or super admins/venue managers to update any
       allow update: if isAuthenticated() && (
-        userId == request.auth.uid || 
+        userId == request.auth.uid ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (isSuperAdmin() || isVenueManager()))
       );
-      allow delete: if isAuthenticated() && 
-                     exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+      allow delete: if isAuthenticated() &&
+                     exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
                      isSuperAdmin();
-      
-      // Favorites subcollection - users can manage their own favorites
+
       match /favorites/{favoriteId} {
         allow read: if isAuthenticated() && userId == request.auth.uid;
-        allow create: if isAuthenticated() && 
+        allow create: if isAuthenticated() &&
                        userId == request.auth.uid &&
                        request.resource.data.venueId is string;
         allow delete: if isAuthenticated() && userId == request.auth.uid;
       }
     }
-    
-    // Roles collection (Super Admin only)
+
+    // ---------- Roles (Super Admin only) ----------
     match /roles/{roleId} {
       allow read: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
       allow create, update, delete: if isAuthenticated() && isSuperAdmin();
     }
-    
-    // Permissions collection (Super Admin only)
+
+    // ---------- Permissions (Super Admin only) ----------
     match /permissions/{permissionId} {
       allow read: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
       allow create, update, delete: if isAuthenticated() && isSuperAdmin();
     }
-    
-    // Venues collection
+
+    // ---------- Venues ----------
     match /venues/{venueId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
       allow update: if ownsVenue(venueId);
       allow delete: if isSuperAdmin();
     }
-    
-    // Courts collection
+
+    // ---------- Courts ----------
     match /courts/{courtId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
       allow update: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
       allow delete: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
     }
-    
-    // Bookings collection
-    // Read: any authenticated user can read (needed for mobile conflict-check query by venueId+courtId)
+
+    // ---------- Bookings ----------
+    // Read: owner, venue manager, super admin, OR active bookings for any signed-in
+    // user (mobile slot/availability queries on venueId + courtId + status).
     match /bookings/{bookingId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() &&
-                     request.resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        resource.data.userId == request.auth.uid ||
+        (resource.data.venueId != null && ownsVenue(resource.data.venueId)) ||
+        isActiveBooking()
+      );
+      allow create: if isAuthenticated() && (
+        createdByCaller() ||
+        isSuperAdmin() ||
+        (isVenueManager() &&
+         request.resource.data.venueId != null &&
+         ownsVenue(request.resource.data.venueId))
+      );
       allow update: if isAuthenticated() && (
         isSuperAdmin() ||
         (resource != null && resource.data.venueId != null && ownsVenue(resource.data.venueId)) ||
@@ -125,39 +144,59 @@ service cloud.firestore {
         (resource != null && resource.data.userId == request.auth.uid)
       );
     }
-    
-    // Memberships collection
+
+    // ---------- Serialized slot locks ----------
+    // Used with transactional booking creation (same start/end per court).
+    // The lock must be owned by the caller; only the owner (or admin) may delete.
+    match /booking_slot_locks/{lockId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && createdByCaller();
+      allow delete: if isAuthenticated() && (
+        isSuperAdmin() ||
+        (resource != null && resource.data.userId == request.auth.uid)
+      );
+    }
+
+    // ---------- Memberships ----------
     match /memberships/{membershipId} {
       allow read: if isAuthenticated() && (
         isSuperAdmin() ||
         (resource.data.venueId != null && ownsVenue(resource.data.venueId)) ||
         resource.data.userId == request.auth.uid
       );
-      allow create: if isAuthenticated();
+      // Users create memberships for themselves; admins can create for anyone.
+      allow create: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isVenueManager() ||
+        createdByCaller()
+      );
       allow update: if isAuthenticated() && (
         isSuperAdmin() ||
         (resource.data.venueId != null && ownsVenue(resource.data.venueId))
       );
       allow delete: if isSuperAdmin();
     }
-    
-    // Membership Plans collection
+
+    // ---------- Membership Plans ----------
     match /membershipPlans/{planId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
       allow update: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
       allow delete: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
     }
-    
-    // Staff collection
+
+    // ---------- Staff ----------
     match /staff/{staffId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        (resource.data.venueId != null && ownsVenue(resource.data.venueId))
+      );
       allow create: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
       allow update: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
       allow delete: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
     }
-    
-    // Expenses collection
+
+    // ---------- Expenses ----------
     match /expenses/{expenseId} {
       allow read: if isAuthenticated() && (
         isSuperAdmin() ||
@@ -167,8 +206,8 @@ service cloud.firestore {
       allow update: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
       allow delete: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
     }
-    
-    // Salary Records collection
+
+    // ---------- Salary Records ----------
     match /salaryRecords/{recordId} {
       allow read: if isAuthenticated() && (
         isSuperAdmin() ||
@@ -178,41 +217,42 @@ service cloud.firestore {
       allow update: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
       allow delete: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
     }
-    
-    // Posts collection (Social Feed)
+
+    // ---------- Posts (Social Feed) ----------
     match /posts/{postId} {
       allow read: if isAuthenticated();
-      // Users can create posts, but must set their own userId and status should be 'Pending' for moderation
-      allow create: if isAuthenticated() && 
-                     request.resource.data.userId == request.auth.uid &&
+      allow create: if isAuthenticated() &&
+                     createdByCaller() &&
                      (request.resource.data.status == 'Pending' || request.resource.data.status == 'Approved');
       allow update: if isAuthenticated() && (
         isSuperAdmin() ||
         resource.data.userId == request.auth.uid ||
-        // Allow updating only social interaction counters
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'comments', 'updatedAt', 'venueId', 'userId', 'content', 'type', 'userName', 'userAvatar'])) &&
-        (request.resource.data.content == resource.data.content) // Ensure content doesn't change
+        // Social interaction counter updates (counters only; content unchanged)
+        (
+          request.resource.data.diff(resource.data)
+            .affectedKeys()
+            .hasOnly(['likes', 'comments', 'updatedAt']) &&
+          request.resource.data.content == resource.data.content
+        )
       );
       allow delete: if isAuthenticated() && (
         isSuperAdmin() ||
         (resource.data.venueId != null && ownsVenue(resource.data.venueId)) ||
         resource.data.userId == request.auth.uid
       );
-      
-      // Posts subcollections: likes
+
       match /likes/{likeId} {
         allow read: if isAuthenticated();
-        allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+        allow create: if isAuthenticated() && createdByCaller();
         allow delete: if isAuthenticated() && (
           resource.data.userId == request.auth.uid ||
           isSuperAdmin()
         );
       }
-      
-      // Posts subcollections: comments
+
       match /comments/{commentId} {
         allow read: if isAuthenticated();
-        allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+        allow create: if isAuthenticated() && createdByCaller();
         allow update: if isAuthenticated() && (
           resource.data.userId == request.auth.uid ||
           isSuperAdmin()
@@ -223,26 +263,26 @@ service cloud.firestore {
         );
       }
     }
-    
-    // Categories collection (Product Categories - Super Admin only)
+
+    // ---------- Categories (Super Admin only) ----------
     match /categories/{categoryId} {
       allow read: if isAuthenticated();
       allow create, update, delete: if isAuthenticated() && isSuperAdmin();
     }
-    
-    // Sports collection (Sport Types - Super Admin only)
+
+    // ---------- Sports (Super Admin only) ----------
     match /sports/{sportId} {
       allow read: if isAuthenticated();
-      allow create, update, delete: if isAuthenticated() && isSuperAdmin();
+      allow create, update, delete: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
     }
-    
-    // Products collection (Marketplace - Super Admin only)
+
+    // ---------- Products (Super Admin only) ----------
     match /products/{productId} {
       allow read: if isAuthenticated();
       allow create, update, delete: if isAuthenticated() && isSuperAdmin();
     }
-    
-    // Quick Matches collection
+
+    // ---------- Quick Matches ----------
     match /quickMatches/{matchId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
@@ -255,20 +295,16 @@ service cloud.firestore {
         (resource.data.venueId != null && ownsVenue(resource.data.venueId))
       );
     }
-    
-    // Leaderboards collection
+
+    // ---------- Leaderboards / Polls / Flash Deals ----------
     match /leaderboards/{leaderboardId} {
       allow read: if isAuthenticated();
       allow create, update, delete: if isAuthenticated() && isSuperAdmin();
     }
-    
-    // Polls collection
     match /polls/{pollId} {
       allow read: if isAuthenticated();
       allow create, update, delete: if isAuthenticated() && isSuperAdmin();
     }
-    
-    // Flash Deals collection
     match /flashDeals/{dealId} {
       allow read: if isAuthenticated();
       allow create, update, delete: if isAuthenticated() && (
@@ -276,15 +312,15 @@ service cloud.firestore {
         (resource.data.venueId != null && ownsVenue(resource.data.venueId))
       );
     }
-    
-    // Orders collection
+
+    // ---------- Orders ----------
     match /orders/{orderId} {
       allow read: if isAuthenticated() && (
         isSuperAdmin() ||
         (resource != null && resource.data.venueId != null && ownsVenue(resource.data.venueId)) ||
         (resource != null && resource.data.userId == request.auth.uid)
       );
-      allow create: if isAuthenticated();
+      allow create: if isAuthenticated() && createdByCaller();
       allow update: if isAuthenticated() && (
         isSuperAdmin() ||
         (resource != null && resource.data.venueId != null && ownsVenue(resource.data.venueId)) ||
@@ -292,34 +328,38 @@ service cloud.firestore {
       );
       allow delete: if isSuperAdmin();
     }
-    
-    // Tournaments collection (Super Admin only)
+
+    // ---------- Tournaments ----------
     match /tournaments/{tournamentId} {
       allow read: if isAuthenticated();
       allow create, update, delete: if isAuthenticated() && isSuperAdmin();
     }
-    
-    // Reports collection (Social Feed Reports - Super Admin only for moderation)
+
+    // ---------- Reports (moderation) ----------
     match /reports/{reportId} {
       allow read: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
-      allow create: if isAuthenticated(); // Users can create reports
-      allow update, delete: if isAuthenticated() && isSuperAdmin(); // Only Super Admins can moderate
+      // Any authenticated user can create a report about themselves/other content,
+      // but the report must carry their uid as reporterId/userId to prevent impersonation.
+      allow create: if isAuthenticated() &&
+                     (request.resource.data.userId == request.auth.uid ||
+                      request.resource.data.reporterId == request.auth.uid);
+      allow update, delete: if isAuthenticated() && isSuperAdmin();
     }
-    
-    // Marketing Campaigns collection (Super Admin only)
+
+    // ---------- Marketing Campaigns ----------
     match /marketingCampaigns/{campaignId} {
       allow read: if isAuthenticated();
       allow create, update, delete: if isAuthenticated() && isSuperAdmin();
     }
-    
-    // Support Tickets collection
+
+    // ---------- Support Tickets ----------
     match /supportTickets/{ticketId} {
       allow read: if isAuthenticated() && (
         isSuperAdmin() ||
         (resource != null && resource.data.userId == request.auth.uid) ||
         (resource != null && resource.data.assignedTo != null && resource.data.assignedTo == request.auth.uid)
       );
-      allow create: if isAuthenticated();
+      allow create: if isAuthenticated() && createdByCaller();
       allow update: if isAuthenticated() && (
         isSuperAdmin() ||
         (resource != null && resource.data.userId == request.auth.uid) ||
@@ -327,38 +367,30 @@ service cloud.firestore {
       );
       allow delete: if isSuperAdmin();
     }
-    
-    // App Settings collection (Platform configuration)
+
+    // ---------- App Settings ----------
     match /appSettings/{settingsId} {
-      // Authenticated users can read settings (needed for display purposes)
-      // Only super admins can write/update settings
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
       allow create, update, delete: if isAuthenticated() && isSuperAdmin();
     }
-    
-    // Landing Page Content collection (Public read, Super Admin write)
+
+    // ---------- Landing Page / CMS Pages (public read) ----------
     match /landingPage/{contentId} {
-      // Anyone can read landing page content (needed for public display)
       allow read: if true;
-      // Only super admins can write/update landing page content
       allow create, update, delete: if isAuthenticated() && isSuperAdmin();
     }
-    
-    // CMS Pages collection (Frontend CMS - public read for published pages, Super Admin write)
     match /cmsPages/{pageId} {
       allow read: if true;
       allow create, update, delete: if isAuthenticated() && isSuperAdmin();
     }
-    
-    // Notifications collection (User notifications)
+
+    // ---------- Notifications ----------
     match /notifications/{notificationId} {
-      // Users can read their own notifications, admins can read all
       allow read: if isAuthenticated() && (
         resource.data.userId == request.auth.uid ||
         isSuperAdmin() ||
         isVenueManager()
       );
-      // System/admins can create notifications, users can update their own (mark as read)
       allow create: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
       allow update: if isAuthenticated() && (
         resource.data.userId == request.auth.uid ||
@@ -370,119 +402,113 @@ service cloud.firestore {
         isSuperAdmin()
       );
     }
-    
-    // User-specific notifications (subcollection under users)
+
     match /users/{userId}/notifications/{notificationId} {
-      // Users can read their own notifications, admins can read all
       allow read: if isAuthenticated() && (
-        userId == request.auth.uid || 
-        isSuperAdmin() || 
+        userId == request.auth.uid ||
+        isSuperAdmin() ||
         isVenueManager()
       );
-      // System can create notifications for users, users can update their own (mark as read)
       allow create: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
       allow update: if isAuthenticated() && (
-        userId == request.auth.uid || 
-        isSuperAdmin() || 
+        userId == request.auth.uid ||
+        isSuperAdmin() ||
         isVenueManager()
       );
       allow delete: if isAuthenticated() && (
-        userId == request.auth.uid || 
+        userId == request.auth.uid ||
         isSuperAdmin()
       );
     }
-    
-    // Teams collection (TeamUp feature)
+
+    // ---------- Teams (TeamUp) ----------
     match /teams/{teamId} {
-      // Authenticated users can read teams
       allow read: if isAuthenticated();
-      // Authenticated users can create teams (must set createdBy to their uid)
-      allow create: if isAuthenticated() && 
+      allow create: if isAuthenticated() &&
                      request.resource.data.createdBy == request.auth.uid;
-      // Team creator or admins can update teams
-      // Note: For member-specific updates, we'll allow if user is creator or admin
-      // Member array updates should be handled carefully in application logic
       allow update: if isAuthenticated() && (
         isSuperAdmin() ||
         (resource != null && resource.data.createdBy == request.auth.uid)
       );
-      // Team creator or admins can delete teams
       allow delete: if isAuthenticated() && (
         isSuperAdmin() ||
         (resource != null && resource.data.createdBy == request.auth.uid)
       );
     }
-    
-    // FCM Tokens collection
+
+    // ---------- FCM Tokens ----------
     match /fcmTokens/{tokenId} {
-      // Users can read/update their own tokens
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isSuperAdmin() || isVenueManager());
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && createdByCaller();
       allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isSuperAdmin() || isVenueManager());
       allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isSuperAdmin() || isVenueManager());
     }
-    
-    // Invoices collection
+
+    // ---------- Invoices ----------
+    // Only admins / venue managers can create invoices. Only super admins can update/delete.
     match /invoices/{invoiceId} {
       allow read: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
-      allow create: if isAuthenticated(); // Allow mobile app/admin to create invoices
-      allow update, delete: if isAuthenticated() && isSuperAdmin(); // Only Super Admins can update/delete invoices
+      allow create: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
+      allow update, delete: if isAuthenticated() && isSuperAdmin();
     }
-    
-    // Payments collection
+
+    // ---------- Payments ----------
+    // Clients record payments for themselves (userId must match the caller).
+    // The Razorpay webhook (Cloud Function) writes server-verified records via Admin SDK,
+    // which bypasses these rules.
     match /payments/{paymentId} {
       allow read: if isAuthenticated() && (
         isSuperAdmin() ||
         (resource != null && resource.data.venueId != null && ownsVenue(resource.data.venueId)) ||
         (resource != null && resource.data.userId != null && resource.data.userId == request.auth.uid)
       );
-      allow create: if isAuthenticated(); // Users can create payment records (via mobile app or admin)
+      allow create: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isVenueManager() ||
+        createdByCaller()
+      );
       allow update: if isAuthenticated() && (
         isSuperAdmin() ||
         (resource != null && resource.data.venueId != null && ownsVenue(resource.data.venueId))
       );
       allow delete: if isAuthenticated() && isSuperAdmin();
     }
-    
-    // Settlements collection
+
+    // ---------- Settlements ----------
     match /settlements/{settlementId} {
       allow read: if isAuthenticated() && (
         isSuperAdmin() ||
         (resource != null && resource.data.venueId != null && ownsVenue(resource.data.venueId))
       );
-      allow create: if isAuthenticated(); // Allow mobile app/admin to create settlements
-      allow update: if isAuthenticated() && isSuperAdmin(); // Only Super Admins can update settlements
+      allow create: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
+      allow update: if isAuthenticated() && isSuperAdmin();
       allow delete: if isAuthenticated() && isSuperAdmin();
     }
-    
-    // Wallet Transactions collection
+
+    // ---------- Wallet Transactions ----------
     match /walletTransactions/{transactionId} {
-      // Users can read their own transactions, admins can read all
       allow read: if isAuthenticated() && (
         resource.data.userId == request.auth.uid ||
         isSuperAdmin() ||
         isVenueManager()
       );
-      // Users can create their own transactions (wallet top-up, payments)
-      allow create: if isAuthenticated() && 
-                     request.resource.data.userId == request.auth.uid;
-      // Only system/admins can update transactions (for corrections)
+      allow create: if isAuthenticated() && createdByCaller();
       allow update: if isAuthenticated() && isSuperAdmin();
-      // Only admins can delete transactions
       allow delete: if isAuthenticated() && isSuperAdmin();
     }
-    
-    // Activity / audit log (admin only read; authenticated create for audit trail)
+
+    // ---------- Activity / Audit Log ----------
+    // Authenticated callers may append entries, but the entry's userId must match
+    // the caller's uid to prevent audit-log forgery. Never updatable or deletable.
     match /activityLog/{logId} {
       allow read: if isAuthenticated() && isSuperAdmin();
-      allow create: if isAuthenticated();
+      allow create: if isAuthenticated() && createdByCaller();
       allow update, delete: if false;
     }
-    
-    // Default deny
+
+    // ---------- Default deny ----------
     match /{document=**} {
       allow read, write: if false;
     }
   }
 }
-
