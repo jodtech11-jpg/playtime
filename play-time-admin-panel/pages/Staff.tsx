@@ -12,16 +12,18 @@ import StaffFormModal from '../components/modals/StaffFormModal';
 import { serverTimestamp } from 'firebase/firestore';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const Staff: React.FC = () => {
   const { user } = useAuth();
-  const { showError, showWarning } = useToast();
+  const { showError, showWarning, showSuccess } = useToast();
   const { openConfirm, confirmDialog } = useConfirmDialog();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
-  const { staff, loading: staffLoading } = useStaff({ realtime: true });
+  const { staff, loading: staffLoading, error: staffError } = useStaff({ realtime: true });
   const { staff: activeStaff } = useActiveStaff();
-  const { expenses, loading: expensesLoading } = useExpenses({ limit: 10, realtime: true });
+  const { expenses, loading: expensesLoading, error: expensesError } = useExpenses({ limit: 10, realtime: true });
   const { venues } = useVenues({ realtime: true });
+  const listError = staffError || expensesError;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<StaffType | null>(null);
@@ -108,6 +110,7 @@ const Staff: React.FC = () => {
       
       setIsModalOpen(false);
       setSelectedStaff(null);
+      showSuccess(selectedStaff ? 'Staff member updated successfully' : 'Staff member created successfully');
     } catch (error: any) {
       console.error('Error saving staff:', error);
       throw error;
@@ -126,7 +129,7 @@ const Staff: React.FC = () => {
           await staffCollection.delete(staffId);
         } catch (error: any) {
           console.error('Error deleting staff:', error);
-          showError('Failed to delete staff: ' + error.message);
+          showError('Failed to delete staff: ' + getFirebaseErrorMessage(error));
         } finally {
           setProcessing(null);
         }
@@ -145,7 +148,11 @@ const Staff: React.FC = () => {
       setExpenseLoading(true);
       
       const selectedStaffMember = staff.find(s => s.id === expenseForm.staffId);
-      const venueId = selectedStaffMember?.venueId || (venues.length > 0 ? venues[0].id : '');
+      const venueId = selectedStaffMember?.venueId;
+      if (!venueId) {
+        showWarning('Selected staff has no venue assigned. Edit the staff member first.');
+        return;
+      }
 
       await expensesCollection.create({
         venueId,
@@ -171,7 +178,7 @@ const Staff: React.FC = () => {
       });
     } catch (error: any) {
       console.error('Error logging expense:', error);
-      showError('Failed to log expense: ' + error.message);
+      showError('Failed to log expense: ' + getFirebaseErrorMessage(error));
     } finally {
       setExpenseLoading(false);
     }
@@ -192,6 +199,11 @@ const Staff: React.FC = () => {
 
   return (
     <div className="p-4 sm:p-8 space-y-6 sm:space-y-10">
+      {listError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-900 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+          {listError}
+        </div>
+      )}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h2 className="text-3xl font-black tracking-tight text-gray-900 dark:text-gray-100">Staff & Trainer Management</h2>

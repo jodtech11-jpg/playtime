@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { MarketingCampaign } from '../../types';
 import { useVenues } from '../../hooks/useVenues';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface CreateCampaignModalProps {
   isOpen: boolean;
@@ -114,7 +115,7 @@ const CreateCampaignModal: React.FC<CreateCampaignModalProps> = ({
       await onCreate(campaignData);
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Failed to create campaign');
+      setError(getFirebaseErrorMessage(err) || 'Failed to create campaign');
     } finally {
       setLoading(false);
     }

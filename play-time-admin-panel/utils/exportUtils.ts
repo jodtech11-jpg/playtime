@@ -484,7 +484,7 @@ export const exportMembersToPDF = (
 /**
  * Generate PDF invoice
  */
-export const generateInvoicePDF = (invoice: Invoice, venueName?: string): void => {
+export const generateInvoicePDF = (invoice: Invoice, venueName?: string, options?: { preview?: boolean }): void => {
   const doc = new jsPDF();
   let yPos = 20;
   const margin = 20;
@@ -608,6 +608,14 @@ export const generateInvoicePDF = (invoice: Invoice, venueName?: string): void =
     { align: 'center' }
   );
 
-  doc.save(`invoice-${invoice.invoiceNumber}.pdf`);
+  if (options?.preview) {
+    const blob = doc.output('blob');
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank', 'noopener,noreferrer');
+    // Revoke after the new tab has a chance to load
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } else {
+    doc.save(`invoice-${invoice.invoiceNumber}.pdf`);
+  }
 };
 

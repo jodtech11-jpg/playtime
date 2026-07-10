@@ -16,6 +16,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
   initialStartDate,
   initialEndDate,
 }) => {
+  const { showError } = useToast();
   const [startDate, setStartDate] = useState<string>(() => {
     if (initialStartDate) {
       const date = new Date(initialStartDate);

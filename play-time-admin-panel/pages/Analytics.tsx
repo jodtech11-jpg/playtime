@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, Legend
 } from 'recharts';
+import ChartContainer from '../components/shared/ChartContainer';
 import { useAnalytics } from '../hooks/useAnalytics';
 import { formatCurrency, formatNumber, formatPercentage } from '../utils/formatUtils';
 import { formatDate, getToday, getWeekStart, getWeekEnd, getMonthStart, getMonthEnd } from '../utils/dateUtils';
@@ -190,8 +191,7 @@ const Analytics: React.FC = () => {
         <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-8">
           Financial Trajectory
         </h3>
-        <div className="h-[400px] min-h-[300px] min-w-0 w-full">
-          <ResponsiveContainer width="100%" height="100%">
+        <ChartContainer height={400}>
             <AreaChart data={revenueTrends}>
               <defs>
                 <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
@@ -208,18 +208,15 @@ const Analytics: React.FC = () => {
               />
               <Area type="monotone" dataKey="revenue" stroke="#11d473" strokeWidth={4} fillOpacity={1} fill="url(#colorRevenue)" />
             </AreaChart>
-          </ResponsiveContainer>
-        </div>
+        </ChartContainer>
       </div>
 
-      {/* User Growth Chart */}
       {/* User Growth Chart */}
       <div className="ui-card p-6">
         <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-8">
           Audience Retention & Growth
         </h3>
-        <div className="h-[400px] min-h-[300px] min-w-0 w-full">
-          <ResponsiveContainer width="100%" height="100%">
+        <ChartContainer height={400}>
             <LineChart data={userGrowth}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.5} />
               <XAxis dataKey="period" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} dy={10} />
@@ -233,8 +230,7 @@ const Analytics: React.FC = () => {
               <Line type="monotone" dataKey="totalUsers" stroke="#11d473" strokeWidth={3} dot={{ r: 4, strokeWidth: 2, fill: '#fff' }} name="Total Base" />
               <Line type="monotone" dataKey="activeUsers" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 4, strokeWidth: 2, fill: '#fff' }} name="Retention" />
             </LineChart>
-          </ResponsiveContainer>
-        </div>
+        </ChartContainer>
       </div>
 
       {/* Booking Patterns - Hour and Day */}
@@ -243,8 +239,7 @@ const Analytics: React.FC = () => {
           <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-8">
             Hourly Heatmap
           </h3>
-          <div className="h-[300px] min-h-[250px] min-w-0 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <ChartContainer height={300}>
               <BarChart data={bookingPatternsByHour.filter(h => h.bookings > 0)}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.5} />
                 <XAxis dataKey="hourLabel" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} dy={10} />
@@ -255,16 +250,14 @@ const Analytics: React.FC = () => {
                 />
                 <Bar dataKey="bookings" fill="#11d473" radius={[6, 6, 0, 0]} barSize={20} />
               </BarChart>
-            </ResponsiveContainer>
-          </div>
+          </ChartContainer>
         </div>
 
         <div className="ui-card p-6">
           <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-8">
             Engagement by Day
           </h3>
-          <div className="h-[300px] min-h-[250px] min-w-0 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <ChartContainer height={300}>
               <BarChart data={bookingPatternsByDay}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.5} />
                 <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} dy={10} />
@@ -275,20 +268,17 @@ const Analytics: React.FC = () => {
                 />
                 <Bar dataKey="bookings" fill="#3b82f6" radius={[6, 6, 0, 0]} barSize={20} />
               </BarChart>
-            </ResponsiveContainer>
-          </div>
+          </ChartContainer>
         </div>
       </div>
 
-      {/* Sport Distribution and Venue Performance */}
       {/* Sport Distribution and Venue Performance */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         <div className="ui-card p-6">
           <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-8">
             Sports Distribution
           </h3>
-          <div className="h-[350px] min-h-[280px] min-w-0 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <ChartContainer height={350}>
               <PieChart>
                 <Pie
                   data={sportDistribution}
@@ -312,8 +302,7 @@ const Analytics: React.FC = () => {
                 />
                 <Legend layout="vertical" align="right" verticalAlign="middle" wrapperStyle={{ fontWeight: 700, fontSize: '10px', textTransform: 'uppercase' }} />
               </PieChart>
-            </ResponsiveContainer>
-          </div>
+          </ChartContainer>
         </div>
 
         <div className="ui-card p-6">
@@ -363,12 +352,13 @@ const Analytics: React.FC = () => {
         <DateRangePicker
           isOpen={showDatePicker}
           onClose={() => setShowDatePicker(false)}
-          onSelect={(range) => {
-            setCustomDateRange(range);
+          onApply={(start, end) => {
+            setCustomDateRange({ start, end });
             setDateRangeType('custom');
             setShowDatePicker(false);
           }}
-          initialRange={dateRange}
+          initialStartDate={dateRange?.start}
+          initialEndDate={dateRange?.end}
         />
       )}
     </div>

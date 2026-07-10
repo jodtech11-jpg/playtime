@@ -3,6 +3,7 @@ import { usersCollection, bookingsCollection, membershipsCollection } from '../s
 import { User } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import type { DocumentSnapshot } from 'firebase/firestore';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const USERS_PAGE_SIZE = 50;
 
@@ -79,7 +80,7 @@ export const useUsers = (options: UseUsersOptions = {}) => {
           const requested = options.venueIds?.filter(Boolean) ?? [];
           const venueIds = (
             requested.length > 0 ? requested.filter((id) => managed.includes(id)) : managed
-          ).slice(0, 10);
+          ).slice(0, 30);
           if (venueIds.length === 0) {
             if (!mounted) return;
             setUsers([]);
@@ -91,16 +92,7 @@ export const useUsers = (options: UseUsersOptions = {}) => {
           const memberships = await membershipsCollection.getAll([{ field: 'venueId', operator: 'in', value: venueIds }]) as any[];
           const bookingUserIds = new Set(bookings.map(b => b.userId).filter(Boolean));
           const membershipUserIds = new Set(memberships.map(m => m.userId).filter(Boolean));
-          const allUsers = await usersCollection.getAll() as User[];
-          const managerUserIds = new Set(
-            allUsers
-              .filter(u =>
-                (u.role === 'venue_manager' && u.managedVenues?.some(vId => venueIds.includes(vId))) ||
-                (u.role === 'super_admin')
-              )
-              .map(u => u.id)
-          );
-          userIdsToFetch = Array.from(new Set([...bookingUserIds, ...membershipUserIds, ...managerUserIds]));
+          userIdsToFetch = Array.from(new Set([...bookingUserIds, ...membershipUserIds]));
         } else if (options.venueIds && options.venueIds.length > 0) {
           const bookings = await bookingsCollection.getAll([{ field: 'venueId', operator: 'in', value: options.venueIds }]) as any[];
           const memberships = await membershipsCollection.getAll([{ field: 'venueId', operator: 'in', value: options.venueIds }]) as any[];
@@ -176,7 +168,7 @@ export const useUsers = (options: UseUsersOptions = {}) => {
       } catch (err: any) {
         console.error('Error fetching users:', err);
         if (mounted) {
-          setError(err.message || 'Failed to fetch users');
+          setError(getFirebaseErrorMessage(err, 'Failed to fetch users'));
           setLoading(false);
         }
       }

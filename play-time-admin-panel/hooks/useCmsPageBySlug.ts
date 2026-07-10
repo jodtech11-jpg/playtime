@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { cmsPagesCollection } from '../services/firebase';
 import { CmsPage } from '../types';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 /**
  * Fetch a single CMS page by URL slug (for public page view).
@@ -29,7 +30,7 @@ export const useCmsPageBySlug = (slug: string | undefined, activeOnly = true) =>
       })
       .catch((err: any) => {
         if (!cancelled) {
-          setError(err?.message || 'Failed to load page');
+          setError(getFirebaseErrorMessage(err, 'Failed to load page'));
           setPage(null);
         }
       })

@@ -12,7 +12,12 @@ import { getSearchShortcutLabel } from '../../utils/platformUtils';
 const Header: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, roleDisplayName, isSuperAdmin, isVenueManager } = useAuth();
+  const headerRoleLabel = isSuperAdmin
+    ? 'Super Admin'
+    : isVenueManager
+      ? 'Vendor'
+      : (roleDisplayName || 'User');
   const { theme, toggleTheme } = useTheme();
   const { onNewEntry, hasHandler } = useHeaderActions();
   const { notifications } = useNotifications(false); // Only fetch count, not full list
@@ -190,49 +195,24 @@ const Header: React.FC = () => {
   };
 
   const handleNewEntryClick = () => {
-    try {
-      if (hasHandler) {
-        onNewEntry();
-      } else {
-        // Fallback: Navigate to appropriate page based on current route
-        const path = location.pathname.split('/')[1];
-        const fallbackRoutes: Record<string, string> = {
-          '': '/bookings',
-          'bookings': '/bookings',
-          'venues': '/venues',
-          'staff': '/staff',
-          'tournaments': '/tournaments',
-          'marketing': '/marketing',
-          'marketplace': '/marketplace',
-          'notifications': '/notifications',
-          'memberships': '/memberships',
-        };
-        const fallbackRoute = fallbackRoutes[path] || '/';
-        navigate(fallbackRoute);
-      }
-    } catch (error) {
-      console.error('Error calling new entry handler:', error);
-      // Still try fallback navigation
-      const path = location.pathname.split('/')[1];
-      const fallbackRoutes: Record<string, string> = {
-        '': '/bookings',
-        'bookings': '/bookings',
-        'venues': '/venues',
-        'staff': '/staff',
-        'tournaments': '/tournaments',
-        'marketing': '/marketing',
-        'marketplace': '/marketplace',
-        'notifications': '/notifications',
-        'memberships': '/memberships',
-      };
-      const fallbackRoute = fallbackRoutes[path] || '/';
-      navigate(fallbackRoute);
+    if (hasHandler) {
+      onNewEntry();
     }
   };
 
   // Get "New Entry" button text based on current page
   const getNewEntryText = () => {
-    const path = location.pathname.split('/')[1];
+    const segments = location.pathname.split('/').filter(Boolean);
+    const path = segments[0] || '';
+    const subPath = segments[1];
+
+    // Nested routes must be checked before the parent path map
+    if (path === 'venues' && subPath === 'courts') return 'Add Court';
+    if (path === 'users') {
+      if (subPath === 'roles') return 'Create Role';
+      if (subPath === 'permissions') return 'Create Permission';
+    }
+
     const textMap: Record<string, string> = {
       '': 'New Entry',
       'bookings': 'New Booking',
@@ -246,20 +226,23 @@ const Header: React.FC = () => {
       'memberships': 'New Membership',
       'frontend-cms': 'Add Page',
     };
-    // Handle nested routes like /users/roles
-    if (path === 'users') {
-      const subPath = location.pathname.split('/')[2];
-      if (subPath === 'roles') return 'Create Role';
-      if (subPath === 'permissions') return 'Create Permission';
-    }
     return textMap[path] || 'New Entry';
   };
 
   return (
     <header className="min-h-16 ui-header flex flex-wrap items-center gap-x-2 gap-y-2 sm:gap-x-4 px-4 sm:px-6 lg:px-8 py-2 lg:py-0 lg:h-16 lg:flex-nowrap shrink-0 z-10">
-      <h2 className="order-1 pl-14 lg:pl-0 flex-1 min-w-0 lg:flex-none lg:max-w-sm xl:max-w-md text-lg font-black text-slate-900 dark:text-white tracking-tight leading-none truncate">
-        {getPageTitle()}
-      </h2>
+      <div className="order-1 pl-14 lg:pl-0 flex-1 min-w-0 lg:flex-none lg:max-w-sm xl:max-w-md flex items-center gap-3">
+        <h2 className="text-lg font-black text-slate-900 dark:text-white tracking-tight leading-none truncate">
+          {getPageTitle()}
+        </h2>
+        <span className={`hidden sm:inline-flex shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border ${
+          isSuperAdmin
+            ? 'bg-indigo-50 text-indigo-700 border-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-800'
+            : 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800'
+        }`}>
+          {headerRoleLabel}
+        </span>
+      </div>
 
       <div
         className="order-3 w-full basis-full min-w-0 lg:order-2 lg:basis-0 lg:flex-1 lg:max-w-lg lg:px-4 xl:px-8"
@@ -552,16 +535,19 @@ const Header: React.FC = () => {
           )}
         </div>
 
-        <div className="w-px h-8 bg-gray-200 dark:bg-gray-700 mx-1"></div>
+        {hasHandler && (
+          <>
+            <div className="w-px h-8 bg-gray-200 dark:bg-gray-700 mx-1"></div>
 
-        {/* New Entry Button */}
-        <button
-          onClick={handleNewEntryClick}
-          className="flex items-center gap-2 bg-primary hover:bg-primary-hover text-white px-5 py-2.5 rounded-xl text-sm font-black transition-all duration-200 shadow-lg shadow-primary/25 active:scale-95"
-        >
-          <span className="material-symbols-outlined text-[20px]">add</span>
-          <span className="hidden lg:inline">{getNewEntryText()}</span>
-        </button>
+            <button
+              onClick={handleNewEntryClick}
+              className="flex items-center gap-2 bg-primary hover:bg-primary-hover text-white px-5 py-2.5 rounded-xl text-sm font-black transition-all duration-200 shadow-lg shadow-primary/25 active:scale-95"
+            >
+              <span className="material-symbols-outlined text-[20px]">add</span>
+              <span className="hidden lg:inline">{getNewEntryText()}</span>
+            </button>
+          </>
+        )}
 
         {/* Profile Dropdown */}
         <div className="relative" ref={profileRef}>
@@ -599,11 +585,7 @@ const Header: React.FC = () => {
                     <p className="text-sm font-black text-gray-900 dark:text-gray-100 truncate">{user?.name || 'User'}</p>
                     <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user?.email}</p>
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                      {user?.role === 'super_admin'
-                        ? 'Super Admin'
-                        : user?.role === 'venue_manager'
-                          ? 'Venue Manager'
-                          : 'Player'}
+                      {headerRoleLabel}
                     </p>
                   </div>
                 </div>

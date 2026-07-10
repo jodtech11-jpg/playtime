@@ -5,6 +5,8 @@ import { useSports } from '../../hooks/useSports';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import GoogleMapPicker from '../shared/GoogleMapPicker';
 import ImageUpload from '../shared/ImageUpload';
+import SportBadge from '../shared/SportBadge';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface VenueFormModalProps {
   venue: Venue | null;
@@ -20,7 +22,7 @@ const VenueFormModal: React.FC<VenueFormModalProps> = ({
   onSave
 }) => {
   const { isSuperAdmin } = useAuth();
-  const { sports } = useSports({ activeOnly: true, realtime: false });
+  const { sports } = useSports({ activeOnly: false, realtime: false });
   const { settings } = useAppSettings(false);
   const [formData, setFormData] = useState<Partial<Venue>>({
     name: '',
@@ -47,7 +49,7 @@ const VenueFormModal: React.FC<VenueFormModalProps> = ({
   useEffect(() => {
     if (venue) {
       // Clean payment settings - remove Razorpay credentials (they come from admin settings)
-      const cleanedPaymentSettings = venue.paymentSettings ? {
+      const cleanedPaymentSettings: Venue['paymentSettings'] = venue.paymentSettings ? {
         ...venue.paymentSettings,
         razorpay: venue.paymentSettings.razorpay ? {
           enabled: venue.paymentSettings.razorpay.enabled || false
@@ -194,7 +196,7 @@ const VenueFormModal: React.FC<VenueFormModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error('Error saving venue:', err);
-      setError(err.message || 'Failed to save venue');
+      setError(getFirebaseErrorMessage(err) || 'Failed to save venue');
     } finally {
       setLoading(false);
     }
@@ -328,20 +330,12 @@ const VenueFormModal: React.FC<VenueFormModalProps> = ({
                   <div className="flex flex-wrap gap-2 min-h-[44px] p-2 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
                     {formData.sports && formData.sports.length > 0 ? (
                       formData.sports.map((sport, index) => (
-                        <span
+                        <SportBadge
                           key={index}
-                          className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm group hover:border-amber-400/50 transition-all"
-                        >
-                          <span className="material-symbols-outlined text-sm text-amber-500">sports_score</span>
-                          {sport}
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveArrayItem('sports', index)}
-                            className="p-1 hover:bg-rose-50 dark:hover:bg-rose-900/40 hover:text-rose-500 rounded-md transition-colors"
-                          >
-                            <span className="material-symbols-outlined text-xs">close</span>
-                          </button>
-                        </span>
+                          sportName={sport}
+                          sports={sports}
+                          onRemove={() => handleRemoveArrayItem('sports', index)}
+                        />
                       ))
                     ) : (
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic px-3 py-2">No disciplines assigned</p>
@@ -436,6 +430,7 @@ const VenueFormModal: React.FC<VenueFormModalProps> = ({
               </div>
 
               <div className="ui-card p-6 bg-slate-50 dark:bg-slate-800/30 border-dashed">
+                <p className="text-xs text-slate-500 mb-3">Accepted formats: JPG, PNG, or WebP · Max 5MB each</p>
                 <ImageUpload
                   value={formData.images || []}
                   onChange={handleImagesChange}

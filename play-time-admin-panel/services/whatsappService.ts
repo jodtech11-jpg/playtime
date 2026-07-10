@@ -5,6 +5,7 @@
 
 import { usersCollection } from './firebase';
 import { User } from '../types';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 export interface WhatsAppMessage {
   to: string; // Phone number in E.164 format (e.g., +919876543210)
@@ -56,7 +57,7 @@ export const sendWhatsAppMessage = async (
     console.error('Error sending WhatsApp message:', error);
     return {
       success: false,
-      error: error.message || 'Failed to send WhatsApp message'
+      error: getFirebaseErrorMessage(error, 'Failed to send WhatsApp message')
     };
   }
 };
@@ -365,7 +366,7 @@ export const sendWhatsAppNotification = async (
       }
     } catch (error: any) {
       failed++;
-      errors.push(`${phoneNumber}: ${error.message || 'Failed to send'}`);
+      errors.push(`${phoneNumber}: ${getFirebaseErrorMessage(error, 'Failed to send')}`);
     }
   }
 

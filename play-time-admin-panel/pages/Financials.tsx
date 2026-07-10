@@ -10,9 +10,11 @@ import { exportTransactionsToCSV, exportFinancialReportToPDF, generateInvoicePDF
 import { generateInvoicePDFFile, getInvoiceVenueName } from '../services/invoiceService';
 import CreateInvoiceModal from '../components/modals/CreateInvoiceModal';
 import { Invoice } from '../types';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const Financials: React.FC = () => {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
+  const canManageFinancials = hasPermission('financials.manage');
   const { showSuccess, showError } = useToast();
   const [dateRange, setDateRange] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const [filterType, setFilterType] = useState<'All' | 'Bookings' | 'Memb' | 'Equip'>('All');
@@ -92,7 +94,16 @@ const Financials: React.FC = () => {
 
   const handleExportPDF = () => {
     try {
-      exportFinancialReportToPDF(filteredTransactions, metrics, 'Financial Report');
+      // Derive metrics from the filtered transactions so the PDF totals match its rows
+      const filteredMetrics = {
+        grossBookingValue: filteredTransactions.reduce((sum, t) => sum + (t.amount || 0), 0),
+        platformCommission: filteredTransactions.reduce((sum, t) => sum + (t.platformCommission || 0), 0),
+        convenienceFees: filteredTransactions.reduce((sum, t) => sum + (t.convenienceFee || 0), 0),
+        pendingVenuePayouts: filteredTransactions.reduce((sum, t) => sum + (t.venuePayout || 0), 0),
+        totalTransactions: filteredTransactions.length,
+        revenueTrend: metrics.revenueTrend
+      };
+      exportFinancialReportToPDF(filteredTransactions, filteredMetrics, 'Financial Report');
       showSuccess('Financial report exported to PDF successfully!');
     } catch (error: any) {
       console.error('Export error:', error);
@@ -112,6 +123,26 @@ const Financials: React.FC = () => {
 
     if (!settlement.settledToPlatform || settlement.settledToPlatform <= 0) {
       setSettlementError('No amount to settle. Settlement amount must be greater than 0.');
+      return;
+    }
+
+    if (settlementLoading) return;
+
+    // Duplicate protection: block a second settlement invoice with the same
+    // amount recorded on the same calendar day.
+    const isSameDay = (a: Date, b: Date) =>
+      a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    const today = new Date();
+    const duplicate = invoices.find(inv => {
+      if (inv.type !== 'Settlement') return false;
+      if (Math.abs(inv.amount - settlement.settledToPlatform) >= 0.01) return false;
+      const raw = inv.createdAt || inv.paidDate;
+      if (!raw) return false;
+      const invDate = raw?.toDate ? raw.toDate() : new Date(raw);
+      return !isNaN(invDate.getTime()) && isSameDay(invDate, today);
+    });
+    if (duplicate) {
+      setSettlementError('A settlement with this amount was already recorded today. Duplicate settlement aborted.');
       return;
     }
 
@@ -149,7 +180,7 @@ const Financials: React.FC = () => {
       setShowSettlementConfirm(false);
     } catch (err: any) {
       console.error('Error executing settlement:', err);
-      setSettlementError(err.message || 'Failed to execute settlement. Please try again.');
+      setSettlementError(getFirebaseErrorMessage(err) || 'Failed to execute settlement. Please try again.');
     } finally {
       setSettlementLoading(false);
     }
@@ -215,6 +246,7 @@ const Financials: React.FC = () => {
             </div>
           </div>
 
+          {canManageFinancials && (
           <button
             onClick={() => setShowCreateInvoiceModal(true)}
             className="flex items-center gap-2 px-6 py-3 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl transition-all hover:scale-[1.02] active:scale-95"
@@ -222,6 +254,7 @@ const Financials: React.FC = () => {
             <span className="material-symbols-outlined text-lg">add_notes</span>
             Create Invoice
           </button>
+          )}
         </div>
       </div>
 
@@ -552,9 +585,9 @@ const Financials: React.FC = () => {
               </div>
 
               <div className="pt-6 border-t border-slate-100 dark:border-slate-800 space-y-2">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">Net Platform Earnings</p>
+                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest leading-none">Net Platform Earnings</p>
                 <div className="flex items-baseline justify-between gap-4">
-                  <p className="text-3xl font-black text-primary tracking-tighter">{formatCurrency(settlement.settledToPlatform)}</p>
+                  <p className="text-3xl font-black text-slate-900 dark:text-white tracking-tighter">{formatCurrency(settlement.settledToPlatform)}</p>
                   <span className="text-[8px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">Ready</span>
                 </div>
               </div>
@@ -570,6 +603,7 @@ const Financials: React.FC = () => {
               </div>
             )}
 
+            {canManageFinancials && (
             <button
               onClick={() => setShowSettlementConfirm(true)}
               disabled={settlementLoading || settlement.settledToPlatform <= 0}
@@ -584,10 +618,13 @@ const Financials: React.FC = () => {
                 </>
               )}
             </button>
+            )}
 
+            {canManageFinancials && (
             <p className="text-center text-[8px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">
               By executing, you confirm all source transactions have been verified through transaction records.
             </p>
+            )}
           </div>
         </div>
       </div>

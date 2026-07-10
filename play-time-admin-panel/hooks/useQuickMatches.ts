@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { QuickMatch } from '../types';
 import { quickMatchesCollection } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { serverTimestamp } from 'firebase/firestore';
+import { vendorIdFilter } from '../utils/vendorScope';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface UseQuickMatchesOptions {
   venueId?: string;
@@ -23,42 +24,29 @@ export const useQuickMatches = (options: UseQuickMatchesOptions = {}) => {
       return;
     }
 
+    if (isVenueManager && !user.id) {
+      setMatches([]);
+      setLoading(false);
+      return;
+    }
+
+    let mounted = true;
+    let unsubscribe: (() => void) | null = null;
+
     const fetchMatches = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        const filters: any[] = [];
+        const filters: { field: string; operator: string; value: unknown }[] = [];
 
-        const managed = user.managedVenues?.filter(Boolean) ?? [];
-        if (isVenueManager) {
-          if (managed.length === 0) {
-            setMatches([]);
-            setLoading(false);
-            return;
-          }
-          if (options.venueId && !managed.includes(options.venueId)) {
-            setMatches([]);
-            setLoading(false);
-            return;
-          }
+        if (isVenueManager && user.id) {
+          filters.push(vendorIdFilter(user.id));
           if (options.venueId) {
             filters.push({
               field: 'venueId',
               operator: '==',
               value: options.venueId,
-            });
-          } else {
-            const ids = managed.slice(0, 10);
-            if (managed.length > 10) {
-              console.warn(
-                'useQuickMatches: venue manager has more than 10 managedVenues; only the first 10 are queried.'
-              );
-            }
-            filters.push({
-              field: 'venueId',
-              operator: 'in',
-              value: ids,
             });
           }
         } else if (options.venueId) {
@@ -87,36 +75,46 @@ export const useQuickMatches = (options: UseQuickMatchesOptions = {}) => {
           });
         }
 
+        const sortByDateAsc = (rows: QuickMatch[]) =>
+          [...rows].sort((a, b) => {
+            const aTime = a.date?.toMillis?.() ?? a.date?.seconds ?? a.createdAt?.toMillis?.() ?? a.createdAt?.seconds ?? 0;
+            const bTime = b.date?.toMillis?.() ?? b.date?.seconds ?? b.createdAt?.toMillis?.() ?? b.createdAt?.seconds ?? 0;
+            return aTime - bTime;
+          });
+
+        // Sort in memory — avoid orderBy so vendor filters don't need composite indexes.
         if (options.realtime) {
-          const unsubscribe = quickMatchesCollection.subscribeAll(
+          unsubscribe = quickMatchesCollection.subscribeAll(
             (data: QuickMatch[]) => {
-              setMatches(data);
+              if (!mounted) return;
+              setMatches(sortByDateAsc(data || []));
               setLoading(false);
             },
-            filters.length > 0 ? filters : undefined,
-            'date',
-            'asc'
+            filters.length > 0 ? filters : undefined
           );
-
-          return () => unsubscribe();
         } else {
           const data = await quickMatchesCollection.getAll(
-            filters.length > 0 ? filters : undefined,
-            'date',
-            'asc'
+            filters.length > 0 ? filters : undefined
           );
-          setMatches(data as QuickMatch[]);
+          if (!mounted) return;
+          setMatches(sortByDateAsc(data as QuickMatch[]));
           setLoading(false);
         }
       } catch (err: any) {
+        if (!mounted) return;
         console.error('Error fetching quick matches:', err);
-        setError(err.message || 'Failed to fetch quick matches');
+        setError(getFirebaseErrorMessage(err, 'Failed to fetch quick matches'));
         setLoading(false);
       }
     };
 
     fetchMatches();
-  }, [user, options.venueId, options.status, options.sport, options.realtime, isVenueManager]);
+
+    return () => {
+      mounted = false;
+      if (unsubscribe) unsubscribe();
+    };
+  }, [user?.id, options.venueId, options.status, options.sport, options.realtime, isVenueManager]);
 
   return { matches, loading, error };
 };

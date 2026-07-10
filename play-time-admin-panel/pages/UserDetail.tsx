@@ -8,13 +8,16 @@ import { useTeams } from '../hooks/useTeams';
 import { useWalletTransactions } from '../hooks/useWalletTransactions';
 import { useVenues } from '../hooks/useVenues';
 import { usersCollection } from '../services/firebase';
+import { sendLoginInvite, sendPasswordSetupEmail } from '../services/userAccountService';
 import { User } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { getStatusColor, formatCurrency } from '../utils/formatUtils';
 import { formatDate, getRelativeTime } from '../utils/dateUtils';
+import { formatRoleLabel } from '../utils/rbac';
 import { serverTimestamp } from 'firebase/firestore';
 import UserFormModal from '../components/modals/UserFormModal';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const UserDetail: React.FC = () => {
   const { userId } = useParams<{ userId: string }>();
@@ -123,25 +126,20 @@ const UserDetail: React.FC = () => {
     try {
       setProcessing('saving');
 
-      // Prepare update data
       const updateData: any = {
         ...userData,
         updatedAt: serverTimestamp()
       };
 
-      // If role is being changed to 'player' or 'super_admin', clear managedVenues
+      // Players and super admins are not venue-scoped; custom roles keep
+      // their venue assignments and permission grants.
       if (userData.role && (userData.role === 'player' || userData.role === 'super_admin')) {
         updateData.managedVenues = [];
-      }
-
-      // If role is being changed from 'venue_manager' to something else, ensure managedVenues is cleared
-      if (user.role === 'venue_manager' && userData.role && userData.role !== 'venue_manager') {
-        updateData.managedVenues = [];
+        updateData.customPermissions = [];
       }
 
       await usersCollection.update(user.id, updateData);
 
-      // Update local state with the new data
       const updatedUser = { ...user, ...updateData } as User;
       setUser(updatedUser);
       setIsModalOpen(false);
@@ -150,7 +148,62 @@ const UserDetail: React.FC = () => {
     } catch (err: any) {
       console.error('Error saving user:', err);
       setProcessing(null);
-      showError(`Failed to save user: ${err.message}`);
+      showError(`Failed to save user: ${getFirebaseErrorMessage(err)}`);
+    }
+  };
+
+  const handleSendLoginInvite = async () => {
+    if (!user?.email) {
+      showError('This user has no email address.');
+      return;
+    }
+
+    try {
+      setProcessing('invite');
+      const result = await sendLoginInvite(user.id);
+
+      if (result.emailSent) {
+        showSuccess(`Login invite sent to ${result.email}. They can set a password and sign in.`);
+      } else if (result.resetLink) {
+        try {
+          await navigator.clipboard.writeText(result.resetLink);
+          showSuccess(
+            `Login account linked for ${result.email}. Email could not be sent — reset link copied to clipboard.`
+          );
+        } catch {
+          showSuccess(
+            `Login account linked for ${result.email}. Email could not be sent — share this reset link: ${result.resetLink}`
+          );
+        }
+      } else {
+        const emailError = await sendPasswordSetupEmail(result.email);
+        if (emailError) {
+          showSuccess(
+            `Login account linked for ${result.email}${result.migrated ? ' (profile migrated)' : ''}. Could not send email — ask them to use Forgot password on the login page.`
+          );
+        } else {
+          showSuccess(`Login invite sent to ${result.email}. They can set a password and sign in.`);
+        }
+      }
+
+      if (result.migrated && result.uid !== user.id) {
+        navigate(`/users/${result.uid}`, { replace: true });
+        return;
+      }
+
+      setUser((prev) => (prev ? { ...prev, id: result.uid } : prev));
+    } catch (err: any) {
+      console.error('Error sending login invite:', err);
+      const message = getFirebaseErrorMessage(err) || 'Failed to send login invite';
+      if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
+        showError(
+          'Could not reach user provisioning service. Deploy Cloud Functions (provisionUserLogin) and try again.'
+        );
+      } else {
+        showError(message);
+      }
+    } finally {
+      setProcessing(null);
     }
   };
 
@@ -169,7 +222,7 @@ const UserDetail: React.FC = () => {
     } catch (err: any) {
       console.error('Error updating user status:', err);
       setProcessing(null);
-      showError(`Failed to update user status: ${err.message}`);
+      showError(`Failed to update user status: ${getFirebaseErrorMessage(err)}`);
     }
   };
 
@@ -232,6 +285,16 @@ const UserDetail: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {user.email && (currentUser?.role === 'super_admin' || currentUser?.role === 'venue_manager') && (
+            <button
+              onClick={handleSendLoginInvite}
+              disabled={processing === 'invite'}
+              className="flex items-center gap-2 rounded-xl bg-emerald-600 text-white px-6 py-3 text-xs font-black uppercase tracking-widest shadow-xl transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50"
+            >
+              <span className="material-symbols-outlined text-lg">mail</span>
+              {processing === 'invite' ? 'Sending…' : 'Send Login Invite'}
+            </button>
+          )}
           <button
             onClick={() => setIsModalOpen(true)}
             className="flex items-center gap-2 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-3 text-xs font-black uppercase tracking-widest shadow-xl transition-all hover:scale-[1.02] active:scale-95"
@@ -265,7 +328,13 @@ const UserDetail: React.FC = () => {
                   user.role === 'venue_manager' ? 'bg-amber-50 text-amber-600 border border-amber-100' :
                     'bg-blue-50 text-blue-600 border border-blue-100'
                   }`}>
-                  {user.role === 'super_admin' ? 'Admin' : user.role === 'venue_manager' ? 'Vendor' : 'Player'}
+                  {user.role === 'super_admin'
+                    ? 'Admin'
+                    : user.role === 'venue_manager'
+                      ? 'Vendor'
+                      : user.role === 'player'
+                        ? 'Player'
+                        : formatRoleLabel(user.role)}
                 </span>
 
                 <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-widest border ${user.status === 'Active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :

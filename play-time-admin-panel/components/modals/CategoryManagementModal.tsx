@@ -4,6 +4,7 @@ import { categoriesCollection } from '../../services/firebase';
 import { serverTimestamp } from 'firebase/firestore';
 import { useToast } from '../../contexts/ToastContext';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface CategoryManagementModalProps {
   isOpen: boolean;
@@ -90,7 +91,7 @@ const CategoryManagementModal: React.FC<CategoryManagementModalProps> = ({
       setEditingCategory(null);
       onUpdate();
     } catch (err: any) {
-      setError(err.message || 'Failed to save category');
+      setError(getFirebaseErrorMessage(err) || 'Failed to save category');
     } finally {
       setLoading(false);
     }
@@ -110,7 +111,7 @@ const CategoryManagementModal: React.FC<CategoryManagementModalProps> = ({
           await categoriesCollection.delete(categoryId);
           onUpdate();
         } catch (err: any) {
-          showError('Failed to delete category: ' + err.message);
+          showError('Failed to delete category: ' + getFirebaseErrorMessage(err));
         } finally {
           setProcessing(null);
         }
@@ -127,7 +128,7 @@ const CategoryManagementModal: React.FC<CategoryManagementModalProps> = ({
       });
       onUpdate();
     } catch (err: any) {
-      showError('Failed to update category: ' + err.message);
+      showError('Failed to update category: ' + getFirebaseErrorMessage(err));
     } finally {
       setProcessing(null);
     }

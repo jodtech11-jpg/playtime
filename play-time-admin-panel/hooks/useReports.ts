@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { reportsCollection } from '../services/firebase';
 import { Report } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface UseReportsOptions {
   postId?: string;
@@ -21,6 +22,9 @@ export const useReports = (options: UseReportsOptions = {}) => {
       setLoading(false);
       return;
     }
+
+    let mounted = true;
+    let unsubscribe: (() => void) | null = null;
 
     const fetchReports = async () => {
       try {
@@ -48,8 +52,9 @@ export const useReports = (options: UseReportsOptions = {}) => {
         }
 
         if (options.realtime) {
-          const unsubscribe = reportsCollection.subscribeAll(
+          unsubscribe = reportsCollection.subscribeAll(
             (data: Report[]) => {
+              if (!mounted) return;
               setReports(data);
               setLoading(false);
             },
@@ -57,8 +62,6 @@ export const useReports = (options: UseReportsOptions = {}) => {
             'createdAt',
             'desc'
           );
-
-          return () => unsubscribe();
         } else {
           const data = await reportsCollection.getAll(
             filters.length > 0 ? filters : undefined,
@@ -66,17 +69,24 @@ export const useReports = (options: UseReportsOptions = {}) => {
             'desc',
             options.limit
           );
+          if (!mounted) return;
           setReports(data as Report[]);
           setLoading(false);
         }
       } catch (err: any) {
+        if (!mounted) return;
         console.error('Error fetching reports:', err);
-        setError(err.message || 'Failed to fetch reports');
+        setError(getFirebaseErrorMessage(err, 'Failed to fetch reports'));
         setLoading(false);
       }
     };
 
     fetchReports();
+
+    return () => {
+      mounted = false;
+      if (unsubscribe) unsubscribe();
+    };
   }, [user, options.postId, options.status, options.limit, options.realtime]);
 
   return { reports, loading, error };

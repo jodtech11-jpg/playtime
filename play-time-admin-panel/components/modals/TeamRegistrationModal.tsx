@@ -5,6 +5,7 @@ import { serverTimestamp } from 'firebase/firestore';
 import { useUsers } from '../../hooks/useUsers';
 import { formatCurrency } from '../../utils/formatUtils';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface TeamRegistrationModalProps {
   isOpen: boolean;
@@ -95,6 +96,10 @@ const TeamRegistrationModal: React.FC<TeamRegistrationModalProps> = ({
         throw new Error(`Team cannot have more than ${tournament.maxTeamSize} member(s)`);
       }
 
+      if (!team && tournament.maxTeams != null && (tournament.teams?.length ?? 0) >= tournament.maxTeams) {
+        throw new Error(`Maximum number of teams (${tournament.maxTeams}) has been reached`);
+      }
+
       const captain = users.find(u => u.id === captainId);
       const teamData: Omit<TournamentTeam, 'id' | 'createdAt' | 'updatedAt'> = {
         tournamentId: tournament.id,
@@ -140,7 +145,7 @@ const TeamRegistrationModal: React.FC<TeamRegistrationModalProps> = ({
       onClose();
       resetForm();
     } catch (err: any) {
-      setError(err.message || 'Failed to save team');
+      setError(getFirebaseErrorMessage(err) || 'Failed to save team');
     } finally {
       setLoading(false);
     }
@@ -162,7 +167,7 @@ const TeamRegistrationModal: React.FC<TeamRegistrationModalProps> = ({
           onSuccess?.();
           onClose();
         } catch (err: any) {
-          setError(err.message || 'Failed to delete team');
+          setError(getFirebaseErrorMessage(err) || 'Failed to delete team');
         } finally {
           setLoading(false);
         }

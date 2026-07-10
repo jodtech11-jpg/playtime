@@ -442,7 +442,11 @@ const TournamentDetail: React.FC = () => {
                 <div className="p-12 text-center text-gray-500 dark:text-gray-400">
                   <span className="material-symbols-outlined text-6xl text-gray-300 dark:text-gray-600 mb-4 block">groups</span>
                   <p className="text-sm font-medium">No teams registered yet</p>
-                  <button onClick={() => { setEditingTeam(null); setShowTeamModal(true); }} className="mt-4 px-4 py-2 bg-primary text-primary-content rounded-xl text-sm font-black hover:shadow-lg transition-all">
+                  <button
+                    onClick={() => { setEditingTeam(null); setShowTeamModal(true); }}
+                    disabled={tournament.maxTeams != null && (tournament.teams?.length || 0) >= tournament.maxTeams}
+                    className="mt-4 px-4 py-2 bg-primary text-primary-content rounded-xl text-sm font-black hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
                     Register First Team
                   </button>
                 </div>

@@ -3,6 +3,7 @@ import { Settlement } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatCurrency } from '../../utils/formatUtils';
 import { formatDate } from '../../utils/dateUtils';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface SettlementConfirmationModalProps {
   isOpen: boolean;
@@ -63,7 +64,7 @@ const SettlementConfirmationModal: React.FC<SettlementConfirmationModalProps> = 
       setPaymentDate(new Date().toISOString().split('T')[0]);
       setReceiptUrl('');
     } catch (err: any) {
-      setError(err.message || 'Failed to confirm payment');
+      setError(getFirebaseErrorMessage(err) || 'Failed to confirm payment');
     } finally {
       setLoading(false);
     }
@@ -147,7 +148,7 @@ const SettlementConfirmationModal: React.FC<SettlementConfirmationModalProps> = 
                 onChange={(e) => setPaymentReference(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder={paymentMethod === 'UPI' ? 'Enter UPI Transaction ID' : paymentMethod === 'Bank Transfer' ? 'Enter Transaction Reference' : 'Enter Cheque Number'}
-                required={paymentMethod !== 'Cash'}
+                required
               />
             </div>
           )}

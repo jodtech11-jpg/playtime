@@ -3,12 +3,22 @@ import { notificationsCollection } from '../services/firebase';
 import { Notification } from '../types';
 import { serverTimestamp } from 'firebase/firestore';
 import { sendNotificationToAudience } from '../services/notificationService';
+import { useAuth } from '../contexts/AuthContext';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 export interface SendNotificationOptions {
   channels?: ('push' | 'whatsapp')[];
 }
 
+const sortByCreatedDesc = (rows: Notification[]) =>
+  [...rows].sort((a, b) => {
+    const aTime = a.createdAt?.toMillis?.() ?? a.createdAt?.seconds ?? 0;
+    const bTime = b.createdAt?.toMillis?.() ?? b.createdAt?.seconds ?? 0;
+    return bTime - aTime;
+  });
+
 export const useNotifications = (realtime: boolean = false) => {
+  const { user, isVenueManager, isSuperAdmin } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -22,58 +32,56 @@ export const useNotifications = (realtime: boolean = false) => {
         setLoading(true);
         setError(null);
 
+        if (!user) {
+          if (mounted) {
+            setNotifications([]);
+            setLoading(false);
+          }
+          return;
+        }
+
+        // Vendors only see notifications they created; super admins see all broadcasts.
+        const filters: { field: string; operator: string; value: unknown }[] = [];
+        if (isVenueManager && !isSuperAdmin) {
+          filters.push({ field: 'createdBy', operator: '==', value: user.id });
+        }
+
+        const applyBroadcastFilter = (data: Notification[]) =>
+          sortByCreatedDesc((data || []).filter((n: any) => !n.userId));
+
         if (realtime) {
-          try {
-            unsubscribe = notificationsCollection.subscribeAll(
-              (data: Notification[]) => {
-                if (mounted) {
-                  // Filter out per-user notifications (created by sendNotificationToAudience)
-                  // Those have a userId field; broadcast notifications do not
-                  setNotifications((data || []).filter((n: any) => !n.userId));
-                  setLoading(false);
-                }
-              },
-              undefined,
-              'createdAt',
-              'desc'
-            );
-          } catch (subscribeError: any) {
-            console.error('Error setting up subscription:', subscribeError);
-            if (mounted) {
-              setError(subscribeError.message || 'Failed to subscribe to notifications');
-              // Fallback to non-realtime fetch
-              try {
-                const data = await notificationsCollection.getAll(
-                  undefined,
-                  'createdAt',
-                  'desc'
-                );
-                if (mounted) {
-                  setNotifications((data as any[]).filter(n => !n.userId) as Notification[]);
-                  setLoading(false);
-                }
-              } catch (fetchError: any) {
-                if (mounted) {
-                  setLoading(false);
-                }
+          unsubscribe = notificationsCollection.subscribeAll(
+            (data: Notification[]) => {
+              if (mounted) {
+                setNotifications(applyBroadcastFilter(data));
+                setLoading(false);
+              }
+            },
+            filters.length > 0 ? filters : undefined,
+            undefined,
+            undefined,
+            (subscribeError: any) => {
+              console.error('Error setting up subscription:', subscribeError);
+              if (mounted) {
+                setError(getFirebaseErrorMessage(subscribeError, 'Failed to subscribe to notifications'));
+                setNotifications([]);
+                setLoading(false);
               }
             }
-          }
+          );
         } else {
           const data = await notificationsCollection.getAll(
-            undefined,
-            'createdAt',
-            'desc'
+            filters.length > 0 ? filters : undefined
           );
           if (mounted) {
-            setNotifications((data as any[]).filter(n => !n.userId) as Notification[]);
+            setNotifications(applyBroadcastFilter(data as Notification[]));
             setLoading(false);
           }
         }
       } catch (err: any) {
         console.error('Error fetching notifications:', err);
         if (mounted) {
-          setError(err.message || 'Failed to fetch notifications');
+          setError(getFirebaseErrorMessage(err, 'Failed to fetch notifications'));
           setLoading(false);
         }
       }
@@ -83,19 +91,17 @@ export const useNotifications = (realtime: boolean = false) => {
 
     return () => {
       mounted = false;
-      if (unsubscribe) {
-        unsubscribe();
-      }
+      if (unsubscribe) unsubscribe();
     };
-  }, [realtime]);
+  }, [realtime, user?.id, isVenueManager, isSuperAdmin]);
 
   const createNotification = async (notificationData: Omit<Notification, 'id' | 'createdAt' | 'updatedAt'>) => {
     try {
       const newNotification = {
         ...notificationData,
-        status: notificationData.status || 'Draft' as const,
+        status: notificationData.status || ('Draft' as const),
       };
-      
+
       const docId = await notificationsCollection.create(newNotification);
       return docId;
     } catch (err: any) {
@@ -128,29 +134,26 @@ export const useNotifications = (realtime: boolean = false) => {
   const sendNotification = async (notificationId: string, options?: SendNotificationOptions) => {
     let result = { success: 0, failed: 0 };
     try {
-      // Get notification
       const notification = await notificationsCollection.get(notificationId);
       if (!notification) {
         throw new Error('Notification not found');
       }
 
-      // Update status to 'Sending'
       await updateNotification(notificationId, { status: 'Sending' });
 
-      // Send notification via selected channels
       const channels = options?.channels || ['push'];
       result = await sendNotificationToAudience(notification as Notification, channels);
 
-      // Determine status based on results
-      // If at least one notification was sent successfully, mark as 'Sent'
-      // Only mark as 'Failed' if all notifications failed AND there were tokens to send
       const totalAttempted = result.success + result.failed;
-      const status = totalAttempted > 0 && result.success > 0 ? 'Sent' : 
-                     (totalAttempted > 0 && result.success === 0 ? 'Failed' : 'Sent');
+      const status =
+        totalAttempted > 0 && result.success > 0
+          ? 'Sent'
+          : totalAttempted > 0 && result.success === 0
+            ? 'Failed'
+            : 'Sent';
 
-      // Update notification with results
       await updateNotification(notificationId, {
-        status: status,
+        status,
         sentAt: serverTimestamp(),
         sentCount: result.success,
         failedCount: result.failed,
@@ -159,15 +162,12 @@ export const useNotifications = (realtime: boolean = false) => {
       return result;
     } catch (err: any) {
       console.error('Error sending notification:', err);
-      // Only mark as 'Failed' if no notifications were sent successfully
-      // If some were sent, mark as 'Sent' with failed count
       const status = result.success > 0 ? 'Sent' : 'Failed';
-      await updateNotification(notificationId, { 
-        status: status,
+      await updateNotification(notificationId, {
+        status,
         sentCount: result.success,
         failedCount: result.failed,
       });
-      // Only throw error if it's a critical error, not if some notifications were sent
       if (result.success === 0) {
         throw err;
       }
@@ -185,4 +185,3 @@ export const useNotifications = (realtime: boolean = false) => {
     sendNotification,
   };
 };
-

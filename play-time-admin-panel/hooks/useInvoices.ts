@@ -2,8 +2,11 @@ import { useState, useEffect } from 'react';
 import { invoicesCollection } from '../services/firebase';
 import { Invoice } from '../types';
 import { serverTimestamp } from 'firebase/firestore';
+import { useAuth } from '../contexts/AuthContext';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 export const useInvoices = (realtime: boolean = false) => {
+  const { user, isVenueManager, isSuperAdmin } = useAuth();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -17,21 +20,53 @@ export const useInvoices = (realtime: boolean = false) => {
         setLoading(true);
         setError(null);
 
+        if (!user) {
+          if (mounted) {
+            setInvoices([]);
+            setLoading(false);
+          }
+          return;
+        }
+
+        const filters: { field: string; operator: string; value: unknown }[] = [];
+        if (isVenueManager && !isSuperAdmin) {
+          const managed = user.managedVenues?.filter(Boolean) ?? [];
+          if (managed.length === 0) {
+            if (mounted) {
+              setInvoices([]);
+              setLoading(false);
+            }
+            return;
+          }
+          filters.push({
+            field: 'venueId',
+            operator: 'in',
+            value: managed.slice(0, 30),
+          });
+        }
+
+        const sortByCreatedDesc = (rows: Invoice[]) =>
+          [...rows].sort((a, b) => {
+            const aTime = a.createdAt?.toMillis?.() ?? a.createdAt?.seconds ?? 0;
+            const bTime = b.createdAt?.toMillis?.() ?? b.createdAt?.seconds ?? 0;
+            return bTime - aTime;
+          });
+
         if (realtime) {
           unsubscribe = invoicesCollection.subscribeAll(
             (data: Invoice[]) => {
               if (mounted) {
-                setInvoices(data || []);
+                setInvoices(sortByCreatedDesc(data || []));
                 setLoading(false);
               }
             },
+            filters.length > 0 ? filters : undefined,
             undefined,
-            'createdAt',
-            'desc',
+            undefined,
             (subscribeError: any) => {
               console.error('Error in subscription:', subscribeError);
               if (mounted) {
-                setError(subscribeError.message || 'Failed to subscribe to invoices');
+                setError(getFirebaseErrorMessage(subscribeError, 'Failed to subscribe to invoices'));
                 setInvoices([]);
                 setLoading(false);
               }
@@ -39,19 +74,17 @@ export const useInvoices = (realtime: boolean = false) => {
           );
         } else {
           const data = await invoicesCollection.getAll(
-            undefined,
-            'createdAt',
-            'desc'
+            filters.length > 0 ? filters : undefined
           );
           if (mounted) {
-            setInvoices(data as Invoice[]);
+            setInvoices(sortByCreatedDesc(data as Invoice[]));
             setLoading(false);
           }
         }
       } catch (err: any) {
         console.error('Error fetching invoices:', err);
         if (mounted) {
-          setError(err.message || 'Failed to fetch invoices');
+          setError(getFirebaseErrorMessage(err, 'Failed to fetch invoices'));
           setLoading(false);
         }
       }
@@ -65,7 +98,7 @@ export const useInvoices = (realtime: boolean = false) => {
         unsubscribe();
       }
     };
-  }, [realtime]);
+  }, [realtime, user?.id, isVenueManager, isSuperAdmin, user?.managedVenues?.join(',')]);
 
   const createInvoice = async (invoiceData: Omit<Invoice, 'id' | 'createdAt' | 'updatedAt'>) => {
     try {
@@ -76,11 +109,11 @@ export const useInvoices = (realtime: boolean = false) => {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };
-      const docRef = await invoicesCollection.create(newInvoice);
-      return docRef.id;
+      const invoiceId = await invoicesCollection.create(newInvoice);
+      return invoiceId;
     } catch (err: any) {
       console.error('Error creating invoice:', err);
-      throw new Error(err.message || 'Failed to create invoice');
+      throw new Error(getFirebaseErrorMessage(err, 'Failed to create invoice'));
     }
   };
 
@@ -92,7 +125,7 @@ export const useInvoices = (realtime: boolean = false) => {
       });
     } catch (err: any) {
       console.error('Error updating invoice:', err);
-      throw new Error(err.message || 'Failed to update invoice');
+      throw new Error(getFirebaseErrorMessage(err, 'Failed to update invoice'));
     }
   };
 
@@ -101,7 +134,7 @@ export const useInvoices = (realtime: boolean = false) => {
       await invoicesCollection.delete(invoiceId);
     } catch (err: any) {
       console.error('Error deleting invoice:', err);
-      throw new Error(err.message || 'Failed to delete invoice');
+      throw new Error(getFirebaseErrorMessage(err, 'Failed to delete invoice'));
     }
   };
 
@@ -114,4 +147,3 @@ export const useInvoices = (realtime: boolean = false) => {
     deleteInvoice
   };
 };
-

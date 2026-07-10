@@ -3,6 +3,7 @@ import { useLandingPage } from '../../hooks/useLandingPage';
 import { LandingPageContent } from '../../types';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface LandingPageManagementModalProps {
   isOpen: boolean;
@@ -52,7 +53,7 @@ const LandingPageManagementModal: React.FC<LandingPageManagementModalProps> = ({
       onClose();
     } catch (error: any) {
       console.error('Error saving landing page content:', error);
-      showError('Failed to save: ' + error.message);
+      showError('Failed to save: ' + getFirebaseErrorMessage(error));
     } finally {
       setSaving(false);
     }

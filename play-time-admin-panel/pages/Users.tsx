@@ -3,16 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import { useUsers } from '../hooks/useUsers';
 import { useVenues } from '../hooks/useVenues';
 import { usersCollection, logActivity } from '../services/firebase';
+import { createUserAccount, sendLoginInvite, sendPasswordSetupEmail } from '../services/userAccountService';
 import { User } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { getStatusColor } from '../utils/formatUtils';
+import { formatRoleLabel } from '../utils/rbac';
 import { exportUsersToCSV } from '../utils/exportUtils';
 import { formatDate, getRelativeTime } from '../utils/dateUtils';
 import UserFormModal from '../components/modals/UserFormModal';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import { serverTimestamp } from 'firebase/firestore';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const Users: React.FC = () => {
   const navigate = useNavigate();
@@ -99,18 +102,22 @@ const Users: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleSaveUser = async (userData: Partial<User>) => {
+  const handleSaveUser = async (
+    userData: Partial<User>,
+    options?: { sendPasswordSetupEmail?: boolean }
+  ) => {
     try {
       setProcessing('saving');
 
-      // Permission checks
-      if (currentUser?.role === 'venue_manager') {
-        // Venue managers cannot create/assign super admins
+      // Permission checks (apply to venue managers and custom admin roles)
+      const isNonSuperAdminActor = !!currentUser && currentUser.role !== 'super_admin';
+      if (isNonSuperAdminActor) {
+        // Non-super-admins cannot create/assign super admins
         if (userData.role === 'super_admin') {
-          throw new Error('Venue managers cannot create or assign super admin role');
+          throw new Error('Only super admins can create or assign the super admin role');
         }
 
-        // Venue managers can only assign venues they manage
+        // Non-super-admins can only assign venues they manage
         if (userData.managedVenues && userData.managedVenues.length > 0) {
           const invalidVenues = userData.managedVenues.filter(
             venueId => !currentUser.managedVenues?.includes(venueId)
@@ -123,8 +130,8 @@ const Users: React.FC = () => {
 
       if (selectedUser) {
         // Update existing user
-        // Prevent venue managers from changing roles of other users
-        if (currentUser?.role === 'venue_manager' && selectedUser.id !== currentUser.id) {
+        // Prevent non-super-admins from changing roles of other users
+        if (isNonSuperAdminActor && selectedUser.id !== currentUser.id) {
           if (userData.role && userData.role !== selectedUser.role) {
             throw new Error('You cannot change user roles');
           }
@@ -136,14 +143,11 @@ const Users: React.FC = () => {
           updatedAt: serverTimestamp()
         };
 
-        // If role is being changed to 'player' or 'super_admin', clear managedVenues
+        // Players and super admins are not venue-scoped: clear venue assignments
+        // and custom permission grants. Custom roles keep both (venue-scoped).
         if (userData.role && (userData.role === 'player' || userData.role === 'super_admin')) {
           updateData.managedVenues = [];
-        }
-
-        // If role is being changed from 'venue_manager' to something else, ensure managedVenues is cleared
-        if (selectedUser.role === 'venue_manager' && userData.role && userData.role !== 'venue_manager') {
-          updateData.managedVenues = [];
+          updateData.customPermissions = [];
         }
 
         await usersCollection.update(selectedUser.id, updateData);
@@ -159,29 +163,25 @@ const Users: React.FC = () => {
           });
         }
       } else {
-        // Create new user - Note: This only creates Firestore document
-        // Actual Firebase Auth user creation should be done via admin script or backend
-        // Use email as base for ID, but sanitize it
-        const emailBase = userData.email?.replace(/[^a-zA-Z0-9]/g, '_') || `user_${Date.now()}`;
-        const newUserId = userData.id || emailBase;
-
-        // Venue managers can only create venue managers (not players or super admins)
-        if (currentUser?.role === 'venue_manager') {
+        // Create Firebase Auth account + Firestore profile via Cloud Function
+        if (isNonSuperAdminActor) {
           if (userData.role !== 'venue_manager') {
             userData.role = 'venue_manager';
           }
-        }
-        // Super admins can create any role, but default to 'player' if not specified
-        else if (currentUser?.role === 'super_admin' && !userData.role) {
+        } else if (currentUser?.role === 'super_admin' && !userData.role) {
           userData.role = 'player';
         }
 
-        await usersCollection.create(newUserId, {
-          id: newUserId,
-          ...userData,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
+        const result = await createUserAccount({
+          name: userData.name!.trim(),
+          email: userData.email!.trim(),
+          phone: userData.phone!.trim(),
+          role: userData.role || 'player',
+          status: userData.status || 'Active',
+          managedVenues: userData.managedVenues,
+          customPermissions: userData.customPermissions,
         });
+
         const actorId = firebaseUser?.uid ?? currentUser?.id;
         if (actorId) {
           await logActivity({
@@ -189,9 +189,26 @@ const Users: React.FC = () => {
             userEmail: currentUser?.email ?? firebaseUser?.email ?? undefined,
             action: 'user_created',
             targetType: 'user',
-            targetId: newUserId,
-            details: { email: userData.email, role: userData.role },
+            targetId: result.uid,
+            details: { email: result.email, role: userData.role },
           });
+        }
+
+        if (options?.sendPasswordSetupEmail) {
+          const emailError = await sendPasswordSetupEmail(result.email);
+          if (emailError) {
+            showSuccess(
+              `User created for ${result.email}. Login account is ready, but the setup email could not be sent — use "Send login invite" from their profile.`
+            );
+          } else {
+            showSuccess(
+              `User created. A password setup email was sent to ${result.email}. They can set a password and sign in.`
+            );
+          }
+        } else {
+          showSuccess(
+            `User created for ${result.email}. Send a login invite from their profile when they are ready to sign in.`
+          );
         }
       }
 
@@ -201,7 +218,70 @@ const Users: React.FC = () => {
     } catch (err: any) {
       console.error('Error saving user:', err);
       setProcessing(null);
-      showError(`Failed to save user: ${err.message}`);
+      const message = getFirebaseErrorMessage(err) || 'Failed to save user';
+      if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
+        showError(
+          'Could not reach user provisioning service. Deploy Cloud Functions (createUserAccount) and try again.'
+        );
+      } else {
+        showError(`Failed to save user: ${message}`);
+      }
+    }
+  };
+
+  const handleSendLoginInvite = async (user: User) => {
+    if (!user.email) {
+      showError('This user has no email address.');
+      return;
+    }
+
+    try {
+      setProcessing(`invite-${user.id}`);
+      const result = await sendLoginInvite(user.id);
+
+      if (result.emailSent) {
+        showSuccess(
+          `Login invite sent to ${result.email}. They can set a password and sign in.`
+        );
+      } else if (result.resetLink) {
+        try {
+          await navigator.clipboard.writeText(result.resetLink);
+          showSuccess(
+            `Login account linked for ${result.email}. Email could not be sent — reset link copied to clipboard.`
+          );
+        } catch {
+          showSuccess(
+            `Login account linked for ${result.email}. Email could not be sent — share this reset link: ${result.resetLink}`
+          );
+        }
+      } else {
+        const emailError = await sendPasswordSetupEmail(result.email);
+        if (emailError) {
+          showSuccess(
+            `Login account linked for ${result.email}${result.migrated ? ' (profile migrated)' : ''}. Could not send email — ask them to use Forgot password on the login page.`
+          );
+        } else {
+          showSuccess(
+            `Login invite sent to ${result.email}. They can set a password and sign in.`
+          );
+        }
+      }
+
+      if (result.migrated && result.uid !== user.id) {
+        navigate(`/users/${result.uid}`, { replace: true });
+      }
+    } catch (err: any) {
+      console.error('Error sending login invite:', err);
+      const message = getFirebaseErrorMessage(err) || 'Failed to send login invite';
+      if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
+        showError(
+          'Could not reach user provisioning service. Deploy Cloud Functions (provisionUserLogin) and try again.'
+        );
+      } else {
+        showError(message);
+      }
+    } finally {
+      setProcessing(null);
     }
   };
 
@@ -229,7 +309,7 @@ const Users: React.FC = () => {
           showSuccess('User deleted successfully.');
         } catch (err: any) {
           console.error('Error deleting user:', err);
-          showError(`Failed to delete user: ${err.message}`);
+          showError(`Failed to delete user: ${getFirebaseErrorMessage(err)}`);
         } finally {
           setProcessing(null);
         }
@@ -267,7 +347,7 @@ const Users: React.FC = () => {
         return next;
       });
       setProcessing(null);
-      showError(`Failed to update user status: ${err.message}`);
+      showError(`Failed to update user status: ${getFirebaseErrorMessage(err)}`);
     }
   };
 
@@ -336,7 +416,7 @@ const Users: React.FC = () => {
                 exportUsersToCSV(filteredUsers);
                 showSuccess('Users exported to CSV successfully.');
               } catch (e: any) {
-                showError('Failed to export CSV: ' + (e?.message || 'Unknown error'));
+                showError('Failed to export CSV: ' + getFirebaseErrorMessage(e, 'Unknown error'));
               }
             }}
             className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 px-5 py-3 text-slate-700 dark:text-slate-200 text-sm font-black transition-all active:scale-95"
@@ -531,9 +611,16 @@ const Users: React.FC = () => {
                       <td className="px-6 py-4">
                         <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-widest ${user.role === 'super_admin' ? 'bg-purple-50 text-purple-600 dark:bg-purple-900/20' :
                           user.role === 'venue_manager' ? 'bg-amber-50 text-amber-600 dark:bg-amber-900/20' :
-                            'bg-blue-50 text-blue-600 dark:bg-blue-900/20'
+                          user.role === 'player' ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20' :
+                            'bg-teal-50 text-teal-700 dark:bg-teal-900/20'
                           }`}>
-                          {user.role === 'super_admin' ? 'Executive' : user.role === 'venue_manager' ? 'Vendor' : 'Player'}
+                          {user.role === 'super_admin'
+                            ? 'Executive'
+                            : user.role === 'venue_manager'
+                              ? 'Vendor'
+                              : user.role === 'player'
+                                ? 'Player'
+                                : formatRoleLabel(user.role)}
                         </span>
                       </td>
                       <td className="px-6 py-4">
@@ -591,6 +678,15 @@ const Users: React.FC = () => {
                               </button>
                             </>
                           )}
+                          <button
+                            onClick={() => handleSendLoginInvite(user)}
+                            disabled={processing === `invite-${user.id}` || !user.email}
+                            aria-label="Send login invite"
+                            title="Send login invite (password setup email)"
+                            className="size-8 flex items-center justify-center text-slate-400 hover:text-emerald-600 transition-all rounded-lg disabled:opacity-50"
+                          >
+                            <span className="material-symbols-outlined text-xl">mail</span>
+                          </button>
                           <button
                             onClick={() => navigate(`/users/${user.id}`)}
                             aria-label="View user details"

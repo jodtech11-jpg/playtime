@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { AppSettings } from '../../types';
+import { IntegrationConfig } from '../../types';
 import { useToast } from '../../contexts/ToastContext';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 // Password Input Component with visibility toggle
 const PasswordInput: React.FC<{
@@ -36,8 +37,8 @@ interface IntegrationConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
   integration: 'razorpay' | 'whatsapp';
-  currentConfig: AppSettings['integrations'][keyof AppSettings['integrations']];
-  onSave: (config: AppSettings['integrations'][keyof AppSettings['integrations']]) => Promise<void>;
+  currentConfig: IntegrationConfig;
+  onSave: (config: IntegrationConfig) => Promise<void>;
 }
 
 const IntegrationConfigModal: React.FC<IntegrationConfigModalProps> = ({
@@ -123,18 +124,18 @@ const IntegrationConfigModal: React.FC<IntegrationConfigModalProps> = ({
       }
 
       // Update status based on whether credentials are provided
-      const updatedConfig = {
+      const updatedConfig: IntegrationConfig = {
         ...mergedConfig,
-        status: (mergedConfig.apiKey || mergedConfig.accountSid) 
+        status: mergedConfig.apiKey
           ? (mergedConfig.enabled ? 'Connected' : 'Disconnected')
-          : 'Setup Required' as const
+          : 'Setup Required'
       };
 
       await onSave(updatedConfig);
       onClose();
     } catch (error: any) {
       console.error('Error saving integration config:', error);
-      showError('Failed to save configuration: ' + error.message);
+      showError('Failed to save configuration: ' + getFirebaseErrorMessage(error));
     } finally {
       setSaving(false);
     }
@@ -162,7 +163,7 @@ const IntegrationConfigModal: React.FC<IntegrationConfigModalProps> = ({
         setTestResult({ success: false, message: 'Please fill in all required fields' });
       }
     } catch (error: any) {
-      setTestResult({ success: false, message: 'Connection test failed: ' + error.message });
+      setTestResult({ success: false, message: 'Connection test failed: ' + getFirebaseErrorMessage(error) });
     } finally {
       setTesting(false);
     }

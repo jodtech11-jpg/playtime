@@ -11,6 +11,10 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_VAPID_KEY?: string;
   /** Deployed `sendNotification` Cloud Function URL (admin-only, auth required). */
   readonly VITE_FCM_CLOUD_FUNCTION_URL?: string;
+  /** Optional base URL for admin Cloud Functions (createUserAccount, provisionUserLogin). */
+  readonly VITE_CLOUD_FUNCTIONS_BASE_URL?: string;
+  /** Public URL of this admin panel (used in password-reset email continue links). */
+  readonly VITE_ADMIN_PANEL_URL?: string;
   /** Google Maps JS API key (restrict by HTTP referrer in Google Cloud). */
   readonly VITE_GOOGLE_MAPS_API_KEY?: string;
   /** Razorpay public Key ID (client-side is safe; keep the secret on the server). */

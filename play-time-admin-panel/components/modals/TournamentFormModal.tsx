@@ -1,9 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Tournament } from '../../types';
 import { tournamentsCollection } from '../../services/firebase';
 import { serverTimestamp } from 'firebase/firestore';
 import { useVenues } from '../../hooks/useVenues';
 import { useSports } from '../../hooks/useSports';
+import { useAuth } from '../../contexts/AuthContext';
+import { withVendorId } from '../../utils/vendorScope';
+import { getSportsForVenue, findSport, cleanSportOptions } from '../../utils/sportUtils';
+import SportOptionsFields from '../shared/SportOptionsFields';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface TournamentFormModalProps {
   isOpen: boolean;
@@ -12,6 +17,18 @@ interface TournamentFormModalProps {
   onSuccess?: () => void;
 }
 
+// Format a Date as YYYY-MM-DD in local time (toISOString would shift the day in non-UTC timezones)
+const toLocalDateInputValue = (d: Date): string => {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+// Parse a YYYY-MM-DD input value as local midnight (new Date('YYYY-MM-DD') parses as UTC midnight)
+const parseLocalDate = (dateStr: string): Date => {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d, 0, 0, 0, 0);
+};
+
 const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
   isOpen,
   onClose,
@@ -19,14 +36,16 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
   onSuccess
 }) => {
   const { venues } = useVenues({ realtime: true });
-  const { sports } = useSports({ activeOnly: true, realtime: false });
+  const { user, isVenueManager } = useAuth();
+  const { sports: allSports } = useSports({ activeOnly: true, realtime: false });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sportOptions, setSportOptions] = useState<Record<string, string>>({});
 
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    sport: 'Badminton',
+    sport: '',
     venueId: '',
     startDate: '',
     endDate: '',
@@ -44,19 +63,31 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
     bracketType: 'Single Elimination' as Tournament['bracketType']
   });
 
+  const selectedVenue = venues.find((v) => v.id === formData.venueId);
+  const selectedSportRecord = findSport(formData.sport, allSports);
+  const venueSports = useMemo(() => {
+    const venueScoped = getSportsForVenue(selectedVenue, allSports);
+    // Keep the current sport visible when editing a legacy tournament whose
+    // sport is no longer assigned to the venue.
+    if (selectedSportRecord && !venueScoped.some((s) => s.id === selectedSportRecord.id)) {
+      return [selectedSportRecord, ...venueScoped];
+    }
+    return venueScoped;
+  }, [selectedVenue, allSports, selectedSportRecord]);
+
   useEffect(() => {
     if (tournament) {
       const startDate = tournament.startDate?.toDate ? 
-        tournament.startDate.toDate().toISOString().split('T')[0] : '';
+        toLocalDateInputValue(tournament.startDate.toDate()) : '';
       const endDate = tournament.endDate?.toDate ? 
-        tournament.endDate.toDate().toISOString().split('T')[0] : '';
+        toLocalDateInputValue(tournament.endDate.toDate()) : '';
       const regStart = tournament.registrationStartDate?.toDate ? 
-        tournament.registrationStartDate.toDate().toISOString().split('T')[0] : '';
+        toLocalDateInputValue(tournament.registrationStartDate.toDate()) : '';
       const regEnd = tournament.registrationEndDate?.toDate ? 
-        tournament.registrationEndDate.toDate().toISOString().split('T')[0] : '';
+        toLocalDateInputValue(tournament.registrationEndDate.toDate()) : '';
 
       // Find sport by ID or name for backward compatibility
-      const sportId = tournament.sportId || sports.find(s => s.name === tournament.sport || s.id === tournament.sport)?.id || '';
+      const sportId = tournament.sportId || allSports.find(s => s.name === tournament.sport || s.id === tournament.sport)?.id || '';
 
       setFormData({
         name: tournament.name || '',
@@ -78,6 +109,7 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
         status: tournament.status || 'Draft',
         bracketType: tournament.bracketType || 'Single Elimination'
       });
+      setSportOptions(tournament.sportOptions || {});
     } else {
       setFormData({
         name: '',
@@ -99,8 +131,9 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
         status: 'Draft',
         bracketType: 'Single Elimination'
       });
+      setSportOptions({});
     }
-  }, [tournament, isOpen, sports]);
+  }, [tournament, isOpen, allSports]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,6 +141,24 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
 
     if (!formData.name || !formData.venueId || !formData.startDate || !formData.endDate) {
       setError('Please fill in all required fields');
+      return;
+    }
+
+    const startDate = parseLocalDate(formData.startDate);
+    const endDate = parseLocalDate(formData.endDate);
+    const registrationStartDate = parseLocalDate(formData.registrationStartDate);
+    const registrationEndDate = parseLocalDate(formData.registrationEndDate);
+
+    if (registrationStartDate > registrationEndDate) {
+      setError('Registration start date must be on or before registration end date');
+      return;
+    }
+    if (registrationEndDate > startDate) {
+      setError('Registration must end on or before the tournament start date');
+      return;
+    }
+    if (startDate > endDate) {
+      setError('Tournament start date must be on or before the end date');
       return;
     }
 
@@ -120,18 +171,20 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
       if (formData.prizeThird) prizeDetails.third = parseFloat(formData.prizeThird);
       if (formData.prizeDescription) prizeDetails.description = formData.prizeDescription;
 
-      const selectedSport = sports.find(s => s.id === formData.sport);
+      const selectedSport = allSports.find(s => s.id === formData.sport);
       
       const tournamentData: any = {
         name: formData.name,
         description: formData.description,
-        sport: selectedSport?.name || formData.sport, // Keep name for backward compatibility
-        sportId: formData.sport, // Store sport ID
+        sport: selectedSport?.name || formData.sport,
+        sportId: formData.sport,
+        // Empty object (not undefined) so edits clear stale options in Firestore
+        sportOptions: cleanSportOptions(sportOptions) ?? {},
         venueId: formData.venueId,
-        startDate: new Date(formData.startDate),
-        endDate: new Date(formData.endDate),
-        registrationStartDate: new Date(formData.registrationStartDate),
-        registrationEndDate: new Date(formData.registrationEndDate),
+        startDate,
+        endDate,
+        registrationStartDate,
+        registrationEndDate,
         entryFee: parseFloat(formData.entryFee.toString()),
         status: formData.status,
         bracketType: formData.bracketType,
@@ -150,14 +203,17 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
         await tournamentsCollection.update(tournament.id, tournamentData);
       } else {
         tournamentData.createdAt = serverTimestamp();
-        await tournamentsCollection.create(tournamentData);
+        const createPayload = isVenueManager
+          ? withVendorId(tournamentData, user?.id)
+          : tournamentData;
+        await tournamentsCollection.create(createPayload);
       }
 
       onSuccess?.();
       onClose();
     } catch (err: any) {
       console.error('Error saving tournament:', err);
-      setError(err.message || 'Failed to save tournament');
+      setError(getFirebaseErrorMessage(err) || 'Failed to save tournament');
     } finally {
       setLoading(false);
     }
@@ -206,74 +262,21 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
 
             <div>
               <label className={labelClass}>
-                Sport *
-              </label>
-              <select
-                value={formData.sport}
-                onChange={(e) => {
-                  const selectedSport = sports.find(s => s.id === e.target.value);
-                  setFormData({ 
-                    ...formData, 
-                    sport: e.target.value,
-                    // Auto-fill defaults from sport
-                    minTeamSize: selectedSport?.defaultMinTeamSize?.toString() || formData.minTeamSize,
-                    maxTeamSize: selectedSport?.defaultMaxTeamSize?.toString() || formData.maxTeamSize
-                  });
-                }}
-                className={inputClass}
-                required
-                disabled={sports.length === 0}
-              >
-                <option value="">{sports.length === 0 ? 'No sports available' : 'Select Sport'}</option>
-                {sports.map(sport => (
-                  <option key={sport.id} value={sport.id}>
-                    {sport.name}
-                  </option>
-                ))}
-              </select>
-              {sports.length === 0 && (
-                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                  No sports found. Please create sports in Tournaments settings.
-                </p>
-              )}
-              {formData.sport && sports.find(s => s.id === formData.sport) && (() => {
-                const selectedSport = sports.find(s => s.id === formData.sport);
-                return (
-                  <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-xl text-xs space-y-1 text-gray-700 dark:text-gray-300">
-                    {selectedSport?.defaultMinTeamSize && (
-                      <p><strong>Default Min Team Size:</strong> {selectedSport.defaultMinTeamSize}</p>
-                    )}
-                    {selectedSport?.defaultMaxTeamSize && (
-                      <p><strong>Default Max Team Size:</strong> {selectedSport.defaultMaxTeamSize}</p>
-                    )}
-                    {selectedSport?.defaultMatchDuration && (
-                      <p><strong>Default Match Duration:</strong> {selectedSport.defaultMatchDuration} minutes</p>
-                    )}
-                    {selectedSport?.defaultScoringFormat && (
-                      <p><strong>Scoring Format:</strong> {selectedSport.defaultScoringFormat}</p>
-                    )}
-                    {selectedSport?.sportSpecificOptions && Object.keys(selectedSport.sportSpecificOptions).length > 0 && (
-                      <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                        <p className="font-bold mb-1">Sport-Specific Options:</p>
-                        {Object.entries(selectedSport.sportSpecificOptions).map(([key, value]) => (
-                          <p key={key} className="text-xs">
-                            <strong>{key}:</strong> {Array.isArray(value) ? value.join(', ') : String(value)}
-                          </p>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-            </div>
-
-            <div>
-              <label className={labelClass}>
                 Venue *
               </label>
               <select
                 value={formData.venueId}
-                onChange={(e) => setFormData({ ...formData, venueId: e.target.value })}
+                onChange={(e) => {
+                  const venue = venues.find((v) => v.id === e.target.value);
+                  const allowed = getSportsForVenue(venue, allSports);
+                  const sportStillValid = allowed.some((s) => s.id === formData.sport);
+                  setFormData({
+                    ...formData,
+                    venueId: e.target.value,
+                    sport: sportStillValid ? formData.sport : '',
+                  });
+                  if (!sportStillValid) setSportOptions({});
+                }}
                 className={inputClass}
                 required
               >
@@ -284,6 +287,62 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label className={labelClass}>
+                Sport *
+              </label>
+              <select
+                value={formData.sport}
+                onChange={(e) => {
+                  const selectedSport = allSports.find(s => s.id === e.target.value);
+                  setFormData({ 
+                    ...formData, 
+                    sport: e.target.value,
+                    minTeamSize: selectedSport?.defaultMinTeamSize?.toString() || formData.minTeamSize,
+                    maxTeamSize: selectedSport?.defaultMaxTeamSize?.toString() || formData.maxTeamSize
+                  });
+                  setSportOptions({});
+                }}
+                className={inputClass}
+                required
+                disabled={!formData.venueId || venueSports.length === 0}
+              >
+                <option value="">
+                  {!formData.venueId
+                    ? 'Select a venue first'
+                    : venueSports.length === 0
+                      ? 'No sports at this venue'
+                      : 'Select Sport'}
+                </option>
+                {venueSports.map(sport => (
+                  <option key={sport.id} value={sport.id}>
+                    {sport.name}
+                  </option>
+                ))}
+              </select>
+              {formData.venueId && venueSports.length === 0 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                  No sports assigned to this venue. Add disciplines in venue settings or contact your platform admin.
+                </p>
+              )}
+              {selectedSportRecord && (
+                <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-xl text-xs space-y-1 text-gray-700 dark:text-gray-300">
+                  {selectedSportRecord.defaultMinTeamSize && (
+                    <p><strong>Default Min Team Size:</strong> {selectedSportRecord.defaultMinTeamSize}</p>
+                  )}
+                  {selectedSportRecord.defaultMaxTeamSize && (
+                    <p><strong>Default Max Team Size:</strong> {selectedSportRecord.defaultMaxTeamSize}</p>
+                  )}
+                  {selectedSportRecord.defaultMatchDuration && (
+                    <p><strong>Default Match Duration:</strong> {selectedSportRecord.defaultMatchDuration} minutes</p>
+                  )}
+                  {selectedSportRecord.defaultScoringFormat && (
+                    <p><strong>Scoring Format:</strong> {selectedSportRecord.defaultScoringFormat}</p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>
@@ -425,6 +484,14 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
               />
             </div>
           </div>
+
+          {selectedSportRecord && (
+            <SportOptionsFields
+              sport={selectedSportRecord}
+              values={sportOptions}
+              onChange={setSportOptions}
+            />
+          )}
 
           <div>
             <label className={labelClass}>

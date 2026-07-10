@@ -3,6 +3,7 @@ import { appSettingsCollection } from '../../services/firebase';
 import { AppSettings } from '../../types';
 import { serverTimestamp } from 'firebase/firestore';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface HelpCenterDocsModalProps {
   isOpen: boolean;
@@ -100,7 +101,7 @@ const HelpCenterDocsModal: React.FC<HelpCenterDocsModalProps> = ({ isOpen, onClo
       setShowForm(false);
       setEditingDoc(null);
     } catch (err: any) {
-      setError(err.message || 'Failed to save document');
+      setError(getFirebaseErrorMessage(err) || 'Failed to save document');
     } finally {
       setLoading(false);
     }
@@ -126,7 +127,7 @@ const HelpCenterDocsModal: React.FC<HelpCenterDocsModalProps> = ({ isOpen, onClo
 
           await loadDocs();
         } catch (err: any) {
-          setError(err.message || 'Failed to delete document');
+          setError(getFirebaseErrorMessage(err) || 'Failed to delete document');
         } finally {
           setLoading(false);
         }

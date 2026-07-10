@@ -14,6 +14,7 @@ import { exportBookingsToPDF, exportUsersToCSV } from '../utils/exportUtils';
 import DateRangePicker from '../components/shared/DateRangePicker';
 import { serverTimestamp } from 'firebase/firestore';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 // Chart imports available for future enhancements
 // import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend } from 'recharts';
 
@@ -205,7 +206,7 @@ const CRM: React.FC = () => {
       });
     } catch (error: any) {
       console.error('Error approving venue:', error);
-      showError('Failed to approve venue: ' + error.message);
+      showError('Failed to approve venue: ' + getFirebaseErrorMessage(error));
     } finally {
       setProcessing(null);
     }
@@ -226,7 +227,7 @@ const CRM: React.FC = () => {
           });
         } catch (error: any) {
           console.error('Error rejecting venue:', error);
-          showError('Failed to reject venue: ' + error.message);
+          showError('Failed to reject venue: ' + getFirebaseErrorMessage(error));
         } finally {
           setProcessing(null);
         }
@@ -422,7 +423,7 @@ const CRM: React.FC = () => {
                   label: "Open Disputes", 
                   val: crmStats.openDisputes, 
                   change: crmStats.criticalDisputes > 0 ? `${crmStats.criticalDisputes} Critical` : "0 Critical", 
-                  trend: crmStats.openDisputes > 0 ? "down" : "up", 
+                  trend: Number(crmStats.openDisputes) > 0 ? "down" : "up", 
                   icon: "gavel", 
                   color: "text-red-500", 
                   bg: "bg-red-50" 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { membershipPlansCollection } from '../services/firebase';
 import { MembershipPlan } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface UseMembershipPlansOptions {
   venueId?: string;
@@ -20,6 +21,9 @@ export const useMembershipPlans = (options: UseMembershipPlansOptions = {}) => {
       setLoading(false);
       return;
     }
+
+    let mounted = true;
+    let unsubscribe: (() => void) | null = null;
 
     const fetchPlans = async () => {
       try {
@@ -47,10 +51,10 @@ export const useMembershipPlans = (options: UseMembershipPlansOptions = {}) => {
               value: options.venueId,
             });
           } else {
-            const ids = managed.slice(0, 10);
-            if (managed.length > 10) {
+            const ids = managed.slice(0, 30);
+            if (managed.length > 30) {
               console.warn(
-                'useMembershipPlans: venue manager has more than 10 managedVenues; only the first 10 are queried.'
+                'useMembershipPlans: venue manager has more than 30 managedVenues; only the first 30 are queried.'
               );
             }
             filters.push({
@@ -76,35 +80,44 @@ export const useMembershipPlans = (options: UseMembershipPlansOptions = {}) => {
           });
         }
 
+        const sortByCreatedDesc = (rows: MembershipPlan[]) =>
+          [...rows].sort((a, b) => {
+            const aTime = a.createdAt?.toMillis?.() ?? a.createdAt?.seconds ?? 0;
+            const bTime = b.createdAt?.toMillis?.() ?? b.createdAt?.seconds ?? 0;
+            return bTime - aTime;
+          });
+
         if (options.realtime) {
-          const unsubscribe = membershipPlansCollection.subscribeAll(
+          unsubscribe = membershipPlansCollection.subscribeAll(
             (data: MembershipPlan[]) => {
-              setPlans(data);
+              if (!mounted) return;
+              setPlans(sortByCreatedDesc(data));
               setLoading(false);
             },
-            filters.length > 0 ? filters : undefined,
-            'createdAt',
-            'desc'
+            filters.length > 0 ? filters : undefined
           );
-
-          return () => unsubscribe();
         } else {
           const data = await membershipPlansCollection.getAll(
-            filters.length > 0 ? filters : undefined,
-            'createdAt',
-            'desc'
+            filters.length > 0 ? filters : undefined
           );
-          setPlans(data as MembershipPlan[]);
+          if (!mounted) return;
+          setPlans(sortByCreatedDesc(data as MembershipPlan[]));
           setLoading(false);
         }
       } catch (err: any) {
+        if (!mounted) return;
         console.error('Error fetching membership plans:', err);
-        setError(err.message || 'Failed to fetch membership plans');
+        setError(getFirebaseErrorMessage(err, 'Failed to fetch membership plans'));
         setLoading(false);
       }
     };
 
     fetchPlans();
+
+    return () => {
+      mounted = false;
+      if (unsubscribe) unsubscribe();
+    };
   }, [user, options.venueId, options.isActive, options.realtime, isVenueManager]);
 
   return { plans, loading, error };

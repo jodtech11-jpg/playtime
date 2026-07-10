@@ -1,6 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Leaderboard } from '../../types';
 import { useVenues } from '../../hooks/useVenues';
+import { useSports } from '../../hooks/useSports';
+import { useAuth } from '../../contexts/AuthContext';
+import { getSportsForVenue } from '../../utils/sportUtils';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 import { serverTimestamp } from 'firebase/firestore';
 
 interface LeaderboardFormModalProps {
@@ -16,17 +20,36 @@ const LeaderboardFormModal: React.FC<LeaderboardFormModalProps> = ({
   onSave,
   leaderboard
 }) => {
+  const { isSuperAdmin, isVenueManager } = useAuth();
   const { venues, loading: venuesLoading } = useVenues({ realtime: false });
+  const { sports: allSports, loading: sportsLoading } = useSports({ activeOnly: true, realtime: false });
+
+  // Vendors can only create venue-scoped leaderboards (Global/Monthly/All-Time are platform-wide).
+  const types: Leaderboard['type'][] = isSuperAdmin
+    ? ['Global', 'Venue', 'Monthly', 'All-Time']
+    : ['Venue'];
+
+  const defaultType: Leaderboard['type'] = isSuperAdmin ? 'Global' : 'Venue';
 
   const [formData, setFormData] = useState({
     venueId: leaderboard?.venueId || '',
     sport: leaderboard?.sport || '',
-    type: leaderboard?.type || 'Global' as Leaderboard['type'],
+    type: leaderboard?.type || defaultType,
     period: leaderboard?.period || '',
   });
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const requiresVenue = formData.type === 'Venue' || isVenueManager;
+
+  const selectedVenue = venues.find((v) => v.id === formData.venueId);
+  const availableSports = useMemo(() => {
+    if (requiresVenue && selectedVenue) {
+      return getSportsForVenue(selectedVenue, allSports);
+    }
+    return allSports;
+  }, [requiresVenue, selectedVenue, allSports]);
 
   useEffect(() => {
     if (leaderboard) {
@@ -37,14 +60,15 @@ const LeaderboardFormModal: React.FC<LeaderboardFormModalProps> = ({
         period: leaderboard.period || '',
       });
     } else {
+      const autoVenue = !isSuperAdmin && venues.length === 1 ? venues[0].id : '';
       setFormData({
-        venueId: '',
+        venueId: autoVenue,
         sport: '',
-        type: 'Global',
+        type: defaultType,
         period: '',
       });
     }
-  }, [leaderboard, isOpen]);
+  }, [leaderboard, isOpen, isSuperAdmin, venues, defaultType]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,14 +79,29 @@ const LeaderboardFormModal: React.FC<LeaderboardFormModalProps> = ({
       return;
     }
 
+    if (!isSuperAdmin && formData.type !== 'Venue') {
+      setError('Vendors can only create Venue leaderboards. Global types are managed by Super Admin.');
+      return;
+    }
+
+    if (requiresVenue && !formData.venueId) {
+      setError('Please select a venue for this leaderboard');
+      return;
+    }
+
+    if (formData.type === 'Monthly' && !formData.period.trim()) {
+      setError('Please enter a period (e.g. "January 2026")');
+      return;
+    }
+
     try {
       setSaving(true);
 
-      const selectedVenue = venues.find(v => v.id === formData.venueId);
+      const venue = venues.find(v => v.id === formData.venueId);
 
       const leaderboardData: Partial<Leaderboard> = {
         venueId: formData.venueId || undefined,
-        venueName: selectedVenue?.name,
+        venueName: venue?.name,
         sport: formData.sport,
         type: formData.type,
         period: formData.period || undefined,
@@ -74,16 +113,13 @@ const LeaderboardFormModal: React.FC<LeaderboardFormModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error('Error saving leaderboard:', err);
-      setError(err.message || 'Failed to save leaderboard');
+      setError(getFirebaseErrorMessage(err) || 'Failed to save leaderboard');
     } finally {
       setSaving(false);
     }
   };
 
   if (!isOpen) return null;
-
-  const sports = ['Football', 'Cricket', 'Badminton', 'Tennis', 'Basketball'];
-  const types: Leaderboard['type'][] = ['Global', 'Venue', 'Monthly', 'All-Time'];
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -109,6 +145,12 @@ const LeaderboardFormModal: React.FC<LeaderboardFormModalProps> = ({
             </div>
           )}
 
+          {!isSuperAdmin && (
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Venue managers create leaderboards for their assigned venues. Platform-wide (Global) leaderboards are managed by super admins.
+            </p>
+          )}
+
           {/* Type */}
           <div>
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
@@ -116,7 +158,16 @@ const LeaderboardFormModal: React.FC<LeaderboardFormModalProps> = ({
             </label>
             <select
               value={formData.type}
-              onChange={(e) => setFormData({ ...formData, type: e.target.value as Leaderboard['type'] })}
+              onChange={(e) => {
+                const nextType = e.target.value as Leaderboard['type'];
+                setFormData((prev) => ({
+                  ...prev,
+                  type: nextType,
+                  // Keep venue for vendors; clear only when super admin switches away from Venue
+                  venueId: nextType === 'Venue' || isVenueManager ? prev.venueId : '',
+                  sport: '',
+                }));
+              }}
               className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-surface-dark text-gray-900 dark:text-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
               required
             >
@@ -128,15 +179,15 @@ const LeaderboardFormModal: React.FC<LeaderboardFormModalProps> = ({
             </select>
           </div>
 
-          {/* Venue Selection (if type is Venue) */}
-          {formData.type === 'Venue' && (
+          {/* Venue — required for Venue type and for all vendor creates */}
+          {requiresVenue && (
             <div>
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
                 Venue *
               </label>
               <select
                 value={formData.venueId}
-                onChange={(e) => setFormData({ ...formData, venueId: e.target.value })}
+                onChange={(e) => setFormData({ ...formData, venueId: e.target.value, sport: '' })}
                 className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-surface-dark text-gray-900 dark:text-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
                 required
                 disabled={venuesLoading}
@@ -161,11 +212,18 @@ const LeaderboardFormModal: React.FC<LeaderboardFormModalProps> = ({
               onChange={(e) => setFormData({ ...formData, sport: e.target.value })}
               className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-surface-dark text-gray-900 dark:text-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
               required
+              disabled={sportsLoading || (requiresVenue && !formData.venueId)}
             >
-              <option value="">Select Sport</option>
-              {sports.map((sport) => (
-                <option key={sport} value={sport}>
-                  {sport}
+              <option value="">
+                {sportsLoading
+                  ? 'Loading sports...'
+                  : requiresVenue && !formData.venueId
+                    ? 'Select a venue first'
+                    : 'Select Sport'}
+              </option>
+              {availableSports.map((sport) => (
+                <option key={sport.id} value={sport.name}>
+                  {sport.name}
                 </option>
               ))}
             </select>
@@ -210,4 +268,3 @@ const LeaderboardFormModal: React.FC<LeaderboardFormModalProps> = ({
 };
 
 export default LeaderboardFormModal;
-

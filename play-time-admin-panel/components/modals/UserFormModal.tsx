@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { User } from '../../types';
+import { Permission, RoleDefinition, User } from '../../types';
 import { useVenues } from '../../hooks/useVenues';
 import { useAuth } from '../../contexts/AuthContext';
+import { rolesCollection, permissionsCollection } from '../../services/firebase';
+import { mergeWithDefaultPermissions, SYSTEM_ROLE_IDS } from '../../utils/rbac';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface UserFormModalProps {
   user: User | null;
   isOpen: boolean;
   onClose: () => void;
-  onSave: (userData: Partial<User>) => Promise<void>;
+  onSave: (userData: Partial<User>, options?: { sendPasswordSetupEmail?: boolean }) => Promise<void>;
 }
 
 const UserFormModal: React.FC<UserFormModalProps> = ({
@@ -24,12 +27,45 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
     phone: '',
     role: 'player', // Default to 'player' for regular users (mobile app users)
     status: 'Active',
-    managedVenues: []
+    managedVenues: [],
+    customPermissions: []
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [sendPasswordSetupEmail, setSendPasswordSetupEmail] = useState(true);
+  const [customRoles, setCustomRoles] = useState<RoleDefinition[]>([]);
+  const [availablePermissions, setAvailablePermissions] = useState<Permission[]>([]);
+  const [showPermissionsEditor, setShowPermissionsEditor] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+
+  const isCurrentUserSuperAdmin = currentUser?.role === 'super_admin';
+
+  // Roles that are venue/vendor scoped (venue_manager + custom roles) need venue assignment.
+  const isScopedAdminRole = (role: string | undefined) =>
+    !!role && role !== 'player' && role !== 'super_admin';
+
+  // Load custom roles + permission catalog so super admins can assign them.
+  useEffect(() => {
+    if (!isOpen || !isCurrentUserSuperAdmin) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [roleDocs, permissionDocs] = await Promise.all([
+          rolesCollection.getAll() as Promise<RoleDefinition[]>,
+          permissionsCollection.getAll() as Promise<Permission[]>,
+        ]);
+        if (cancelled) return;
+        setCustomRoles(roleDocs.filter(r => !(SYSTEM_ROLE_IDS as readonly string[]).includes(r.id)));
+        setAvailablePermissions(mergeWithDefaultPermissions(permissionDocs));
+      } catch (err) {
+        console.error('Failed to load roles/permissions catalog:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, isCurrentUserSuperAdmin]);
 
   const validatePhone = (value: string): string | null => {
     const trimmed = (value || '').trim();
@@ -63,11 +99,12 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isOpen, onClose]);
 
-  // Filter venues based on current user role
+  // Filter venues based on current user role (venue managers and custom
+  // roles are limited to their own managed venues)
   const availableVenues = useMemo(() => {
     if (currentUser?.role === 'super_admin') {
       return venues;
-    } else if (currentUser?.role === 'venue_manager' && currentUser?.managedVenues) {
+    } else if (currentUser?.managedVenues) {
       return venues.filter(v => currentUser.managedVenues?.includes(v.id));
     }
     return [];
@@ -81,7 +118,8 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
         phone: user.phone || '',
         role: user.role || 'player',
         status: user.status || 'Active',
-        managedVenues: user.managedVenues || []
+        managedVenues: user.managedVenues || [],
+        customPermissions: user.customPermissions || []
       });
     } else {
       setFormData({
@@ -90,11 +128,14 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
         phone: '',
         role: 'player', // Default to 'player' for new users (mobile app users)
         status: 'Active',
-        managedVenues: []
+        managedVenues: [],
+        customPermissions: []
       });
     }
     setError(null);
     setPhoneError(null);
+    setSendPasswordSetupEmail(true);
+    setShowPermissionsEditor(false);
   }, [user, isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -124,22 +165,28 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
     setPhoneError(phoneErr);
     if (phoneErr) return;
 
-    // Only require managedVenues if role is venue_manager
-    if (formData.role === 'venue_manager' && (!formData.managedVenues || formData.managedVenues.length === 0)) {
-      setError('Please select at least one venue for venue managers');
+    // Venue-scoped roles (venue_manager and custom admin roles) need venues,
+    // otherwise data scoping leaves them with an empty admin panel.
+    if (isScopedAdminRole(formData.role as string) && (!formData.managedVenues || formData.managedVenues.length === 0)) {
+      setError('Please select at least one venue for this role');
       return;
     }
 
-    // Clear managedVenues if role is not venue_manager
-    if (formData.role !== 'venue_manager') {
+    // Players and super admins are not venue-scoped
+    if (!isScopedAdminRole(formData.role as string)) {
       formData.managedVenues = [];
+    }
+
+    // Custom permission grants only make sense for scoped admin roles
+    if (!isScopedAdminRole(formData.role as string)) {
+      formData.customPermissions = [];
     }
 
     try {
       setLoading(true);
-      await onSave(formData);
+      await onSave(formData, { sendPasswordSetupEmail: !user && sendPasswordSetupEmail });
     } catch (err: any) {
-      setError(err.message || 'Failed to save user');
+      setError(getFirebaseErrorMessage(err) || 'Failed to save user');
     } finally {
       setLoading(false);
     }
@@ -195,9 +242,22 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
           {!user && (
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 flex items-start gap-3">
               <span className="material-symbols-outlined text-blue-500 text-lg mt-0.5">info</span>
-              <p className="text-xs text-blue-700 dark:text-blue-300 font-medium">
-                This creates a user profile record. The user will need to sign in with their email to set a password via the mobile app.
-              </p>
+              <div className="space-y-2">
+                <p className="text-xs text-blue-700 dark:text-blue-300 font-medium">
+                  This creates a Firebase login account and user profile. The user can sign in with email and password, Google, or phone OTP on the login page.
+                </p>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={sendPasswordSetupEmail}
+                    onChange={(e) => setSendPasswordSetupEmail(e.target.checked)}
+                    className="size-4 text-primary border-gray-300 rounded focus:ring-primary"
+                  />
+                  <span className="text-xs text-blue-700 dark:text-blue-300 font-medium">
+                    Send password setup email now
+                  </span>
+                </label>
+              </div>
             </div>
           )}
 
@@ -292,17 +352,25 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
                       setFormData({
                         ...formData,
                         role: newRole,
-                        managedVenues: (newRole === 'super_admin' || newRole === 'player') ? [] : formData.managedVenues
+                        managedVenues: isScopedAdminRole(newRole) ? formData.managedVenues : [],
+                        customPermissions: isScopedAdminRole(newRole) ? formData.customPermissions : []
                       });
                     }}
                     className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-bold text-slate-900 dark:text-white appearance-none"
                     required
-                    disabled={currentUser?.role !== 'super_admin'}
+                    disabled={!isCurrentUserSuperAdmin}
                   >
                     <option value="player">Player</option>
                     <option value="venue_manager">Vendor</option>
-                    {currentUser?.role === 'super_admin' && (
+                    {isCurrentUserSuperAdmin && (
                       <option value="super_admin">Admin</option>
+                    )}
+                    {isCurrentUserSuperAdmin && customRoles.length > 0 && (
+                      <optgroup label="Custom roles">
+                        {customRoles.map((role) => (
+                          <option key={role.id} value={role.id}>{role.name}</option>
+                        ))}
+                      </optgroup>
                     )}
                   </select>
                   <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">shield_person</span>
@@ -328,8 +396,8 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
             </div>
           </section>
 
-          {/* Managed Venues (only for venue managers) */}
-          {formData.role === 'venue_manager' && (
+          {/* Managed Venues (venue managers and custom venue-scoped roles) */}
+          {isScopedAdminRole(formData.role as string) && (
             <section className="space-y-6">
               <div className="flex items-center gap-3">
                 <div className="h-5 w-1 rounded-full bg-amber-500"></div>
@@ -340,7 +408,7 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
                 {venues.length === 0 ? (
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center py-8">No venues available</p>
                 ) : (
-                  (currentUser?.role === 'super_admin' ? venues : availableVenues).map((venue) => (
+                  (isCurrentUserSuperAdmin ? venues : availableVenues).map((venue) => (
                     <label
                       key={venue.id}
                       className="flex items-center gap-4 p-4 rounded-xl bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 cursor-pointer hover:border-primary/30 hover:scale-[1.01] transition-all group"
@@ -362,17 +430,86 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
             </section>
           )}
 
+          {/* Extra permission grants beyond the role (super admin only) */}
+          {isCurrentUserSuperAdmin && isScopedAdminRole(formData.role as string) && (
+            <section className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-5 w-1 rounded-full bg-emerald-500"></div>
+                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none">
+                    Extra Permissions
+                    {(formData.customPermissions?.length || 0) > 0 && (
+                      <span className="ml-2 text-emerald-500">({formData.customPermissions?.length})</span>
+                    )}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPermissionsEditor((v) => !v)}
+                  className="text-[10px] font-black uppercase tracking-widest text-primary hover:underline"
+                >
+                  {showPermissionsEditor ? 'Hide' : 'Edit'}
+                </button>
+              </div>
+              <p className="text-[11px] font-bold text-slate-400 -mt-4 ml-4">
+                Grants in addition to the permissions of the selected role.
+              </p>
+              {showPermissionsEditor && (
+                <div className="ui-card p-4 border-dashed bg-slate-50 dark:bg-slate-800/30 max-h-72 overflow-y-auto space-y-4">
+                  {availablePermissions.length === 0 ? (
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center py-8">No permissions available</p>
+                  ) : (
+                    Object.entries(
+                      availablePermissions.reduce((acc, perm) => {
+                        (acc[perm.category] = acc[perm.category] || []).push(perm);
+                        return acc;
+                      }, {} as Record<string, Permission[]>)
+                    ).map(([category, perms]) => (
+                      <div key={category}>
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">{category}</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                          {perms.map((perm) => (
+                            <label
+                              key={perm.id}
+                              className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 cursor-pointer hover:border-primary/30 transition-all"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={formData.customPermissions?.includes(perm.id) || false}
+                                onChange={() => {
+                                  const current = formData.customPermissions || [];
+                                  setFormData({
+                                    ...formData,
+                                    customPermissions: current.includes(perm.id)
+                                      ? current.filter((id) => id !== perm.id)
+                                      : [...current, perm.id],
+                                  });
+                                }}
+                                className="size-4 text-primary border-slate-200 dark:border-slate-700 rounded focus:ring-primary/20"
+                              />
+                              <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{perm.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
           {/* Info message for new users */}
           {!user && (
-            <div className="rounded-2xl bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 p-6">
+            <div className="rounded-2xl bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 p-6">
               <div className="flex gap-4">
-                <div className="size-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600">
-                  <span className="material-symbols-outlined">info</span>
+                <div className="size-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-amber-600">
+                  <span className="material-symbols-outlined">mail</span>
                 </div>
                 <div className="flex-1">
-                  <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1.5">Important Note</p>
+                  <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1.5">How login works</p>
                   <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 leading-relaxed">
-                    This step creates the database record. To enable login, you may also need to create an authentication account via the admin tools.
+                    After creation, the user receives a password setup email (if checked above). They open the link, set a password, then sign in at the admin login page with email/password, Google, or phone.
                   </p>
                 </div>
               </div>

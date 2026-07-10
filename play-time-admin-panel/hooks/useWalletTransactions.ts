@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { walletTransactionsCollection } from '../services/firebase';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface UseWalletTransactionsOptions {
   userId?: string;
@@ -71,7 +72,7 @@ export const useWalletTransactions = (options: UseWalletTransactionsOptions = {}
         }
       } catch (err: any) {
         console.error('Error fetching wallet transactions:', err);
-        setError(err.message || 'Failed to fetch wallet transactions');
+        setError(getFirebaseErrorMessage(err, 'Failed to fetch wallet transactions'));
         setLoading(false);
       }
     };

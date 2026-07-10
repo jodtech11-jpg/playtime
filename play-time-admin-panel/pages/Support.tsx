@@ -9,6 +9,7 @@ import TicketDetailModal from '../components/modals/TicketDetailModal';
 import ArchiveModal from '../components/modals/ArchiveModal';
 import HelpCenterDocsModal from '../components/modals/HelpCenterDocsModal';
 import { useToast } from '../contexts/ToastContext';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const Support: React.FC = () => {
   const { showError } = useToast();
@@ -19,7 +20,7 @@ const Support: React.FC = () => {
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [showHelpCenterModal, setShowHelpCenterModal] = useState(false);
 
-  const { tickets, loading } = useSupportTickets({ realtime: true });
+  const { tickets, loading, error } = useSupportTickets({ realtime: true });
   const { users } = useUsers({ limit: 100 });
 
   // Filter tickets
@@ -94,7 +95,7 @@ const Support: React.FC = () => {
       });
     } catch (error: any) {
       console.error('Error resolving ticket:', error);
-      showError('Failed to resolve ticket: ' + error.message);
+      showError('Failed to resolve ticket: ' + getFirebaseErrorMessage(error));
     } finally {
       setProcessing(null);
     }
@@ -128,6 +129,11 @@ const Support: React.FC = () => {
 
   return (
     <div className="p-4 sm:p-8 space-y-6 sm:space-y-10 bg-background-light dark:bg-background-dark min-h-full">
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-900 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+          {error}
+        </div>
+      )}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 sm:gap-6">
         <div>
           <h2 className="text-3xl font-black text-gray-900 dark:text-gray-100 tracking-tight">Support & Disputes</h2>

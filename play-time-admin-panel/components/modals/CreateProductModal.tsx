@@ -4,6 +4,7 @@ import { useVenues } from '../../hooks/useVenues';
 import { useCategories } from '../../hooks/useCategories';
 import { formatCurrency } from '../../utils/formatUtils';
 import ImageUpload from '../shared/ImageUpload';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface CreateProductModalProps {
   isOpen: boolean;
@@ -144,7 +145,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
       await onCreate(productData);
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Failed to create product');
+      setError(getFirebaseErrorMessage(err) || 'Failed to create product');
     } finally {
       setLoading(false);
     }
@@ -411,6 +412,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
                 Images * (At least one required)
               </label>
+              <p className="text-xs text-gray-500 mb-2">Accepted formats: JPG, PNG, or WebP · Max 5MB each</p>
               <ImageUpload
                 value={imageUrls}
                 onChange={setImageUrls}

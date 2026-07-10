@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { productsCollection } from '../services/firebase';
 import { Product } from '../types';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface UseProductsOptions {
   category?: Product['category'];
@@ -16,7 +17,15 @@ export const useProducts = (options: UseProductsOptions = {}) => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // limit: 0 means "skip fetching" (e.g. global search while idle)
+    if (options.limit === 0) {
+      setProducts([]);
+      setLoading(false);
+      return;
+    }
+
     let unsubscribe: (() => void) | undefined;
+    let mounted = true;
 
     const fetchProducts = async () => {
       try {
@@ -52,6 +61,7 @@ export const useProducts = (options: UseProductsOptions = {}) => {
         if (options.realtime) {
           unsubscribe = productsCollection.subscribeAll(
             (data: Product[]) => {
+              if (!mounted) return;
               setProducts(data);
               setLoading(false);
             },
@@ -61,14 +71,19 @@ export const useProducts = (options: UseProductsOptions = {}) => {
           );
         } else {
           const data = await productsCollection.getAll(
-            filters.length > 0 ? filters : undefined
+            filters.length > 0 ? filters : undefined,
+            'createdAt',
+            'desc',
+            options.limit
           ) as Product[];
+          if (!mounted) return;
           setProducts(data);
           setLoading(false);
         }
       } catch (err: any) {
         console.error('Error fetching products:', err);
-        setError(err.message || 'Failed to fetch products');
+        if (!mounted) return;
+        setError(getFirebaseErrorMessage(err, 'Failed to fetch products'));
         setLoading(false);
       }
     };
@@ -76,6 +91,7 @@ export const useProducts = (options: UseProductsOptions = {}) => {
     fetchProducts();
 
     return () => {
+      mounted = false;
       if (unsubscribe) {
         unsubscribe();
       }

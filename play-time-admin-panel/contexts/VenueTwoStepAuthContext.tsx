@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 import { auth } from '../services/firebase';
 import { reauthenticateWithCredential, EmailAuthProvider, signInWithPhoneNumber, PhoneAuthProvider, RecaptchaVerifier, ConfirmationResult } from 'firebase/auth';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface VenueTwoStepAuthContextType {
   isVerified: boolean;
@@ -64,7 +65,7 @@ export const VenueTwoStepAuthProvider: React.FC<VenueTwoStepAuthProviderProps> =
       return true;
     } catch (error: any) {
       console.error('Password verification error:', error);
-      throw new Error(error.message || 'Invalid password. Please try again.');
+      throw new Error(getFirebaseErrorMessage(error, 'Invalid password. Please try again.'));
     }
   };
 
@@ -82,7 +83,7 @@ export const VenueTwoStepAuthProvider: React.FC<VenueTwoStepAuthProviderProps> =
       return confirmationResult;
     } catch (error: any) {
       console.error('OTP send error:', error);
-      throw new Error(error.message || 'Failed to send OTP. Please try again.');
+      throw new Error(getFirebaseErrorMessage(error, 'Failed to send OTP. Please try again.'));
     }
   };
 
@@ -174,7 +175,7 @@ export const VenueTwoStepAuthProvider: React.FC<VenueTwoStepAuthProviderProps> =
       } else if (error.code === 'auth/session-expired') {
         throw new Error('OTP session expired. Please request a new code.');
       } else {
-        throw new Error(error.message || 'Invalid OTP code. Please try again.');
+        throw new Error(getFirebaseErrorMessage(error, 'Invalid OTP code. Please try again.'));
       }
     }
   };

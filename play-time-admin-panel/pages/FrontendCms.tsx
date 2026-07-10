@@ -8,6 +8,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
 import CmsPageFormModal from '../components/modals/CmsPageFormModal';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const FrontendCms: React.FC = () => {
   const { user } = useAuth();
@@ -53,7 +54,7 @@ const FrontendCms: React.FC = () => {
       setEditingPage(null);
     } catch (err: any) {
       console.error('Error saving CMS page:', err);
-      showError('Failed to save: ' + (err?.message || 'Unknown error'));
+      showError('Failed to save: ' + getFirebaseErrorMessage(err, 'Unknown error'));
       throw err;
     } finally {
       setProcessing(null);
@@ -71,7 +72,7 @@ const FrontendCms: React.FC = () => {
           showSuccess('Page deleted');
         } catch (err: any) {
           console.error('Error deleting CMS page:', err);
-          showError('Failed to delete: ' + (err?.message || 'Unknown error'));
+          showError('Failed to delete: ' + getFirebaseErrorMessage(err, 'Unknown error'));
         } finally {
           setProcessing(null);
         }

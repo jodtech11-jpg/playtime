@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { usersCollection, auth } from '../services/firebase';
+import { usersCollection, auth, resetPassword } from '../services/firebase';
 import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { serverTimestamp } from 'firebase/firestore';
 import { useVenues } from '../hooks/useVenues';
@@ -10,9 +10,10 @@ import { getStatusColor } from '../utils/formatUtils';
 import { formatDate } from '../utils/dateUtils';
 import ImageUpload from '../components/shared/ImageUpload';
 import { useToast } from '../contexts/ToastContext';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const Profile: React.FC = () => {
-  const { user, firebaseUser, refreshUser } = useAuth();
+  const { user, firebaseUser, refreshUser, roleDisplayName } = useAuth();
   const { showSuccess, showError } = useToast();
   const { venues } = useVenues({ realtime: true });
   const { bookings } = useBookings({ realtime: true });
@@ -20,6 +21,7 @@ const Profile: React.FC = () => {
 
   const [isEditing, setIsEditing] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [settingPassword, setSettingPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,10 +82,34 @@ const Profile: React.FC = () => {
       showSuccess('Profile updated successfully');
     } catch (err: any) {
       console.error('Error updating profile:', err);
-      setError(err.message || 'Failed to update profile');
+      setError(getFirebaseErrorMessage(err, 'Failed to update profile'));
       showError('Failed to update profile');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const hasPasswordProvider = firebaseUser?.providerData.some(
+    (p) => p.providerId === 'password'
+  ) ?? false;
+
+  const handleSetPassword = async () => {
+    if (!user?.email) return;
+    setError(null);
+    setSettingPassword(true);
+    try {
+      const { error: resetError } = await resetPassword(user.email);
+      if (resetError) {
+        setError(resetError);
+        showError(resetError);
+      } else {
+        showSuccess('Password setup email sent. Check your inbox to set a password.');
+      }
+    } catch (err: any) {
+      setError(getFirebaseErrorMessage(err, 'Failed to send password setup email'));
+      showError('Failed to send password setup email');
+    } finally {
+      setSettingPassword(false);
     }
   };
 
@@ -135,7 +161,7 @@ const Profile: React.FC = () => {
       } else if (err.code === 'auth/weak-password') {
         setError('New password is too weak');
       } else {
-        setError(err.message || 'Failed to change password');
+        setError(getFirebaseErrorMessage(err, 'Failed to change password'));
       }
       showError('Failed to change password');
     } finally {
@@ -178,8 +204,18 @@ const Profile: React.FC = () => {
               className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-xl text-sm font-bold transition-colors"
             >
               <span className="material-symbols-outlined text-lg">lock</span>
-              Change Password
+              {hasPasswordProvider ? 'Change Password' : 'Set Password'}
             </button>
+            {!hasPasswordProvider && (
+              <button
+                onClick={handleSetPassword}
+                disabled={settingPassword}
+                className="flex items-center gap-2 bg-primary/10 hover:bg-primary/20 text-primary px-4 py-2 rounded-xl text-sm font-bold transition-colors disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-lg">mail</span>
+                {settingPassword ? 'Sending...' : 'Email Setup Link'}
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -227,11 +263,7 @@ const Profile: React.FC = () => {
                   <div>
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Role</label>
                     <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                      {user.role === 'super_admin'
-                        ? 'Super Admin'
-                        : user.role === 'venue_manager'
-                          ? 'Venue Manager'
-                          : 'Player'}
+                      {roleDisplayName || 'User'}
                     </p>
                   </div>
                   {user.createdAt && (
@@ -339,7 +371,30 @@ const Profile: React.FC = () => {
           </div>
 
           {/* Change Password Card */}
-          {isChangingPassword && (
+          {isChangingPassword && !hasPasswordProvider && (
+            <div className="bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-6">
+              <h2 className="text-lg font-black text-gray-900 dark:text-gray-100 mb-2">Set a Password</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+                You signed in with Google. Send a setup link to your email to add a password for email sign-in.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setIsChangingPassword(false)}
+                  className="flex-1 px-4 py-3 border border-gray-200 rounded-xl font-black text-sm hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSetPassword}
+                  disabled={settingPassword}
+                  className="flex-1 px-4 py-3 bg-primary text-primary-content rounded-xl font-black text-sm hover:shadow-lg transition-all disabled:opacity-50"
+                >
+                  {settingPassword ? 'Sending...' : 'Send Setup Email'}
+                </button>
+              </div>
+            </div>
+          )}
+          {isChangingPassword && hasPasswordProvider && (
             <div className="bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-6">
               <h2 className="text-lg font-black text-gray-900 mb-6">Change Password</h2>
               <div className="space-y-4">
@@ -481,11 +536,7 @@ const Profile: React.FC = () => {
                 <div>
                   <p className="text-xs font-bold text-gray-500 mb-1">Role</p>
                   <p className="text-sm font-semibold text-gray-900">
-                    {user.role === 'super_admin'
-                      ? 'Super Admin'
-                      : user.role === 'venue_manager'
-                        ? 'Venue Manager'
-                        : 'Player'}
+                    {roleDisplayName || 'User'}
                   </p>
                 </div>
               )}

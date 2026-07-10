@@ -142,8 +142,16 @@ const GoogleMapPicker: React.FC<GoogleMapPickerProps> = ({
             mapId: 'PLAYTIME_MAP_ID', // Required for AdvancedMarkerElement
             mapTypeControl: false,
             streetViewControl: false,
-            fullscreenControl: false
+            fullscreenControl: true
           });
+
+          // Ensure map tiles render correctly inside modals / flex layouts
+          setTimeout(() => {
+            if (mapInstanceRef.current && window.google?.maps?.event) {
+              window.google.maps.event.trigger(mapInstanceRef.current, 'resize');
+              mapInstanceRef.current.setCenter({ lat: initialLat, lng: initialLng });
+            }
+          }, 150);
 
           // Add click listener to map
           mapInstanceRef.current.addListener('click', (e: any) => {
@@ -241,10 +249,10 @@ const GoogleMapPicker: React.FC<GoogleMapPickerProps> = ({
           <label className="block text-sm font-black text-gray-700 mb-2">Location Map</label>
           <div
             ref={mapRef}
-            className="w-full h-64 rounded-xl border border-gray-200 overflow-hidden"
-            style={{ minHeight: '256px' }}
+            className="w-full h-96 rounded-xl border border-gray-200 overflow-hidden"
+            style={{ minHeight: '384px' }}
           />
-          <p className="text-xs text-gray-500 mt-1">Click on the map or drag the marker to set the exact location</p>
+          <p className="text-xs text-gray-500 mt-1">Click on the map or drag the marker to set the exact location. Use the fullscreen control for a larger view.</p>
         </div>
       ) : (
         <div className="w-full h-64 rounded-xl border border-gray-200 bg-gray-100 flex items-center justify-center">

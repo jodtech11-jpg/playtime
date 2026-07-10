@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
+import { documentId } from 'firebase/firestore';
 import { venuesCollection } from '../services/firebase';
 import { Venue } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface UseVenuesOptions {
   realtime?: boolean;
@@ -40,14 +42,16 @@ export const useVenues = (options: UseVenuesOptions = {}) => {
             }
             return;
           }
+          // Query by document ID (legacy venue docs may not have an `id` field
+          // in their data). Firestore `in` supports up to 30 values.
           filters.push({
-            field: 'id',
+            field: documentId(),
             operator: 'in',
-            value: ids.slice(0, 10),
+            value: ids.slice(0, 30),
           });
-          if (ids.length > 10) {
+          if (ids.length > 30) {
             console.warn(
-              'useVenues: venue manager has more than 10 managedVenues; only the first 10 are loaded (Firestore in limit).'
+              'useVenues: venue manager has more than 30 managedVenues; only the first 30 are loaded (Firestore in limit).'
             );
           }
         }
@@ -83,7 +87,7 @@ export const useVenues = (options: UseVenuesOptions = {}) => {
       } catch (err: any) {
         console.error('Error fetching venues:', err);
         if (mounted) {
-          setError(err.message || 'Failed to fetch venues');
+          setError(getFirebaseErrorMessage(err, 'Failed to fetch venues'));
           setLoading(false);
         }
       }

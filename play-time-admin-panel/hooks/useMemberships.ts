@@ -2,20 +2,27 @@ import { useState, useEffect } from 'react';
 import { membershipsCollection } from '../services/firebase';
 import { Membership } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface UseMembershipsOptions {
   venueId?: string;
   status?: Membership['status'];
   realtime?: boolean;
+  enabled?: boolean;
 }
 
 export const useMemberships = (options: UseMembershipsOptions = {}) => {
-  const { user, isVenueManager } = useAuth();
+  const { user, isVenueManager, isSuperAdmin } = useAuth();
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (options.enabled === false) {
+      setMemberships([]);
+      setLoading(false);
+      return;
+    }
     if (!user) {
       setLoading(false);
       return;
@@ -54,10 +61,11 @@ export const useMemberships = (options: UseMembershipsOptions = {}) => {
               value: options.venueId,
             });
           } else {
-            const ids = managed.slice(0, 10);
-            if (managed.length > 10) {
+            // Firestore `in` supports up to 30 values
+            const ids = managed.slice(0, 30);
+            if (managed.length > 30) {
               console.warn(
-                'useMemberships: venue manager has more than 10 managedVenues; only the first 10 are queried.'
+                'useMemberships: venue manager has more than 30 managedVenues; only the first 30 are queried.'
               );
             }
             filters.push({
@@ -83,31 +91,36 @@ export const useMemberships = (options: UseMembershipsOptions = {}) => {
           });
         }
 
+        const sortByCreatedDesc = (rows: Membership[]) =>
+          [...rows].sort((a, b) => {
+            const aTime = a.createdAt?.toMillis?.() ?? a.createdAt?.seconds ?? 0;
+            const bTime = b.createdAt?.toMillis?.() ?? b.createdAt?.seconds ?? 0;
+            return bTime - aTime;
+          });
+
+        // Sort in memory — venueId + orderBy(createdAt) needs a composite index
+        // that vendors hit and super-admins (unfiltered) do not.
         if (options.realtime) {
           unsubscribeRef = membershipsCollection.subscribeAll(
             (data: Membership[]) => {
               if (!mounted) return;
-              setMemberships(data);
+              setMemberships(sortByCreatedDesc(data));
               setLoading(false);
             },
-            filters.length > 0 ? filters : undefined,
-            'createdAt',
-            'desc'
+            filters.length > 0 ? filters : undefined
           );
         } else {
           const data = await membershipsCollection.getAll(
-            filters.length > 0 ? filters : undefined,
-            'createdAt',
-            'desc'
+            filters.length > 0 ? filters : undefined
           );
           if (!mounted) return;
-          setMemberships(data as Membership[]);
+          setMemberships(sortByCreatedDesc(data as Membership[]));
           setLoading(false);
         }
       } catch (err: any) {
         if (!mounted) return;
         console.error('Error fetching memberships:', err);
-        setError(err.message || 'Failed to fetch memberships');
+        setError(getFirebaseErrorMessage(err, 'Failed to fetch memberships'));
         setLoading(false);
       }
     };
@@ -118,7 +131,7 @@ export const useMemberships = (options: UseMembershipsOptions = {}) => {
       mounted = false;
       if (unsubscribeRef) unsubscribeRef();
     };
-  }, [user, options.venueId, options.status, options.realtime, isVenueManager]);
+  }, [user, options.venueId, options.status, options.realtime, options.enabled, isVenueManager, isSuperAdmin]);
 
   return { memberships, loading, error };
 };

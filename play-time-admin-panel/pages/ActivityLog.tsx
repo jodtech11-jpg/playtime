@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getActivityLogs, ActivityLogEntry } from '../services/firebase';
 import { useUsers } from '../hooks/useUsers';
 import { formatDateTime } from '../utils/dateUtils';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const ACTIVITY_ACTIONS = [
   '',
@@ -39,7 +40,7 @@ const ActivityLog: React.FC = () => {
       });
       setLogs(entries);
     } catch (err: any) {
-      setError(err?.message ?? 'Failed to load activity log');
+      setError(getFirebaseErrorMessage(err, 'Failed to load activity log'));
       setLogs([]);
     } finally {
       setLoading(false);

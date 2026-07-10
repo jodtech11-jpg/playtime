@@ -33,7 +33,8 @@
             // Quick check on first argument (most common case) - faster filtering
             if (args[0] && typeof args[0] === 'string') {
               const firstArg = args[0].toLowerCase();
-              if (firstArg.includes('react devtools') || 
+              if (firstArg === 'heartbeats' ||
+                  firstArg.includes('react devtools') || 
                   firstArg.includes('react-devtools') ||
                   firstArg.includes('cispl') ||
                   firstArg.includes('signerdigital') ||
@@ -62,6 +63,7 @@
             const filterPatterns = [
               'heartbeats undefined',
               'heartbeatservice',
+              'heartbeats',
               'download the react devtools',
               'react.dev/link/react-devtools',
               'react devtools',
@@ -75,7 +77,8 @@
               'react-dom_client.js',
               'better development experience',
               'devtools extension',
-              'download the react'
+              'download the react',
+              'notifications permission has been blocked'
             ];
             
             // Check if any pattern matches

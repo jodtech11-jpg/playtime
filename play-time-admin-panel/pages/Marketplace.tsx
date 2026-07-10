@@ -15,6 +15,7 @@ import OrderDetailsModal from '../components/modals/OrderDetailsModal';
 import CategoryManagementModal from '../components/modals/CategoryManagementModal';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const Marketplace: React.FC = () => {
   const { showError } = useToast();
@@ -233,7 +234,7 @@ const Marketplace: React.FC = () => {
           await productsCollection.delete(productId);
         } catch (error: any) {
           console.error('Error deleting product:', error);
-          showError('Failed to delete product: ' + error.message);
+          showError('Failed to delete product: ' + getFirebaseErrorMessage(error));
         } finally {
           setProcessing(null);
         }
@@ -255,7 +256,7 @@ const Marketplace: React.FC = () => {
           setSelectedProducts(new Set());
         } catch (error: any) {
           console.error('Error deleting products:', error);
-          showError('Failed to delete products: ' + error.message);
+          showError('Failed to delete products: ' + getFirebaseErrorMessage(error));
         } finally {
           setProcessing(null);
         }
@@ -278,7 +279,7 @@ const Marketplace: React.FC = () => {
       setSelectedProducts(new Set());
     } catch (error: any) {
       console.error('Error updating products:', error);
-      showError('Failed to update products: ' + error.message);
+      showError('Failed to update products: ' + getFirebaseErrorMessage(error));
     } finally {
       setProcessing(null);
     }
@@ -539,15 +540,21 @@ const Marketplace: React.FC = () => {
                     </div>
                     <div className="aspect-square w-full rounded-2xl bg-gray-100 dark:bg-gray-800 overflow-hidden relative shadow-inner cursor-pointer" onClick={() => handleEditProduct(product)}>
                       {primaryImage ? (
-                        <div 
-                          className={`w-full h-full bg-cover bg-center group-hover:scale-110 transition-transform duration-700 ${product.status === 'Out of Stock' ? 'grayscale opacity-60' : ''}`} 
-                          style={{ backgroundImage: `url(${primaryImage})` }}
-                        ></div>
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <span className="material-symbols-outlined text-gray-300 dark:text-gray-600 text-6xl">image</span>
-                        </div>
-                      )}
+                        <img
+                          src={primaryImage}
+                          alt={product.name}
+                          className={`w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ${product.status === 'Out of Stock' ? 'grayscale opacity-60' : ''}`}
+                          onError={(e) => {
+                            const target = e.currentTarget;
+                            target.style.display = 'none';
+                            const fallback = target.nextElementSibling as HTMLElement | null;
+                            if (fallback) fallback.classList.remove('hidden');
+                          }}
+                        />
+                      ) : null}
+                      <div className={`w-full h-full flex items-center justify-center ${primaryImage ? 'hidden absolute inset-0' : ''}`}>
+                        <span className="material-symbols-outlined text-gray-300 dark:text-gray-600 text-6xl">image</span>
+                      </div>
                       <span className={`absolute top-3 right-3 text-[9px] font-black uppercase tracking-widest px-2.5 py-1.5 rounded-xl shadow-sm backdrop-blur-sm ${
                         statusColor === 'red' ? 'bg-red-50 text-red-700 border-red-100' :
                         statusColor === 'amber' ? 'bg-amber-50 text-amber-700 border-amber-100' :

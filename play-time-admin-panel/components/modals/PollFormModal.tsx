@@ -1,6 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Poll } from '../../types';
 import { useVenues } from '../../hooks/useVenues';
+import { useSports } from '../../hooks/useSports';
+import { useAuth } from '../../contexts/AuthContext';
+import { getSportsForVenue } from '../../utils/sportUtils';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 import { serverTimestamp } from 'firebase/firestore';
 
 interface PollFormModalProps {
@@ -16,7 +20,10 @@ const PollFormModal: React.FC<PollFormModalProps> = ({
   onSave,
   poll
 }) => {
+  const { isVenueManager, isSuperAdmin } = useAuth();
   const { venues, loading: venuesLoading } = useVenues({ realtime: false });
+  const { sports: allSports, loading: sportsLoading } = useSports({ activeOnly: true, realtime: false });
+  const requiresVenue = isVenueManager && !isSuperAdmin;
 
   const [formData, setFormData] = useState({
     question: poll?.question || '',
@@ -31,6 +38,12 @@ const PollFormModal: React.FC<PollFormModalProps> = ({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const selectedVenue = venues.find((v) => v.id === formData.venueId);
+  const availableSports = useMemo(
+    () => (formData.venueId ? getSportsForVenue(selectedVenue, allSports) : allSports),
+    [formData.venueId, selectedVenue, allSports]
+  );
+
   useEffect(() => {
     if (poll) {
       setFormData({
@@ -43,9 +56,10 @@ const PollFormModal: React.FC<PollFormModalProps> = ({
         options: poll.options,
       });
     } else {
+      const autoVenue = requiresVenue && venues.length === 1 ? venues[0].id : '';
       setFormData({
         question: '',
-        venueId: '',
+        venueId: autoVenue,
         sport: '',
         status: 'Active',
         startDate: '',
@@ -53,7 +67,7 @@ const PollFormModal: React.FC<PollFormModalProps> = ({
         options: [{ id: '1', text: '', votes: 0 }, { id: '2', text: '', votes: 0 }],
       });
     }
-  }, [poll, isOpen]);
+  }, [poll, isOpen, requiresVenue, venues]);
 
   const handleAddOption = () => {
     setFormData({
@@ -96,6 +110,11 @@ const PollFormModal: React.FC<PollFormModalProps> = ({
       return;
     }
 
+    if (requiresVenue && !formData.venueId) {
+      setError('Please select a venue for this poll');
+      return;
+    }
+
     try {
       setSaving(true);
 
@@ -135,15 +154,13 @@ const PollFormModal: React.FC<PollFormModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error('Error saving poll:', err);
-      setError(err.message || 'Failed to save poll');
+      setError(getFirebaseErrorMessage(err) || 'Failed to save poll');
     } finally {
       setSaving(false);
     }
   };
 
   if (!isOpen) return null;
-
-  const sports = ['', 'Football', 'Cricket', 'Badminton', 'Tennis', 'Basketball'];
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -184,18 +201,19 @@ const PollFormModal: React.FC<PollFormModalProps> = ({
             />
           </div>
 
-          {/* Venue Selection (Optional) */}
+          {/* Venue — required for vendors; optional for super admins */}
           <div>
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
-              Venue (Optional)
+              {requiresVenue ? 'Venue *' : 'Venue (Optional)'}
             </label>
             <select
               value={formData.venueId}
-              onChange={(e) => setFormData({ ...formData, venueId: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, venueId: e.target.value, sport: '' })}
               className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-surface-dark text-gray-900 dark:text-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
               disabled={venuesLoading}
+              required={requiresVenue}
             >
-              <option value="">All Venues</option>
+              <option value="">{requiresVenue ? 'Select Venue' : 'All Venues'}</option>
               {venues.map((venue) => (
                 <option key={venue.id} value={venue.id}>
                   {venue.name}
@@ -213,10 +231,12 @@ const PollFormModal: React.FC<PollFormModalProps> = ({
               value={formData.sport}
               onChange={(e) => setFormData({ ...formData, sport: e.target.value })}
               className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-surface-dark text-gray-900 dark:text-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+              disabled={sportsLoading}
             >
-              {sports.map((sport) => (
-                <option key={sport || 'all'} value={sport}>
-                  {sport || 'All Sports'}
+              <option value="">All Sports</option>
+              {availableSports.map((sport) => (
+                <option key={sport.id} value={sport.name}>
+                  {sport.name}
                 </option>
               ))}
             </select>

@@ -5,6 +5,7 @@ import { formatCurrency } from '../../utils/formatUtils';
 import { getRelativeTime } from '../../utils/dateUtils';
 import { serverTimestamp } from 'firebase/firestore';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface OrderDetailsModalProps {
   isOpen: boolean;
@@ -80,7 +81,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
       setStatus(newStatus);
       if (onUpdate) onUpdate();
     } catch (err: any) {
-      setError(err.message || 'Failed to update order status');
+      setError(getFirebaseErrorMessage(err) || 'Failed to update order status');
     } finally {
       setLoading(false);
     }
@@ -100,7 +101,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
       setPaymentStatus(newPaymentStatus);
       if (onUpdate) onUpdate();
     } catch (err: any) {
-      setError(err.message || 'Failed to update payment status');
+      setError(getFirebaseErrorMessage(err) || 'Failed to update payment status');
     } finally {
       setLoading(false);
     }
@@ -120,7 +121,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
       });
       if (onUpdate) onUpdate();
     } catch (err: any) {
-      setError(err.message || 'Failed to save tracking information');
+      setError(getFirebaseErrorMessage(err) || 'Failed to save tracking information');
     } finally {
       setLoading(false);
     }
@@ -140,7 +141,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
       });
       if (onUpdate) onUpdate();
     } catch (err: any) {
-      setError(err.message || 'Failed to save notes');
+      setError(getFirebaseErrorMessage(err) || 'Failed to save notes');
     } finally {
       setLoading(false);
     }
@@ -177,7 +178,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
           setRefundAmount('');
           setRefundReason('');
         } catch (err: any) {
-          setError(err.message || 'Failed to process refund');
+          setError(getFirebaseErrorMessage(err) || 'Failed to process refund');
         } finally {
           setLoading(false);
         }

@@ -16,9 +16,12 @@ import MembershipPlanFormModal from '../components/modals/MembershipPlanFormModa
 import { serverTimestamp, Timestamp } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { sendNotificationToAudience } from '../services/notificationService';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const Memberships: React.FC = () => {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, isSuperAdmin, isVenueManager, hasPermission } = useAuth();
+  const isVendorViewOnly = isVenueManager && !isSuperAdmin;
+  const canOpenUserProfile = hasPermission('users.manage');
   const { showSuccess, showError } = useToast();
   const { openConfirm, confirmDialog } = useConfirmDialog();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
@@ -118,11 +121,12 @@ const Memberships: React.FC = () => {
 
   // Register "New Entry" handler for Header button
   useEffect(() => {
+    if (isVendorViewOnly) return;
     setNewEntryHandler(handleCreatePlan);
     return () => {
       unsetNewEntryHandler();
     };
-  }, [setNewEntryHandler, unsetNewEntryHandler]);
+  }, [setNewEntryHandler, unsetNewEntryHandler, isVendorViewOnly]);
 
   const handleEditPlan = (plan: MembershipPlan) => {
     setSelectedPlan(plan);
@@ -166,7 +170,7 @@ const Memberships: React.FC = () => {
           await membershipPlansCollection.delete(planId);
         } catch (error: any) {
           console.error('Error deleting plan:', error);
-          showError('Failed to delete plan: ' + error.message);
+          showError('Failed to delete plan: ' + getFirebaseErrorMessage(error));
         } finally {
           setProcessing(null);
         }
@@ -183,20 +187,29 @@ const Memberships: React.FC = () => {
 
       const now = Timestamp.now();
 
+      // Add months with end-of-month clamping (e.g. Jan 31 + 1 month = Feb 28/29, not Mar 3)
+      const addMonthsClamped = (d: Date, n: number) => {
+        const dd = d.getDate();
+        d.setMonth(d.getMonth() + n);
+        if (d.getDate() !== dd) d.setDate(0);
+      };
+
       // Calculate end date based on plan type
       const endDate = new Date();
       if (membership.planType === 'Monthly') {
-        endDate.setMonth(endDate.getMonth() + 1);
+        addMonthsClamped(endDate, 1);
       } else if (membership.planType === '6 Months') {
-        endDate.setMonth(endDate.getMonth() + 6);
+        addMonthsClamped(endDate, 6);
       } else {
-        endDate.setFullYear(endDate.getFullYear() + 1);
+        addMonthsClamped(endDate, 12);
       }
 
       await membershipsCollection.update(membershipId, {
         status: 'Active',
         startDate: now,
         endDate: Timestamp.fromDate(endDate),
+        // Financials only count paid memberships; activation implies payment received
+        ...(membership.paymentStatus !== 'Paid' ? { paymentStatus: 'Paid' } : {}),
         updatedAt: serverTimestamp()
       });
 
@@ -222,7 +235,7 @@ const Memberships: React.FC = () => {
       showSuccess('Membership activated successfully');
     } catch (error: any) {
       console.error('Error activating membership:', error);
-      showError('Failed to activate membership: ' + error.message);
+      showError('Failed to activate membership: ' + getFirebaseErrorMessage(error));
     } finally {
       setProcessing(null);
     }
@@ -244,7 +257,7 @@ const Memberships: React.FC = () => {
           showSuccess('Membership cancelled successfully');
         } catch (error: any) {
           console.error('Error cancelling membership:', error);
-          showError('Failed to cancel membership: ' + error.message);
+          showError('Failed to cancel membership: ' + getFirebaseErrorMessage(error));
         } finally {
           setProcessing(null);
         }
@@ -263,7 +276,7 @@ const Memberships: React.FC = () => {
           showSuccess('Membership record deleted successfully');
         } catch (error: any) {
           console.error('Error deleting membership:', error);
-          showError('Failed to delete membership: ' + error.message);
+          showError('Failed to delete membership: ' + getFirebaseErrorMessage(error));
         } finally {
           setProcessing(null);
         }
@@ -288,7 +301,7 @@ const Memberships: React.FC = () => {
       showSuccess(`Membership extended by ${extensionMonths} month(s)`);
     } catch (error: any) {
       console.error('Error extending membership:', error);
-      showError('Failed to extend membership: ' + error.message);
+      showError('Failed to extend membership: ' + getFirebaseErrorMessage(error));
     } finally {
       setProcessing(null);
     }
@@ -314,8 +327,13 @@ const Memberships: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
         <div>
           <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-none">Memberships</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-3 font-medium">Manage membership plans and member subscriptions.</p>
+          <p className="text-slate-500 dark:text-slate-400 mt-3 font-medium">
+            {isVendorViewOnly
+              ? 'View membership status and expiry dates for your venue.'
+              : 'Manage membership plans and member subscriptions.'}
+          </p>
         </div>
+        {!isVendorViewOnly && (
         <button
           onClick={handleCreatePlan}
           className="flex items-center gap-2 rounded-xl bg-primary hover:bg-primary/90 px-6 py-3 text-white text-sm font-black shadow-lg shadow-primary/20 transition-all active:scale-95"
@@ -323,10 +341,11 @@ const Memberships: React.FC = () => {
           <span className="material-symbols-outlined text-[20px]">add_card</span>
           Add Plan
         </button>
+        )}
       </div>
 
-      {/* Membership Plans */}
-      {/* Membership Plans */}
+      {/* Membership Plans — super admin only */}
+      {!isVendorViewOnly && (
       <div className="space-y-6">
         <div className="flex items-center gap-3">
           <div className="h-6 w-1 rounded-full bg-primary"></div>
@@ -411,6 +430,7 @@ const Memberships: React.FC = () => {
           </div>
         )}
       </div>
+      )}
 
       {/* Member Directory */}
       <div className="space-y-6">
@@ -504,14 +524,21 @@ const Memberships: React.FC = () => {
                 <th className="px-6 py-5">Plan</th>
                 <th className="px-6 py-5">Venue</th>
                 <th className="px-6 py-5">Joined</th>
+                <th className="px-6 py-5">Expires</th>
                 <th className="px-6 py-5">Status</th>
-                <th className="px-6 py-5 text-right">Actions</th>
+                {!isVendorViewOnly && <th className="px-6 py-5 text-right">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
               {memberDetails.length > 0 ? (
                 memberDetails.map((member) => (
-                  <tr key={member.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-all cursor-pointer group" onClick={() => navigate(`/users/${member.userId}`)}>
+                  <tr
+                    key={member.id}
+                    className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-all group ${canOpenUserProfile ? 'cursor-pointer' : ''}`}
+                    onClick={() => {
+                      if (canOpenUserProfile) navigate(`/users/${member.userId}`);
+                    }}
+                  >
                     <td className="px-6 py-4 flex items-center gap-4">
                       <div className="size-11 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden border border-slate-200 dark:border-slate-700 group-hover:scale-110 transition-transform">
                         {member.userAvatar ? (
@@ -535,6 +562,11 @@ const Memberships: React.FC = () => {
                       <span className="text-xs font-bold text-slate-500">{member.createdAt ? formatDate(member.createdAt) : 'SYSTEM'}</span>
                     </td>
                     <td className="px-6 py-4">
+                      <span className="text-xs font-bold text-slate-500">
+                        {member.endDate ? formatDate(member.endDate) : '—'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
                       <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${member.status === 'Active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
                         member.status === 'Pending' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-50 text-slate-400 border-slate-100'
                         }`}>
@@ -544,6 +576,7 @@ const Memberships: React.FC = () => {
                         {member.status}
                       </div>
                     </td>
+                    {!isVendorViewOnly && (
                     <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">
                         {member.status === 'Pending' && (
@@ -574,8 +607,11 @@ const Memberships: React.FC = () => {
                               className="absolute right-0 top-full mt-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-40 min-w-[200px] p-1 overflow-hidden animate-in fade-in zoom-in-95 duration-200"
                             >
                               <button
-                                onClick={() => navigate(`/users/${member.userId}`)}
-                                className="w-full px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg flex items-center gap-2 transition-colors"
+                                onClick={() => {
+                                  if (canOpenUserProfile) navigate(`/users/${member.userId}`);
+                                }}
+                                disabled={!canOpenUserProfile}
+                                className="w-full px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 <span className="material-symbols-outlined text-lg">account_circle</span>
                                 View Profile
@@ -611,11 +647,12 @@ const Memberships: React.FC = () => {
                         </div>
                       </div>
                     </td>
+                    )}
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="px-6 py-20 text-center">
+                  <td colSpan={isVendorViewOnly ? 6 : 7} className="px-6 py-20 text-center">
                     <div className="size-20 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center mx-auto mb-4 text-slate-300">
                       <span className="material-symbols-outlined text-4xl">folder_off</span>
                     </div>

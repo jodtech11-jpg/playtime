@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { cmsPagesCollection } from '../services/firebase';
 import { CmsPage } from '../types';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface UseCmsPagesOptions {
   realtime?: boolean;
@@ -41,7 +42,7 @@ export const useCmsPages = (options: UseCmsPagesOptions = {}) => {
         );
         setPages((list as CmsPage[]).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
       } catch (err: any) {
-        setError(err.message);
+        setError(getFirebaseErrorMessage(err));
         setPages([]);
       } finally {
         setLoading(false);

@@ -3,6 +3,7 @@ import { useVenueTwoStepAuth } from '../../contexts/VenueTwoStepAuthContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { RecaptchaVerifier, ConfirmationResult } from 'firebase/auth';
 import { auth } from '../../services/firebase';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface VenueTwoStepAuthModalProps {
   isOpen: boolean;
@@ -86,7 +87,7 @@ const VenueTwoStepAuthModal: React.FC<VenueTwoStepAuthModalProps> = ({
       onVerified();
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Invalid password. Please try again.');
+      setError(getFirebaseErrorMessage(err, 'Invalid password. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -115,7 +116,7 @@ const VenueTwoStepAuthModal: React.FC<VenueTwoStepAuthModalProps> = ({
       setOtpSent(true);
       setError(null);
     } catch (err: any) {
-      setError(err.message || 'Failed to send OTP. Please try again.');
+      setError(getFirebaseErrorMessage(err, 'Failed to send OTP. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -141,7 +142,7 @@ const VenueTwoStepAuthModal: React.FC<VenueTwoStepAuthModalProps> = ({
       onVerified();
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Invalid OTP code. Please try again.');
+      setError(getFirebaseErrorMessage(err, 'Invalid OTP code. Please try again.'));
     } finally {
       setLoading(false);
     }

@@ -7,9 +7,15 @@ import { serverTimestamp } from 'firebase/firestore';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import LeaderboardFormModal from '../components/modals/LeaderboardFormModal';
+import { useSports } from '../hooks/useSports';
+import { withVendorId } from '../utils/vendorScope';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const Leaderboards: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isSuperAdmin, isVenueManager } = useAuth();
+  // Vendor-like roles (venue managers + custom roles) own and manage their content
+  const isVendor = isVenueManager;
+  const canManage = isSuperAdmin || isVendor;
   const { showSuccess, showError } = useToast();
   const { openConfirm, confirmDialog } = useConfirmDialog();
   const [typeFilter, setTypeFilter] = useState<string>('All');
@@ -18,11 +24,12 @@ const Leaderboards: React.FC = () => {
   const [selectedLeaderboard, setSelectedLeaderboard] = useState<Leaderboard | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
 
-  const { leaderboards, loading } = useLeaderboards({
+  const { leaderboards, loading, error } = useLeaderboards({
     realtime: true,
     type: typeFilter !== 'All' ? typeFilter as Leaderboard['type'] : undefined,
     sport: sportFilter !== 'All' ? sportFilter : undefined,
   });
+  const { sports: sportsCatalog } = useSports({ activeOnly: true, realtime: false });
 
   const filteredLeaderboards = leaderboards.filter(lb => {
     if (typeFilter !== 'All' && lb.type !== typeFilter) return false;
@@ -51,11 +58,16 @@ const Leaderboards: React.FC = () => {
         });
         showSuccess('Leaderboard updated successfully');
       } else {
-        await leaderboardsCollection.create({
-          ...leaderboardData,
-          entries: [],
-          updatedAt: serverTimestamp(),
-        });
+        await leaderboardsCollection.create(
+          withVendorId(
+            {
+              ...leaderboardData,
+              entries: [],
+              updatedAt: serverTimestamp(),
+            },
+            isVenueManager ? user?.id : undefined
+          )
+        );
         showSuccess('Leaderboard created successfully');
       }
 
@@ -63,7 +75,8 @@ const Leaderboards: React.FC = () => {
       setSelectedLeaderboard(null);
     } catch (error: any) {
       console.error('Error saving leaderboard:', error);
-      showError('Failed to save leaderboard: ' + error.message);
+      showError('Failed to save leaderboard: ' + getFirebaseErrorMessage(error));
+      throw error;
     } finally {
       setProcessing(null);
     }
@@ -80,7 +93,7 @@ const Leaderboards: React.FC = () => {
           showSuccess('Leaderboard deleted successfully');
         } catch (error: any) {
           console.error('Error deleting leaderboard:', error);
-          showError('Failed to delete leaderboard: ' + error.message);
+          showError('Failed to delete leaderboard: ' + getFirebaseErrorMessage(error));
         } finally {
           setProcessing(null);
         }
@@ -88,23 +101,34 @@ const Leaderboards: React.FC = () => {
     });
   };
 
-  const sports = ['All', 'Football', 'Cricket', 'Badminton', 'Tennis', 'Basketball'];
-  const types = ['All', 'Global', 'Venue', 'Monthly', 'All-Time'];
+  const sportFilterOptions = ['All', ...sportsCatalog.map((s) => s.name)];
+  const types = isVendor && !isSuperAdmin
+    ? ['All', 'Venue']
+    : ['All', 'Global', 'Venue', 'Monthly', 'All-Time'];
 
   return (
     <div className="p-4 sm:p-6 space-y-6">
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-900 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+          {error}
+        </div>
+      )}
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-black text-slate-900 dark:text-white mb-2">Leaderboards</h1>
-          <p className="text-slate-500 dark:text-gray-400 text-sm">Manage community leaderboards</p>
+          <p className="text-slate-500 dark:text-gray-400 text-sm">
+            {canManage ? 'Manage community leaderboards for your venue' : 'View and manage all venue leaderboards'}
+          </p>
         </div>
+        {canManage && (
         <button
           onClick={handleCreateLeaderboard}
           className="px-6 py-3 bg-primary text-background-dark rounded-xl hover:bg-primary/90 transition-colors font-black text-sm uppercase tracking-wider"
         >
           + New Leaderboard
         </button>
+        )}
       </div>
 
       {/* Filters */}
@@ -126,7 +150,7 @@ const Leaderboards: React.FC = () => {
           onChange={(e) => setSportFilter(e.target.value)}
           className="px-4 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-surface-dark text-slate-900 dark:text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
         >
-          {sports.map((sport) => (
+          {sportFilterOptions.map((sport) => (
             <option key={sport} value={sport}>
               {sport}
             </option>
@@ -169,10 +193,6 @@ const Leaderboards: React.FC = () => {
                   <span className="text-gray-500">Total Entries:</span>
                   <span className="text-slate-900 dark:text-white font-black">{leaderboard.entries?.length || 0}</span>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">Total Votes:</span>
-                  <span className="text-slate-900 dark:text-white font-black">{leaderboard.totalVotes || 0}</span>
-                </div>
               </div>
 
               {/* Top 3 Entries Preview */}
@@ -192,16 +212,18 @@ const Leaderboards: React.FC = () => {
               )}
 
               <div className="flex gap-2">
+                {canManage && (
                 <button
                   onClick={() => handleEditLeaderboard(leaderboard)}
                   className="flex-1 px-4 py-2 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-colors text-sm font-black uppercase tracking-wider"
                 >
                   Edit
                 </button>
+                )}
                 <button
                   onClick={() => handleDeleteLeaderboard(leaderboard.id)}
                   disabled={processing === leaderboard.id}
-                  className="px-4 py-2 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500/20 transition-colors text-sm font-black uppercase tracking-wider disabled:opacity-50"
+                  className={`${canManage ? '' : 'flex-1 '}px-4 py-2 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500/20 transition-colors text-sm font-black uppercase tracking-wider disabled:opacity-50`}
                 >
                   {processing === leaderboard.id ? '...' : 'Delete'}
                 </button>

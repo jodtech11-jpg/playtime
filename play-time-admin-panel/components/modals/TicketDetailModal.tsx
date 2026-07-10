@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supportTicketsCollection } from '../../services/firebase';
 import { getRelativeTime, formatDate } from '../../utils/dateUtils';
 import { serverTimestamp } from 'firebase/firestore';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface TicketDetailModalProps {
   isOpen: boolean;
@@ -72,7 +73,7 @@ const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
       setResponse('');
       onUpdate();
     } catch (err: any) {
-      setError(err.message || 'Failed to add response');
+      setError(getFirebaseErrorMessage(err) || 'Failed to add response');
     } finally {
       setLoading(false);
     }
@@ -102,7 +103,7 @@ const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
       await supportTicketsCollection.update(ticket.id, updateData);
       onUpdate();
     } catch (err: any) {
-      setError(err.message || 'Failed to update ticket');
+      setError(getFirebaseErrorMessage(err) || 'Failed to update ticket');
     } finally {
       setLoading(false);
     }

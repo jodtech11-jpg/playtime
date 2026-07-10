@@ -77,7 +77,8 @@ const createSettlementForBooking = async (booking: Booking, paymentTransactionId
     invoiceNumber: `INV-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
     type: 'Commission',
     source: booking.venueId, // Will be replaced with venue name
-    sourceId: booking.venueId,
+    sourceId: booking.id,
+    venueId: booking.venueId,
     amount: netAmount,
     breakdown: {
       gross: booking.amount || 0,
@@ -126,7 +127,8 @@ const createSettlementForMembership = async (membership: Membership, paymentTran
     invoiceNumber: `INV-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
     type: 'Commission',
     source: membership.venueId,
-    sourceId: membership.venueId,
+    sourceId: membership.id,
+    venueId: membership.venueId,
     amount: netAmount,
     breakdown: {
       gross: membership.price,

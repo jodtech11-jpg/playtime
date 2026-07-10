@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { Court, Venue } from '../../types';
 import { useCourts } from '../../hooks/useCourts';
 import { courtsCollection, syncVenueCourts, logActivity } from '../../services/firebase';
-import { formatCurrency, getStatusColor } from '../../utils/formatUtils';
+import { formatCurrency, getStatusColor, resolveSportName } from '../../utils/formatUtils';
+import { useSports } from '../../hooks/useSports';
 import CourtFormModal from './CourtFormModal';
 import { serverTimestamp } from 'firebase/firestore';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface CourtManagementModalProps {
   venue: Venue;
@@ -21,6 +23,7 @@ const CourtManagementModal: React.FC<CourtManagementModalProps> = ({
   onClose
 }) => {
   const { courts, loading } = useCourts({ venueId: venue.id, realtime: true });
+  const { sports: sportsCatalog } = useSports({ activeOnly: false, realtime: false });
   const { showError } = useToast();
   const { user, firebaseUser } = useAuth();
   const { openConfirm, confirmDialog } = useConfirmDialog();
@@ -111,7 +114,7 @@ const CourtManagementModal: React.FC<CourtManagementModalProps> = ({
           }
         } catch (error: any) {
           console.error('Error deleting court:', error);
-          showError('Failed to delete court: ' + error.message);
+          showError('Failed to delete court: ' + getFirebaseErrorMessage(error));
         } finally {
           setProcessing(null);
         }
@@ -182,7 +185,7 @@ const CourtManagementModal: React.FC<CourtManagementModalProps> = ({
                       <div className="flex items-start justify-between mb-4">
                         <div>
                           <h3 className="text-lg font-black text-gray-900">{court.name}</h3>
-                          <p className="text-sm text-gray-500 mt-1">{court.sport} {court.type && `• ${court.type}`}</p>
+                          <p className="text-sm text-gray-500 mt-1">{resolveSportName(court.sport, sportsCatalog)} {court.type && `• ${court.type}`}</p>
                         </div>
                         <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase border ${statusColors.bg} ${statusColors.text} ${statusColors.border}`}>
                           {court.status}

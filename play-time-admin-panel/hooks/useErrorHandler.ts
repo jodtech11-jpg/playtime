@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useToast } from '../contexts/ToastContext';
-import { getErrorMessage, getFirebaseErrorMessage, isNetworkError, retryWithBackoff } from '../utils/errorUtils';
+import { getFirebaseErrorMessage, isNetworkError, retryWithBackoff } from '../utils/errorUtils';
 
 interface UseErrorHandlerOptions {
   showToast?: boolean;
@@ -20,7 +20,7 @@ export const useErrorHandler = (options: UseErrorHandlerOptions = {}) => {
 
   const handleError = useCallback(
     (error: unknown, context?: string) => {
-      const errorMessage = getFirebaseErrorMessage(error) || getErrorMessage(error);
+      const errorMessage = getFirebaseErrorMessage(error);
 
       if (logError) {
         console.error(`[${context || 'Error'}]`, error);

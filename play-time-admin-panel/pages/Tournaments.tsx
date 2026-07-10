@@ -12,9 +12,12 @@ import TournamentFormModal from '../components/modals/TournamentFormModal';
 import SportManagementModal from '../components/modals/SportManagementModal';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { useAuth } from '../contexts/AuthContext';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const Tournaments: React.FC = () => {
   const navigate = useNavigate();
+  const { isSuperAdmin } = useAuth();
   const { showError } = useToast();
   const { openConfirm, confirmDialog } = useConfirmDialog();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
@@ -84,7 +87,7 @@ const Tournaments: React.FC = () => {
           await tournamentsCollection.delete(tournament.id);
         } catch (error: any) {
           console.error('Error deleting tournament:', error);
-          showError('Failed to delete tournament: ' + error.message);
+          showError('Failed to delete tournament: ' + getFirebaseErrorMessage(error));
         }
       },
     });
@@ -418,6 +421,7 @@ const Tournaments: React.FC = () => {
                     </option>
                   ))}
                 </select>
+                {isSuperAdmin && (
                 <button
                   onClick={() => setShowSportModal(true)}
                   className="px-3 py-2 text-primary hover:bg-primary/10 rounded-xl text-xs font-black transition-all flex items-center gap-2"
@@ -426,6 +430,7 @@ const Tournaments: React.FC = () => {
                   <span className="material-symbols-outlined text-lg">settings</span>
                   Manage Sports
                 </button>
+                )}
                 <button className="size-11 flex items-center justify-center bg-white dark:bg-surface-dark border border-gray-200 dark:border-gray-700 rounded-xl text-gray-400 dark:text-gray-500 hover:text-primary transition-all">
                   <span className="material-symbols-outlined">download</span>
                 </button>

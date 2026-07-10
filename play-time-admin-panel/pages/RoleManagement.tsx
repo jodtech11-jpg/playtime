@@ -7,51 +7,8 @@ import { formatDate, getRelativeTime } from '../utils/dateUtils';
 import { serverTimestamp } from 'firebase/firestore';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
-
-// Default permissions - these are always available
-const DEFAULT_PERMISSIONS: Permission[] = [
-  // User permissions
-  { id: 'users.create', name: 'Create Users', category: 'users', resource: 'users', action: 'create' },
-  { id: 'users.read', name: 'View Users', category: 'users', resource: 'users', action: 'read' },
-  { id: 'users.update', name: 'Edit Users', category: 'users', resource: 'users', action: 'update' },
-  { id: 'users.delete', name: 'Delete Users', category: 'users', resource: 'users', action: 'delete' },
-  { id: 'users.manage', name: 'Manage Users', category: 'users', resource: 'users', action: 'manage' },
-  
-  // Booking permissions
-  { id: 'bookings.create', name: 'Create Bookings', category: 'bookings', resource: 'bookings', action: 'create' },
-  { id: 'bookings.read', name: 'View Bookings', category: 'bookings', resource: 'bookings', action: 'read' },
-  { id: 'bookings.update', name: 'Edit Bookings', category: 'bookings', resource: 'bookings', action: 'update' },
-  { id: 'bookings.delete', name: 'Delete Bookings', category: 'bookings', resource: 'bookings', action: 'delete' },
-  { id: 'bookings.manage', name: 'Manage Bookings', category: 'bookings', resource: 'bookings', action: 'manage' },
-  
-  // Venue permissions
-  { id: 'venues.create', name: 'Create Venues', category: 'venues', resource: 'venues', action: 'create' },
-  { id: 'venues.read', name: 'View Venues', category: 'venues', resource: 'venues', action: 'read' },
-  { id: 'venues.update', name: 'Edit Venues', category: 'venues', resource: 'venues', action: 'update' },
-  { id: 'venues.delete', name: 'Delete Venues', category: 'venues', resource: 'venues', action: 'delete' },
-  { id: 'venues.manage', name: 'Manage Venues', category: 'venues', resource: 'venues', action: 'manage' },
-  
-  // Staff permissions
-  { id: 'staff.create', name: 'Create Staff', category: 'staff', resource: 'staff', action: 'create' },
-  { id: 'staff.read', name: 'View Staff', category: 'staff', resource: 'staff', action: 'read' },
-  { id: 'staff.update', name: 'Edit Staff', category: 'staff', resource: 'staff', action: 'update' },
-  { id: 'staff.delete', name: 'Delete Staff', category: 'staff', resource: 'staff', action: 'delete' },
-  { id: 'staff.manage', name: 'Manage Staff', category: 'staff', resource: 'staff', action: 'manage' },
-  
-  // Financial permissions
-  { id: 'financials.read', name: 'View Financials', category: 'financials', resource: 'financials', action: 'read' },
-  { id: 'financials.manage', name: 'Manage Financials', category: 'financials', resource: 'financials', action: 'manage' },
-  
-  // Marketing permissions
-  { id: 'marketing.create', name: 'Create Campaigns', category: 'marketing', resource: 'marketing', action: 'create' },
-  { id: 'marketing.read', name: 'View Campaigns', category: 'marketing', resource: 'marketing', action: 'read' },
-  { id: 'marketing.update', name: 'Edit Campaigns', category: 'marketing', resource: 'marketing', action: 'update' },
-  { id: 'marketing.delete', name: 'Delete Campaigns', category: 'marketing', resource: 'marketing', action: 'delete' },
-  
-  // Settings permissions
-  { id: 'settings.read', name: 'View Settings', category: 'settings', resource: 'settings', action: 'read' },
-  { id: 'settings.update', name: 'Edit Settings', category: 'settings', resource: 'settings', action: 'update' },
-];
+import { DEFAULT_PERMISSIONS, SYSTEM_ROLES, mergeWithSystemRoles, mergeWithDefaultPermissions } from '../utils/rbac';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const RoleManagement: React.FC = () => {
   const { user: currentUser } = useAuth();
@@ -68,42 +25,6 @@ const RoleManagement: React.FC = () => {
   const [availablePermissions, setAvailablePermissions] = useState<Permission[]>(DEFAULT_PERMISSIONS);
   const [isViewMode, setIsViewMode] = useState(false);
 
-  // Default system roles
-  const systemRoles: RoleDefinition[] = useMemo(() => [
-    {
-      id: 'super_admin',
-      name: 'Super Admin',
-      description: 'Full access to all platform features and settings',
-      permissions: DEFAULT_PERMISSIONS.map(p => p.id),
-      isSystem: true
-    },
-    {
-      id: 'venue_manager',
-      name: 'Venue Manager',
-      description: 'Manage assigned venues, bookings, memberships, and staff',
-      permissions: [
-        'bookings.read', 'bookings.update', 'bookings.create',
-        'memberships.read', 'memberships.update', 'memberships.create',
-        'venues.read', 'venues.update',
-        'staff.read', 'staff.create', 'staff.update', 'staff.delete',
-        'financials.read',
-        'users.read'
-      ],
-      isSystem: true
-    },
-    {
-      id: 'player',
-      name: 'Player',
-      description: 'Mobile app users who can book venues, join teams, and participate in matches',
-      permissions: [
-        'bookings.read', 'bookings.create',
-        'venues.read',
-        'users.read'
-      ],
-      isSystem: true
-    }
-  ], []);
-
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -113,35 +34,15 @@ const RoleManagement: React.FC = () => {
         // Fetch custom roles from Firestore
         const customRoles = await rolesCollection.getAll() as RoleDefinition[];
         
-        // Combine system roles with custom roles
-        // System roles should always come first
-        const allRoles = [...systemRoles];
-        
-        // Add custom roles that aren't system roles
-        customRoles.forEach(customRole => {
-          if (!systemRoles.find(sr => sr.id === customRole.id)) {
-            allRoles.push(customRole);
-          }
-        });
+        // Combine system roles with custom roles (Firestore overrides system defaults)
+        const allRoles = mergeWithSystemRoles(customRoles);
         
         setRoles(allRoles);
         
         // Fetch permissions from Firestore
         try {
           const customPermissions = await permissionsCollection.getAll() as Permission[];
-          const permissionMap = new Map<string, Permission>();
-          
-          // Add default permissions first
-          DEFAULT_PERMISSIONS.forEach(perm => {
-            permissionMap.set(perm.id, perm);
-          });
-          
-          // Add/override with custom permissions
-          customPermissions.forEach(perm => {
-            permissionMap.set(perm.id, perm);
-          });
-          
-          setAvailablePermissions(Array.from(permissionMap.values()));
+          setAvailablePermissions(mergeWithDefaultPermissions(customPermissions));
         } catch (permErr) {
           console.error('Error fetching permissions:', permErr);
           // Use default permissions if fetch fails
@@ -151,9 +52,9 @@ const RoleManagement: React.FC = () => {
         setLoading(false);
       } catch (err: any) {
         console.error('Error fetching roles:', err);
-        setError(err.message || 'Failed to fetch roles');
+        setError(getFirebaseErrorMessage(err, 'Failed to fetch roles'));
         // Fallback to system roles only
-        setRoles(systemRoles);
+        setRoles(SYSTEM_ROLES);
         setAvailablePermissions(DEFAULT_PERMISSIONS);
         setLoading(false);
       }
@@ -200,13 +101,13 @@ const RoleManagement: React.FC = () => {
       setProcessing('saving');
       
       if (selectedRole) {
-        if (selectedRole.isSystem) {
-          showWarning('System roles cannot be modified');
-          setProcessing(null);
-          return;
-        }
-        await rolesCollection.update(selectedRole.id, {
+        // Use an upsert (setDocument with merge) so that editing a system role
+        // — which has no pre-existing Firestore document — persists as an override
+        // instead of failing with "No document to update".
+        await rolesCollection.create(selectedRole.id, {
+          id: selectedRole.id,
           ...roleData,
+          isSystem: selectedRole.isSystem || false,
           updatedAt: serverTimestamp()
         });
       } else {
@@ -225,19 +126,13 @@ const RoleManagement: React.FC = () => {
       setSelectedRole(null);
       setProcessing(null);
       
-      // Refresh roles from Firestore
+      // Refresh roles from Firestore (Firestore overrides system defaults)
       const customRoles = await rolesCollection.getAll() as RoleDefinition[];
-      const allRoles = [...systemRoles];
-      customRoles.forEach(customRole => {
-        if (!systemRoles.find(sr => sr.id === customRole.id)) {
-          allRoles.push(customRole);
-        }
-      });
-      setRoles(allRoles);
+      setRoles(mergeWithSystemRoles(customRoles));
     } catch (err: any) {
       console.error('Error saving role:', err);
       setProcessing(null);
-      showError(`Failed to save role: ${err.message}`);
+      showError(`Failed to save role: ${getFirebaseErrorMessage(err)}`);
     }
   };
 
@@ -258,17 +153,11 @@ const RoleManagement: React.FC = () => {
           setProcessing(null);
 
           const customRoles = await rolesCollection.getAll() as RoleDefinition[];
-          const allRoles = [...systemRoles];
-          customRoles.forEach((customRole) => {
-            if (!systemRoles.find((sr) => sr.id === customRole.id)) {
-              allRoles.push(customRole);
-            }
-          });
-          setRoles(allRoles);
+          setRoles(mergeWithSystemRoles(customRoles));
         } catch (err: any) {
           console.error('Error deleting role:', err);
           setProcessing(null);
-          showError(`Failed to delete role: ${err.message}`);
+          showError(`Failed to delete role: ${getFirebaseErrorMessage(err)}`);
         }
       },
     });
@@ -378,14 +267,15 @@ const RoleManagement: React.FC = () => {
                     >
                       <span className="material-symbols-outlined text-xl">visibility</span>
                     </button>
-                    <button
-                      onClick={() => handleEditRole(role)}
-                      className="text-primary hover:text-primary-hover transition-colors"
-                      title="Edit role"
-                      disabled={role.isSystem}
-                    >
-                      <span className="material-symbols-outlined text-xl">edit</span>
-                    </button>
+                    {currentUser?.role === 'super_admin' && (
+                      <button
+                        onClick={() => handleEditRole(role)}
+                        className="text-primary hover:text-primary-hover transition-colors"
+                        title={role.isSystem ? 'Edit system role permissions' : 'Edit role'}
+                      >
+                        <span className="material-symbols-outlined text-xl">edit</span>
+                      </button>
+                    )}
                     {!role.isSystem && currentUser?.role === 'super_admin' && (
                       <button
                         onClick={() => handleDeleteRole(role.id)}
@@ -428,6 +318,7 @@ const RoleManagement: React.FC = () => {
 interface RoleFormModalProps {
   role: RoleDefinition | null;
   isOpen: boolean;
+  viewMode?: boolean;
   onClose: () => void;
   onSave: (roleData: Partial<RoleDefinition>) => Promise<void>;
   availablePermissions: Permission[];
@@ -457,8 +348,9 @@ const RoleFormModal: React.FC<RoleFormModalProps> = ({
         description: role.description || '',
         permissions: role.permissions || []
       });
-      // Use initialViewMode or default to system role check
-      setViewMode(initialViewMode || role.isSystem || false);
+      // Respect the requested view mode. System roles are now editable by super admins,
+      // so we no longer force them into a read-only state.
+      setViewMode(initialViewMode || false);
     } else {
       setFormData({
         name: '',
@@ -483,7 +375,7 @@ const RoleFormModal: React.FC<RoleFormModalProps> = ({
       setLoading(true);
       await onSave(formData);
     } catch (err: any) {
-      setError(err.message || 'Failed to save role');
+      setError(getFirebaseErrorMessage(err, 'Failed to save role'));
     } finally {
       setLoading(false);
     }
@@ -522,7 +414,7 @@ const RoleFormModal: React.FC<RoleFormModalProps> = ({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {viewMode && role && !role.isSystem && (
+            {viewMode && role && (
               <button
                 onClick={() => setViewMode(false)}
                 className="text-primary hover:text-primary-hover transition-colors"
@@ -555,6 +447,11 @@ const RoleFormModal: React.FC<RoleFormModalProps> = ({
               required
               disabled={role?.isSystem || viewMode}
             />
+            {role?.isSystem && !viewMode && (
+              <p className="text-xs text-gray-500 mt-1">
+                System role name is locked, but you can still adjust its description and permissions.
+              </p>
+            )}
           </div>
 
           <div>
@@ -620,7 +517,7 @@ const RoleFormModal: React.FC<RoleFormModalProps> = ({
               <button
                 type="submit"
                 className="px-6 py-2 text-sm font-bold text-white bg-primary rounded-xl hover:bg-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={loading || role?.isSystem}
+                disabled={loading}
               >
                 {loading ? 'Saving...' : role ? 'Update Role' : 'Create Role'}
               </button>

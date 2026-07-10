@@ -3,8 +3,11 @@ import { Tournament, TournamentMatch, TournamentTeam } from '../../types';
 import { tournamentsCollection } from '../../services/firebase';
 import { serverTimestamp } from 'firebase/firestore';
 import { useCourts } from '../../hooks/useCourts';
+import { useSports } from '../../hooks/useSports';
+import { resolveSportName } from '../../utils/formatUtils';
 import { formatDate } from '../../utils/dateUtils';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface MatchManagementModalProps {
   isOpen: boolean;
@@ -22,6 +25,7 @@ const MatchManagementModal: React.FC<MatchManagementModalProps> = ({
   onSuccess
 }) => {
   const { courts } = useCourts({ venueId: tournament?.venueId, realtime: false });
+  const { sports: sportsCatalog } = useSports({ activeOnly: false, realtime: false });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { openConfirm, confirmDialog } = useConfirmDialog();
@@ -152,7 +156,7 @@ const MatchManagementModal: React.FC<MatchManagementModalProps> = ({
       onClose();
       resetForm();
     } catch (err: any) {
-      setError(err.message || 'Failed to save match');
+      setError(getFirebaseErrorMessage(err) || 'Failed to save match');
     } finally {
       setLoading(false);
     }
@@ -174,7 +178,7 @@ const MatchManagementModal: React.FC<MatchManagementModalProps> = ({
           onSuccess?.();
           onClose();
         } catch (err: any) {
-          setError(err.message || 'Failed to delete match');
+          setError(getFirebaseErrorMessage(err) || 'Failed to delete match');
         } finally {
           setLoading(false);
         }
@@ -295,7 +299,7 @@ const MatchManagementModal: React.FC<MatchManagementModalProps> = ({
                 <option value="">No Court Assigned</option>
                 {courts.map(court => (
                   <option key={court.id} value={court.id}>
-                    {court.name} ({court.sport})
+                    {court.name} ({resolveSportName(court.sport, sportsCatalog)})
                   </option>
                 ))}
               </select>

@@ -8,8 +8,9 @@ interface ProtectedRouteProps {
   requireSuperAdmin?: boolean;
   requireVenueManager?: boolean;
   /**
-   * Require the signed-in user to have ALL of the listed custom permissions
-   * (stored in `users/{uid}.customPermissions`). Super admins implicitly pass.
+   * Require the signed-in user to have ALL of the listed permissions.
+   * Checked against the effective permission set (role permissions from the
+   * RBAC catalog plus per-user `customPermissions`). Super admins implicitly pass.
    */
   requiredPermissions?: string[];
 }
@@ -20,14 +21,12 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   requireVenueManager = false,
   requiredPermissions,
 }) => {
-  const { isAuthenticated, loading, isSuperAdmin, isVenueManager, user, error: authError } = useAuth();
+  const { isAuthenticated, loading, isSuperAdmin, isVenueManager, hasPermission, error: authError } = useAuth();
 
-  const hasAllCustomPermissions = (() => {
-    if (!requiredPermissions || requiredPermissions.length === 0) return true;
-    if (isSuperAdmin) return true;
-    const granted = new Set((user as any)?.customPermissions ?? []);
-    return requiredPermissions.every((p) => granted.has(p));
-  })();
+  const hasAllRequiredPermissions =
+    !requiredPermissions ||
+    requiredPermissions.length === 0 ||
+    hasPermission(...requiredPermissions);
 
   if (loading === 'loading') {
     return <FullScreenLoader />;
@@ -99,7 +98,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     );
   }
 
-  if (!hasAllCustomPermissions) {
+  if (!hasAllRequiredPermissions) {
     return (
       <div className="flex items-center justify-center h-screen bg-background-light dark:bg-background-dark">
         <div className="text-center p-4 sm:p-8 bg-white dark:bg-surface-dark rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm max-w-md">

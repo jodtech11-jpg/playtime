@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CmsPage } from '../../types';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface CmsPageFormModalProps {
   isOpen: boolean;
@@ -102,7 +103,7 @@ const CmsPageFormModal: React.FC<CmsPageFormModalProps> = ({
       });
       onClose();
     } catch (err: any) {
-      setError(err?.message || 'Failed to save');
+      setError(getFirebaseErrorMessage(err, 'Failed to save'));
     } finally {
       setSaving(false);
     }

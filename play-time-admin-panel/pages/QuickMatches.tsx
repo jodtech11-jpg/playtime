@@ -6,11 +6,15 @@ import { quickMatchesCollection } from '../services/firebase';
 import { serverTimestamp } from 'firebase/firestore';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { useSports } from '../hooks/useSports';
+import { withVendorId } from '../utils/vendorScope';
 import QuickMatchFormModal from '../components/modals/QuickMatchFormModal';
 import { formatDate, formatTime } from '../utils/dateUtils';
+import { resolveSportName } from '../utils/formatUtils';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const QuickMatches: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isVenueManager } = useAuth();
   const { showSuccess, showError } = useToast();
   const { openConfirm, confirmDialog } = useConfirmDialog();
   const [statusFilter, setStatusFilter] = useState<string>('All');
@@ -19,7 +23,9 @@ const QuickMatches: React.FC = () => {
   const [selectedMatch, setSelectedMatch] = useState<QuickMatch | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
 
-  const { matches, loading } = useQuickMatches({
+  const { sports: sportsCatalog } = useSports({ activeOnly: true, realtime: false });
+
+  const { matches, loading, error } = useQuickMatches({
     realtime: true,
     status: statusFilter !== 'All' ? statusFilter as QuickMatch['status'] : undefined,
     sport: sportFilter !== 'All' ? sportFilter : undefined,
@@ -52,12 +58,17 @@ const QuickMatches: React.FC = () => {
         });
         showSuccess('Quick match updated successfully');
       } else {
-        await quickMatchesCollection.create({
-          ...matchData,
-          createdBy: user?.id || '',
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
+        await quickMatchesCollection.create(
+          withVendorId(
+            {
+              ...matchData,
+              createdBy: user?.id || '',
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            },
+            isVenueManager ? user?.id : undefined
+          )
+        );
         showSuccess('Quick match created successfully');
       }
 
@@ -65,7 +76,7 @@ const QuickMatches: React.FC = () => {
       setSelectedMatch(null);
     } catch (error: any) {
       console.error('Error saving quick match:', error);
-      showError('Failed to save quick match: ' + error.message);
+      showError('Failed to save quick match: ' + getFirebaseErrorMessage(error));
     } finally {
       setProcessing(null);
     }
@@ -82,7 +93,7 @@ const QuickMatches: React.FC = () => {
           showSuccess('Quick match deleted successfully');
         } catch (error: any) {
           console.error('Error deleting quick match:', error);
-          showError('Failed to delete quick match: ' + error.message);
+          showError('Failed to delete quick match: ' + getFirebaseErrorMessage(error));
         } finally {
           setProcessing(null);
         }
@@ -100,7 +111,7 @@ const QuickMatches: React.FC = () => {
       showSuccess('Status updated successfully');
     } catch (error: any) {
       console.error('Error updating status:', error);
-      showError('Failed to update status: ' + error.message);
+      showError('Failed to update status: ' + getFirebaseErrorMessage(error));
     } finally {
       setProcessing(null);
     }
@@ -123,11 +134,16 @@ const QuickMatches: React.FC = () => {
     }
   };
 
-  const sports = ['All', 'Football', 'Cricket', 'Badminton', 'Tennis', 'Basketball'];
+  const sports = ['All', ...sportsCatalog.map((s) => s.name)];
   const statuses = ['All', 'Open', 'Full', 'Started', 'Completed', 'Cancelled'];
 
   return (
     <div className="p-4 sm:p-6 space-y-6">
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-900 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+          {error}
+        </div>
+      )}
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -190,7 +206,7 @@ const QuickMatches: React.FC = () => {
                   <h3 className="text-lg font-black text-slate-900 dark:text-white mb-1">
                     {match.venueName || 'Unknown Venue'}
                   </h3>
-                  <p className="text-sm text-gray-400">{match.sport}</p>
+                  <p className="text-sm text-gray-400">{resolveSportName(match.sport, sportsCatalog)}</p>
                 </div>
                 <span className={`px-3 py-1 rounded-lg text-xs font-black border ${getStatusColor(match.status)}`}>
                   {match.status}

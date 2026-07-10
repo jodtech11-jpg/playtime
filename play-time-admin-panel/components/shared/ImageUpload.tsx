@@ -3,6 +3,7 @@ import { uploadFile, uploadFileWithProgress } from '../../services/firebase';
 import { getDownloadURL } from 'firebase/storage';
 import { compressImage, validateImageFile, fileToDataURL, formatFileSize } from '../../utils/imageUtils';
 import { useToast } from '../../contexts/ToastContext';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 export interface ImageUploadFile {
   file: File;
@@ -70,7 +71,7 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
       try {
         preview = await fileToDataURL(file);
       } catch (error: any) {
-        showError(`Failed to load ${file.name}: ${error.message}`);
+        showError(`Failed to load ${file.name}: ${getFirebaseErrorMessage(error)}`);
         continue;
       }
 
@@ -183,12 +184,12 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
         filesMap.set(fileId, {
           ...updatedFile,
           uploading: false,
-          error: error.message || 'Upload failed'
+          error: getFirebaseErrorMessage(error, 'Upload failed')
         });
         setUploadingFiles(new Map(filesMap));
       }
 
-      showError(`Failed to upload ${file.name}: ${error.message || 'Unknown error'}`);
+      showError(`Failed to upload ${file.name}: ${getFirebaseErrorMessage(error, 'Unknown error')}`);
     }
   };
 
@@ -287,7 +288,7 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
                 {isDragging ? 'Drop images here' : 'Click to upload or drag and drop'}
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                {multiple ? `Up to ${remainingSlots} image${remainingSlots !== 1 ? 's' : ''}` : 'Single image'} • Max {maxSizeMB}MB each
+                {multiple ? `Up to ${remainingSlots} image${remainingSlots !== 1 ? 's' : ''}` : 'Single image'} • JPG, PNG, or WebP • Max {maxSizeMB}MB each
               </p>
             </div>
           </div>

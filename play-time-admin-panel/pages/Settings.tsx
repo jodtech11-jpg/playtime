@@ -1,11 +1,12 @@
 import React, { useState, useRef } from 'react';
 import { useAppSettings } from '../hooks/useAppSettings';
 import { useAuth } from '../contexts/AuthContext';
-import { AppSettings } from '../types';
+import { AppSettings, IntegrationConfig } from '../types';
 import IntegrationConfigModal from '../components/modals/IntegrationConfigModal';
 import LandingPageManagementModal from '../components/modals/LandingPageManagementModal';
 import { uploadFile } from '../services/firebase';
 import { useToast } from '../contexts/ToastContext';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const Settings: React.FC = () => {
   const { user, isSuperAdmin } = useAuth();
@@ -103,7 +104,7 @@ const Settings: React.FC = () => {
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error: any) {
       console.error('Error saving settings:', error);
-      showError('Failed to save settings: ' + error.message);
+      showError('Failed to save settings: ' + getFirebaseErrorMessage(error));
     } finally {
       setSaving(false);
     }
@@ -146,7 +147,7 @@ const Settings: React.FC = () => {
       setTimeout(() => setSaveSuccess(false), 2000);
     } catch (error: any) {
       console.error('Error updating integration:', error);
-      showError('Failed to update integration: ' + error.message);
+      showError('Failed to update integration: ' + getFirebaseErrorMessage(error));
       // Revert on error
       setFormData(prev => ({
         ...prev,
@@ -163,7 +164,7 @@ const Settings: React.FC = () => {
     setConfigModalOpen(true);
   };
 
-  const handleSaveIntegrationConfig = async (config: AppSettings['integrations'][keyof AppSettings['integrations']]) => {
+  const handleSaveIntegrationConfig = async (config: IntegrationConfig) => {
     if (!selectedIntegration) return;
 
     // Determine if credentials are complete
@@ -175,12 +176,12 @@ const Settings: React.FC = () => {
     }
 
     // Update status based on credentials and enabled state
-    const updatedConfig = {
+    const updatedConfig: IntegrationConfig = {
       ...config,
       status: hasCredentials 
         ? (config.enabled ? 'Connected' : 'Disconnected')
         : 'Setup Required'
-    } as AppSettings['integrations'][typeof selectedIntegration];
+    };
 
     const updatedFormData = {
       ...formData,
@@ -228,7 +229,7 @@ const Settings: React.FC = () => {
       showSuccess('Logo uploaded successfully');
     } catch (error: any) {
       console.error('Error uploading logo:', error);
-      showError('Failed to upload logo: ' + error.message);
+      showError('Failed to upload logo: ' + getFirebaseErrorMessage(error));
     } finally {
       setUploadingLogo(false);
       if (logoInputRef.current) {
@@ -1236,7 +1237,7 @@ const Settings: React.FC = () => {
           currentConfig={formData.integrations?.[selectedIntegration] || {
             enabled: false,
             status: 'Setup Required'
-          } as AppSettings['integrations'][typeof selectedIntegration]}
+          }}
           onSave={handleSaveIntegrationConfig}
         />
       )}

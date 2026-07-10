@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { staffCollection } from '../services/firebase';
 import { Staff } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface UseStaffOptions {
   venueId?: string;
@@ -10,7 +11,7 @@ interface UseStaffOptions {
 }
 
 export const useStaff = (options: UseStaffOptions = {}) => {
-  const { user, isVenueManager } = useAuth();
+  const { user, isVenueManager, isSuperAdmin } = useAuth();
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -21,6 +22,9 @@ export const useStaff = (options: UseStaffOptions = {}) => {
       return;
     }
 
+    let mounted = true;
+    let unsubscribe: (() => void) | null = null;
+
     const fetchStaff = async () => {
       try {
         setLoading(true);
@@ -29,7 +33,8 @@ export const useStaff = (options: UseStaffOptions = {}) => {
         const filters: any[] = [];
 
         const managed = user.managedVenues?.filter(Boolean) ?? [];
-        if (isVenueManager) {
+        // Super Admin sees all staff (including vendor staff). Vendors are scoped to managed venues.
+        if (isVenueManager && !isSuperAdmin) {
           if (managed.length === 0) {
             setStaff([]);
             setLoading(false);
@@ -47,10 +52,10 @@ export const useStaff = (options: UseStaffOptions = {}) => {
               value: options.venueId,
             });
           } else {
-            const ids = managed.slice(0, 10);
-            if (managed.length > 10) {
+            const ids = managed.slice(0, 30);
+            if (managed.length > 30) {
               console.warn(
-                'useStaff: venue manager has more than 10 managedVenues; only the first 10 are queried.'
+                'useStaff: venue manager has more than 30 managedVenues; only the first 30 are queried.'
               );
             }
             filters.push({
@@ -77,35 +82,49 @@ export const useStaff = (options: UseStaffOptions = {}) => {
         }
 
         if (options.realtime) {
-          const unsubscribe = staffCollection.subscribeAll(
+          // Sort in memory — avoid orderBy('createdAt') so venue managers don't
+          // need a composite index (venueId + createdAt) just to list staff.
+          unsubscribe = staffCollection.subscribeAll(
             (data: Staff[]) => {
-              setStaff(data);
+              if (!mounted) return;
+              const sorted = [...data].sort((a, b) => {
+                const aTime = a.createdAt?.toMillis?.() ?? a.createdAt?.seconds ?? 0;
+                const bTime = b.createdAt?.toMillis?.() ?? b.createdAt?.seconds ?? 0;
+                return bTime - aTime;
+              });
+              setStaff(sorted);
               setLoading(false);
             },
-            filters.length > 0 ? filters : undefined,
-            'createdAt',
-            'desc'
+            filters.length > 0 ? filters : undefined
           );
-
-          return () => unsubscribe();
         } else {
           const data = await staffCollection.getAll(
-            filters.length > 0 ? filters : undefined,
-            'createdAt',
-            'desc'
+            filters.length > 0 ? filters : undefined
           );
-          setStaff(data as Staff[]);
+          if (!mounted) return;
+          const sorted = [...(data as Staff[])].sort((a, b) => {
+            const aTime = a.createdAt?.toMillis?.() ?? a.createdAt?.seconds ?? 0;
+            const bTime = b.createdAt?.toMillis?.() ?? b.createdAt?.seconds ?? 0;
+            return bTime - aTime;
+          });
+          setStaff(sorted);
           setLoading(false);
         }
       } catch (err: any) {
+        if (!mounted) return;
         console.error('Error fetching staff:', err);
-        setError(err.message || 'Failed to fetch staff');
+        setError(getFirebaseErrorMessage(err, 'Failed to fetch staff'));
         setLoading(false);
       }
     };
 
     fetchStaff();
-  }, [user, options.venueId, options.status, options.realtime, isVenueManager]);
+
+    return () => {
+      mounted = false;
+      if (unsubscribe) unsubscribe();
+    };
+  }, [user, options.venueId, options.status, options.realtime, isVenueManager, isSuperAdmin]);
 
   return { staff, loading, error };
 };

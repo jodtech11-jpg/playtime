@@ -1,9 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Timestamp } from 'firebase/firestore';
 import { Booking, Court } from '../../types';
 import { useVenues } from '../../hooks/useVenues';
-import { courtsCollection } from '../../services/firebase';
-import { formatCurrency } from '../../utils/formatUtils';
+import { useSports } from '../../hooks/useSports';
+import { bookingsCollection, courtsCollection } from '../../services/firebase';
+import { formatCurrency, resolveSportName } from '../../utils/formatUtils';
+import { getSportsForVenue, findSport, cleanSportOptions } from '../../utils/sportUtils';
+import SportOptionsFields from '../shared/SportOptionsFields';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface BookingFormModalProps {
   isOpen: boolean;
@@ -17,23 +22,39 @@ const TIME_OPTIONS = Array.from({ length: 15 }, (_, i) => {
   return `${hour.toString().padStart(2, '0')}:00`;
 });
 
+// Format a Date as YYYY-MM-DD in local time (toISOString would shift the day in non-UTC timezones)
+const toLocalDateInputValue = (d: Date): string => {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+// Parse a YYYY-MM-DD input value as local time (new Date('YYYY-MM-DD') parses as UTC midnight)
+const parseLocalDateTime = (dateStr: string, hours: number, minutes: number): Date => {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d, hours, minutes, 0, 0);
+};
+
 const BookingFormModal: React.FC<BookingFormModalProps> = ({
   isOpen,
   onClose,
   onSave,
 }) => {
+  const { firebaseUser } = useAuth();
   const { venues } = useVenues({ realtime: true, status: 'Active' });
+  const { sports: sportsCatalog } = useSports({ activeOnly: true, realtime: false });
   const [courts, setCourts] = useState<Court[]>([]);
   const [courtsLoading, setCourtsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [sportFilter, setSportFilter] = useState('');
+  const [sportOptions, setSportOptions] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState({
     venueId: '',
     courtId: '',
     user: '',
     userPhone: '',
-    date: new Date().toISOString().slice(0, 10),
+    date: toLocalDateInputValue(new Date()),
     startTime: '09:00',
     duration: 1,
     status: 'Confirmed' as Booking['status'],
@@ -49,7 +70,7 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
       courtId: '',
       user: '',
       userPhone: '',
-      date: new Date().toISOString().slice(0, 10),
+      date: toLocalDateInputValue(new Date()),
       startTime: '09:00',
       duration: 1,
       status: 'Confirmed',
@@ -57,8 +78,20 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
       paymentMethod: 'Cash',
       amount: 0,
     });
+    setSportFilter('');
+    setSportOptions({});
     setError(null);
   }, [isOpen, venues]);
+
+  const selectedVenue = venues.find((v) => v.id === formData.venueId);
+  const venueSports = useMemo(
+    () => getSportsForVenue(selectedVenue, sportsCatalog),
+    [selectedVenue, sportsCatalog]
+  );
+
+  const filteredCourts = sportFilter
+    ? courts.filter((c) => resolveSportName(c.sport, sportsCatalog) === sportFilter)
+    : courts;
 
   useEffect(() => {
     if (!formData.venueId) {
@@ -76,16 +109,6 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
         const active = data.filter((c) => c.status === 'Active');
         if (mounted) {
           setCourts(active);
-          if (active.length > 0) {
-            const first = active[0];
-            setFormData((prev) => ({
-              ...prev,
-              courtId: first.id,
-              amount: first.pricePerHour * prev.duration,
-            }));
-          } else {
-            setFormData((prev) => ({ ...prev, courtId: '', amount: 0 }));
-          }
         }
       } catch (err) {
         console.error('Error loading courts:', err);
@@ -101,7 +124,35 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
     };
   }, [formData.venueId]);
 
+  // Keep courtId in sync with the sport-filtered court list: auto-select the
+  // first available court, and clear the selection when the filter excludes it.
+  useEffect(() => {
+    if (!isOpen) return;
+    const selectable = sportFilter
+      ? courts.filter((c) => resolveSportName(c.sport, sportsCatalog) === sportFilter)
+      : courts;
+    setFormData((prev) => {
+      if (prev.courtId && selectable.some((c) => c.id === prev.courtId)) return prev;
+      const first = selectable[0];
+      return {
+        ...prev,
+        courtId: first ? first.id : '',
+        amount: first ? first.pricePerHour * prev.duration : 0,
+      };
+    });
+  }, [isOpen, courts, sportFilter, sportsCatalog]);
+
   const selectedCourt = courts.find((c) => c.id === formData.courtId);
+
+  const activeSportRecord = useMemo(() => {
+    if (selectedCourt) {
+      return findSport(selectedCourt.sportId || selectedCourt.sport, sportsCatalog);
+    }
+    if (sportFilter) {
+      return findSport(sportFilter, sportsCatalog);
+    }
+    return undefined;
+  }, [selectedCourt, sportFilter, sportsCatalog]);
 
   const handleCourtChange = (courtId: string) => {
     const court = courts.find((c) => c.id === courtId);
@@ -110,6 +161,7 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
       courtId,
       amount: court ? court.pricePerHour * prev.duration : 0,
     }));
+    setSportOptions({});
   };
 
   const handleDurationChange = (duration: number) => {
@@ -136,19 +188,48 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
     }
 
     const [hours, minutes] = formData.startTime.split(':').map(Number);
-    const startDate = new Date(formData.date);
-    startDate.setHours(hours, minutes, 0, 0);
+    const startDate = parseLocalDateTime(formData.date, hours, minutes);
     const endDate = new Date(startDate.getTime() + formData.duration * 60 * 60 * 1000);
 
     setLoading(true);
     try {
+      // Reject slots that overlap an existing active booking on the same court.
+      // Always scope by venueId so venue managers pass Firestore security rules.
+      const existing = (await bookingsCollection.getAll([
+        { field: 'venueId', operator: '==', value: formData.venueId },
+        { field: 'courtId', operator: '==', value: formData.courtId },
+      ])) as Booking[];
+      const toDate = (value: any): Date => (value?.toDate ? value.toDate() : new Date(value));
+      const conflict = existing.find((b) => {
+        if (b.status !== 'Pending' && b.status !== 'Confirmed') return false;
+        if (!b.startTime || !b.endTime) return false;
+        return toDate(b.startTime) < endDate && toDate(b.endTime) > startDate;
+      });
+      if (conflict) {
+        setError('This time slot overlaps an existing booking on this court. Please choose a different time.');
+        setLoading(false);
+        return;
+      }
+
+      // Walk-in bookings: store the customer name in `user`, but set userId to the
+      // signed-in admin so Firestore create rules (createdByCaller / ownsVenue) pass.
+      const actorUid = firebaseUser?.uid;
+      if (!actorUid) {
+        setError('You must be signed in to create a booking.');
+        setLoading(false);
+        return;
+      }
+
       await onSave({
         venueId: formData.venueId,
         courtId: formData.courtId,
         court: court.name,
-        sport: court.sport,
+        sport: resolveSportName(court.sport, sportsCatalog) || court.sport,
+        sportId: court.sportId || findSport(court.sport, sportsCatalog)?.id,
+        sportOptions: cleanSportOptions(sportOptions),
         user: formData.user.trim(),
-        userId: 'admin-walk-in',
+        userId: actorUid,
+        userPhone: formData.userPhone.trim() || undefined,
         date: formData.date,
         time: formData.startTime,
         startTime: Timestamp.fromDate(startDate),
@@ -161,7 +242,7 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
       });
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Failed to create booking');
+      setError(getFirebaseErrorMessage(err) || 'Failed to create booking');
     } finally {
       setLoading(false);
     }
@@ -207,7 +288,11 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
               </label>
               <select
                 value={formData.venueId}
-                onChange={(e) => setFormData((prev) => ({ ...prev, venueId: e.target.value, courtId: '' }))}
+                onChange={(e) => {
+                  setFormData((prev) => ({ ...prev, venueId: e.target.value, courtId: '' }));
+                  setSportFilter('');
+                  setSportOptions({});
+                }}
                 className="w-full px-4 py-2 border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-primary"
                 required
               >
@@ -220,6 +305,38 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
 
             <div>
               <label className="block text-sm font-black text-gray-700 dark:text-gray-300 mb-2">
+                Sport
+              </label>
+              <select
+                value={sportFilter}
+                onChange={(e) => {
+                  setSportFilter(e.target.value);
+                  setFormData((prev) => ({ ...prev, courtId: '' }));
+                  setSportOptions({});
+                }}
+                className="w-full px-4 py-2 border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-primary"
+                disabled={!formData.venueId}
+              >
+                <option value="">All sports at venue</option>
+                {venueSports.map((s) => (
+                  <option key={s.id} value={s.name}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {activeSportRecord && (
+              <div className="sm:col-span-2">
+                <SportOptionsFields
+                  sport={activeSportRecord}
+                  values={sportOptions}
+                  onChange={setSportOptions}
+                  compact
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-black text-gray-700 dark:text-gray-300 mb-2">
                 Court *
               </label>
               <select
@@ -227,14 +344,14 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
                 onChange={(e) => handleCourtChange(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-primary"
                 required
-                disabled={courtsLoading || courts.length === 0}
+                disabled={courtsLoading || filteredCourts.length === 0}
               >
                 <option value="">
-                  {courtsLoading ? 'Loading courts...' : courts.length === 0 ? 'No active courts' : 'Select court...'}
+                  {courtsLoading ? 'Loading courts...' : filteredCourts.length === 0 ? 'No active courts' : 'Select court...'}
                 </option>
-                {courts.map((c) => (
+                {filteredCourts.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name} ({c.sport}) — {formatCurrency(c.pricePerHour)}/hr
+                    {c.name} ({resolveSportName(c.sport, sportsCatalog)}) — {formatCurrency(c.pricePerHour)}/hr
                   </option>
                 ))}
               </select>
@@ -388,7 +505,7 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={loading || courts.length === 0}
+              disabled={loading || filteredCourts.length === 0}
               className="flex-1 bg-primary text-primary-content py-3 rounded-xl text-sm font-black uppercase tracking-widest hover:bg-primary-hover shadow-lg shadow-primary/10 transition-all disabled:opacity-50"
             >
               {loading ? 'Creating...' : 'Create Booking'}

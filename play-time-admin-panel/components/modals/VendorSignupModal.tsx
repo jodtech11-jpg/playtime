@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createUser, usersCollection, auth, signInEmailPassword } from '../../services/firebase';
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
 import { serverTimestamp } from 'firebase/firestore';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface VendorSignupModalProps {
   isOpen: boolean;
@@ -130,7 +131,7 @@ const VendorSignupModal: React.FC<VendorSignupModalProps> = ({ isOpen, onClose, 
       setError(null);
     } catch (err: any) {
       console.error('OTP send error:', err);
-      setError(err.message || 'Failed to send OTP. Please try again.');
+      setError(getFirebaseErrorMessage(err, 'Failed to send OTP. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -203,7 +204,7 @@ const VendorSignupModal: React.FC<VendorSignupModalProps> = ({ isOpen, onClose, 
       } else if (err.code === 'auth/code-expired') {
         setError('OTP code has expired. Please request a new code.');
       } else {
-        setError(err.message || 'Failed to create account. Please try again.');
+        setError(getFirebaseErrorMessage(err, 'Failed to create account. Please try again.'));
       }
     } finally {
       setLoading(false);

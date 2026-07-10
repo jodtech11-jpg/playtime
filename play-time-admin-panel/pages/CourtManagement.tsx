@@ -8,10 +8,12 @@ import { useAuth } from '../contexts/AuthContext';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
-import { formatCurrency, getStatusColor } from '../utils/formatUtils';
+import { formatCurrency, getStatusColor, resolveSportName } from '../utils/formatUtils';
+import { useSports } from '../hooks/useSports';
 import CourtFormModal from '../components/modals/CourtFormModal';
 import CourtViewModal from '../components/modals/CourtViewModal';
 import { serverTimestamp } from 'firebase/firestore';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const CourtManagement: React.FC = () => {
   const navigate = useNavigate();
@@ -45,6 +47,7 @@ const CourtManagement: React.FC = () => {
     venueId: selectedVenueId || undefined, 
     realtime: true 
   });
+  const { sports: sportsCatalog } = useSports({ activeOnly: false, realtime: false });
   
   const [isCourtModalOpen, setIsCourtModalOpen] = useState(false);
   const [selectedCourt, setSelectedCourt] = useState<Court | null>(null);
@@ -60,14 +63,19 @@ const CourtManagement: React.FC = () => {
     return venues.find(v => v.id === selectedVenueId);
   }, [venues, selectedVenueId]);
 
-  // Get all unique sports for filter
+  // Prefer full sports catalog for filter (deduped names); fall back to court sports
   const allSports = useMemo(() => {
+    if (sportsCatalog.length > 0) {
+      return sportsCatalog.map((s) => s.name).filter(Boolean);
+    }
     const sportsSet = new Set<string>();
     courts.forEach(court => {
-      if (court.sport) sportsSet.add(court.sport);
+      if (court.sport) {
+        sportsSet.add(resolveSportName(court.sport, sportsCatalog));
+      }
     });
     return Array.from(sportsSet).sort();
-  }, [courts]);
+  }, [courts, sportsCatalog]);
 
   // Filter courts
   const filteredCourts = useMemo(() => {
@@ -90,11 +98,13 @@ const CourtManagement: React.FC = () => {
 
     // Sport filter
     if (sportFilter !== 'All') {
-      filtered = filtered.filter(court => court.sport === sportFilter);
+      filtered = filtered.filter(
+        (court) => resolveSportName(court.sport, sportsCatalog) === sportFilter
+      );
     }
 
     return filtered;
-  }, [courts, searchQuery, statusFilter, sportFilter]);
+  }, [courts, searchQuery, statusFilter, sportFilter, sportsCatalog]);
 
   const handleCreateCourt = () => {
     if (!selectedVenueId) {
@@ -196,7 +206,7 @@ const CourtManagement: React.FC = () => {
           }
         } catch (err: any) {
           console.error('Sync all venues courts:', err);
-          showError('Sync failed: ' + (err?.message || err));
+          showError('Sync failed: ' + getFirebaseErrorMessage(err));
         } finally {
           setSyncingAllVenues(false);
         }
@@ -226,7 +236,7 @@ const CourtManagement: React.FC = () => {
           }
         } catch (error: any) {
           console.error('Error deleting court:', error);
-          showError('Failed to delete court: ' + error.message);
+          showError('Failed to delete court: ' + getFirebaseErrorMessage(error));
         } finally {
           setProcessing(null);
         }
@@ -443,7 +453,7 @@ const CourtManagement: React.FC = () => {
                       <div className="flex-1">
                         <h3 className="text-lg font-black text-gray-900 dark:text-white">{court.name}</h3>
                         <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">
-                          {court.sport} {court.type && `• ${court.type}`}
+                          {resolveSportName(court.sport, sportsCatalog)} {court.type && `• ${court.type}`}
                         </p>
                       </div>
                       <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase border ${statusColors.bg} ${statusColors.text} ${statusColors.border}`}>

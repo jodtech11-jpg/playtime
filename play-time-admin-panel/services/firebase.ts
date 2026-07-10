@@ -12,6 +12,8 @@ import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   PhoneAuthProvider,
   RecaptchaVerifier,
   signInWithPhoneNumber,
@@ -66,6 +68,8 @@ import {
 
 // Firebase configuration
 import { firebaseConfig as config, validateFirebaseConfigOrThrow } from '../config/firebase.config';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
+import { User } from '../types';
 
 // Validate config on import: warn in dev, throw in production if missing
 validateFirebaseConfigOrThrow();
@@ -85,17 +89,62 @@ export const auth: Auth = getAuth(app);
 export const db: Firestore = getFirestore(app);
 export const storage: FirebaseStorage = getStorage(app);
 
-// Initialize messaging (only in browser, check support)
-let messaging: Messaging | null = null;
-if (typeof window !== 'undefined') {
-  isSupported().then((supported) => {
-    if (supported) {
-      messaging = getMessaging(app);
+// Initialize messaging (lazy — resolved on first use)
+let messagingInstance: Messaging | null = null;
+let messagingInitPromise: Promise<Messaging | null> | null = null;
+
+export const getMessagingInstance = (): Promise<Messaging | null> => {
+  if (messagingInitPromise) {
+    return messagingInitPromise;
+  }
+
+  messagingInitPromise = (async () => {
+    if (typeof window === 'undefined') {
+      return null;
     }
-  });
-}
+
+    try {
+      const supported = await isSupported();
+      if (!supported) {
+        return null;
+      }
+      messagingInstance = getMessaging(app);
+      return messagingInstance;
+    } catch {
+      return null;
+    }
+  })();
+
+  return messagingInitPromise;
+};
 
 // ==================== AUTHENTICATION ====================
+
+export type AuthSignInResult = {
+  user: FirebaseUser | null;
+  error: string | null;
+  code?: string | null;
+};
+
+const createGoogleAuthProvider = () => {
+  const provider = new GoogleAuthProvider();
+  provider.addScope('email');
+  provider.addScope('profile');
+  provider.setCustomParameters({ prompt: 'select_account' });
+  return provider;
+};
+
+const toAuthSignInResult = (error: any): AuthSignInResult => ({
+  user: null,
+  error: getFirebaseErrorMessage(error),
+  code: error?.code ?? null,
+});
+
+export type AdminUserProfileResult = {
+  userData: User | null;
+  mismatch: boolean;
+  email?: string;
+};
 
 /**
  * Sign in with email and password
@@ -105,20 +154,54 @@ export const signInEmailPassword = async (email: string, password: string) => {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     return { user: userCredential.user, error: null };
   } catch (error: any) {
-    return { user: null, error: error.message };
+    return { user: null, error: getFirebaseErrorMessage(error), code: error.code ?? null };
   }
 };
 
 /**
- * Sign in with Google
+ * Sign in with Google (popup, with redirect fallback when popup is blocked)
  */
-export const signInWithGoogle = async () => {
+export const signInWithGoogle = async (): Promise<AuthSignInResult> => {
+  const provider = createGoogleAuthProvider();
+
   try {
-    const provider = new GoogleAuthProvider();
     const userCredential = await signInWithPopup(auth, provider);
-    return { user: userCredential.user, error: null };
+    return { user: userCredential.user, error: null, code: null };
   } catch (error: any) {
-    return { user: null, error: error.message };
+    const popupBlockedCodes = new Set([
+      'auth/popup-blocked',
+      'auth/operation-not-supported-in-this-environment',
+    ]);
+
+    if (popupBlockedCodes.has(error.code)) {
+      try {
+        await signInWithRedirect(auth, provider);
+        return { user: null, error: null, code: 'auth/redirect-initiated' };
+      } catch (redirectError: any) {
+        return toAuthSignInResult(redirectError);
+      }
+    }
+
+    if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+      return { user: null, error: null, code: error.code };
+    }
+
+    return toAuthSignInResult(error);
+  }
+};
+
+/**
+ * Complete Google sign-in after redirect flow (call once on login page load)
+ */
+export const completeGoogleRedirectSignIn = async (): Promise<AuthSignInResult> => {
+  try {
+    const result = await getRedirectResult(auth);
+    if (!result?.user) {
+      return { user: null, error: null, code: null };
+    }
+    return { user: result.user, error: null, code: null };
+  } catch (error: any) {
+    return toAuthSignInResult(error);
   }
 };
 
@@ -130,7 +213,7 @@ export const signInWithPhone = async (phoneNumber: string, recaptchaVerifier: Re
     const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier);
     return { confirmationResult, error: null };
   } catch (error: any) {
-    return { confirmationResult: null, error: error.message };
+    return { confirmationResult: null, error: getFirebaseErrorMessage(error) };
   }
 };
 
@@ -142,7 +225,7 @@ export const verifyOTP = async (confirmationResult: ConfirmationResult, code: st
     const userCredential = await confirmationResult.confirm(code);
     return { user: userCredential.user, error: null };
   } catch (error: any) {
-    return { user: null, error: error.message };
+    return { user: null, error: getFirebaseErrorMessage(error) };
   }
 };
 
@@ -154,7 +237,7 @@ export const createUser = async (email: string, password: string) => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     return { user: userCredential.user, error: null, code: null as string | null };
   } catch (error: any) {
-    return { user: null, error: error.message, code: error.code ?? null };
+    return { user: null, error: getFirebaseErrorMessage(error), code: error.code ?? null };
   }
 };
 
@@ -166,7 +249,7 @@ export const signOutUser = async () => {
     await signOut(auth);
     return { error: null };
   } catch (error: any) {
-    return { error: error.message };
+    return { error: getFirebaseErrorMessage(error) };
   }
 };
 
@@ -189,10 +272,16 @@ export const onAuthStateChange = (callback: (user: FirebaseUser | null) => void)
  */
 export const resetPassword = async (email: string) => {
   try {
-    await sendPasswordResetEmail(auth, email);
+    const continueUrl =
+      import.meta.env.VITE_ADMIN_PANEL_URL ||
+      (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}` : undefined);
+    await sendPasswordResetEmail(auth, email.trim(), continueUrl ? {
+      url: continueUrl.replace(/\/$/, '') + '/#/login',
+      handleCodeInApp: false,
+    } : undefined);
     return { error: null };
   } catch (error: any) {
-    return { error: error.message };
+    return { error: getFirebaseErrorMessage(error) };
   }
 };
 
@@ -206,7 +295,7 @@ export const updateUserPassword = async (newPassword: string) => {
     await updatePassword(user, newPassword);
     return { error: null };
   } catch (error: any) {
-    return { error: error.message };
+    return { error: getFirebaseErrorMessage(error) };
   }
 };
 
@@ -282,8 +371,9 @@ export const getDocuments = async <T = DocumentData>(
       q = query(q, orderBy(orderByField, orderDirection || 'asc'));
     }
     
-    // Apply limit
-    if (limitCount) {
+    // Apply limit (0 means "fetch nothing", handled by callers; guard so it
+    // isn't treated as "no limit" and doesn't load the whole collection)
+    if (limitCount != null && limitCount > 0) {
       q = query(q, limit(limitCount));
     }
     
@@ -314,9 +404,21 @@ export const getDocumentsPaginated = async <T = DocumentData>(
 
     if (filters && filters.length > 0) {
       filters.forEach(filter => {
-        const field = filter?.field;
-        const operator = filter?.operator;
-        const value = filter?.value;
+        // Support both array format [field, operator, value] and object
+        // format {field, operator, value}, same as getDocuments
+        let field: string;
+        let operator: any;
+        let value: any;
+        if (Array.isArray(filter)) {
+          [field, operator, value] = filter;
+        } else if (filter && typeof filter === 'object') {
+          field = filter.field;
+          operator = filter.operator;
+          value = filter.value;
+        } else {
+          console.warn('Invalid filter format, skipping:', filter);
+          return;
+        }
         if (field && operator !== undefined && value !== undefined) {
           q = query(q, where(field, operator, value));
         }
@@ -349,6 +451,34 @@ export const getDocumentsPaginated = async <T = DocumentData>(
 };
 
 /**
+ * Recursively strip `undefined` values (Firestore rejects them anywhere in the
+ * document tree, not just at the top level). Only recurses into plain objects
+ * and arrays so Firestore sentinels (serverTimestamp, Timestamp, etc.) and
+ * Date instances pass through untouched.
+ */
+const isPlainObject = (value: any): value is Record<string, any> =>
+  value !== null &&
+  typeof value === 'object' &&
+  (value.constructor === Object || Object.getPrototypeOf(value) === null);
+
+export const removeUndefinedDeep = (data: any): any => {
+  if (Array.isArray(data)) {
+    return data.map((item) => (item === undefined ? null : removeUndefinedDeep(item)));
+  }
+  if (isPlainObject(data)) {
+    const cleaned: any = {};
+    Object.keys(data).forEach((key) => {
+      const value = data[key];
+      if (value !== undefined) {
+        cleaned[key] = removeUndefinedDeep(value);
+      }
+    });
+    return cleaned;
+  }
+  return data;
+};
+
+/**
  * Create or update a document
  */
 export const setDocument = async <T = DocumentData>(
@@ -357,14 +487,7 @@ export const setDocument = async <T = DocumentData>(
   data: Partial<T>
 ): Promise<void> => {
   try {
-    // Remove undefined values from data
-    const cleanData: any = {};
-    Object.keys(data).forEach(key => {
-      const value = (data as any)[key];
-      if (value !== undefined) {
-        cleanData[key] = value;
-      }
-    });
+    const cleanData: any = removeUndefinedDeep(data);
     
     const docRef = doc(db, collectionName, docId);
     await setDoc(docRef, {
@@ -386,14 +509,7 @@ export const createDocument = async <T = DocumentData>(
   data: Partial<T>
 ): Promise<string> => {
   try {
-    // Remove undefined values from data
-    const cleanData: any = {};
-    Object.keys(data).forEach(key => {
-      const value = (data as any)[key];
-      if (value !== undefined) {
-        cleanData[key] = value;
-      }
-    });
+    const cleanData: any = removeUndefinedDeep(data);
     
     const docRef = await addDoc(collection(db, collectionName), {
       ...cleanData,
@@ -419,14 +535,7 @@ export const updateDocument = async <T = DocumentData>(
     if (!docId || typeof docId !== 'string' || docId.trim() === '') {
       throw new Error(`Invalid document ID: ${docId}. Collection: ${collectionName}`);
     }
-    // Remove undefined values from data
-    const cleanData: any = {};
-    Object.keys(data).forEach(key => {
-      const value = (data as any)[key];
-      if (value !== undefined) {
-        cleanData[key] = value;
-      }
-    });
+    const cleanData: any = removeUndefinedDeep(data);
     
     const docRef = doc(db, collectionName, docId);
     await updateDoc(docRef, {
@@ -461,16 +570,24 @@ export const deleteDocument = async (
 export const subscribeToDocument = <T = DocumentData>(
   collectionName: string,
   docId: string,
-  callback: (data: T | null) => void
+  callback: (data: T | null) => void,
+  errorCallback?: (error: any) => void
 ): (() => void) => {
   const docRef = doc(db, collectionName, docId);
-  return onSnapshot(docRef, (docSnap) => {
-    if (docSnap.exists()) {
-      callback({ id: docSnap.id, ...docSnap.data() } as T);
-    } else {
-      callback(null);
+  return onSnapshot(
+    docRef,
+    (docSnap) => {
+      if (docSnap.exists()) {
+        callback({ id: docSnap.id, ...docSnap.data() } as T);
+      } else {
+        callback(null);
+      }
+    },
+    (error) => {
+      console.error(`Error in subscription to ${collectionName}/${docId}:`, error);
+      errorCallback?.(error);
     }
-  });
+  );
 };
 
 /**
@@ -481,7 +598,8 @@ export const subscribeToCollection = <T = DocumentData>(
   callback: (data: T[]) => void,
   filters?: { field: string; operator: any; value: any }[] | any[][],
   orderByField?: string,
-  orderDirection?: 'asc' | 'desc'
+  orderDirection?: 'asc' | 'desc',
+  errorCallback?: (error: any) => void
 ): (() => void) => {
   let q = query(collection(db, collectionName));
   
@@ -528,8 +646,15 @@ export const subscribeToCollection = <T = DocumentData>(
     },
     (error) => {
       console.error(`Error in subscription to ${collectionName}:`, error);
-      // Call callback with empty array on error so loading state can be cleared
-      callback([]);
+      if (errorCallback) {
+        // Let the consumer decide how to handle the error (keep existing data,
+        // show an error state, etc.) instead of silently wiping the list.
+        errorCallback(error);
+      } else {
+        // Legacy consumers without an error callback rely on the data callback
+        // to clear their loading state.
+        callback([]);
+      }
     }
   );
 };
@@ -678,20 +803,31 @@ export const getFileMetadata = async (path: string) => {
  * Request notification permission and get FCM token
  */
 export const getFCMToken = async (): Promise<string | null> => {
+  const messaging = await getMessagingInstance();
   if (!messaging) {
-    console.warn('Messaging not supported or not initialized');
+    return null;
+  }
+
+  if (!('Notification' in window)) {
+    return null;
+  }
+
+  // Only prompt when permission has not been decided yet.
+  // Re-requesting after the user blocked notifications triggers a browser warning.
+  let permission = Notification.permission;
+  if (permission === 'default') {
+    permission = await Notification.requestPermission();
+  }
+
+  if (permission !== 'granted') {
     return null;
   }
 
   try {
-    const permission = await Notification.requestPermission();
-    if (permission === 'granted') {
-      const token = await getToken(messaging, {
-        vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY || ''
-      });
-      return token;
-    }
-    return null;
+    const token = await getToken(messaging, {
+      vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY || ''
+    });
+    return token;
   } catch (error: any) {
     const isPushUnavailable =
       error?.name === 'AbortError' ||
@@ -713,13 +849,21 @@ export const getFCMToken = async (): Promise<string | null> => {
  */
 export const onForegroundMessage = (
   callback: (payload: MessagePayload) => void
-): (() => void) | null => {
-  if (!messaging) {
-    console.warn('Messaging not supported or not initialized');
-    return null;
-  }
-  
-  return onMessage(messaging, callback);
+): (() => void) => {
+  let active = true;
+  let unsubscribe: (() => void) | null = null;
+
+  getMessagingInstance().then((messaging) => {
+    if (!messaging || !active) {
+      return;
+    }
+    unsubscribe = onMessage(messaging, callback);
+  });
+
+  return () => {
+    active = false;
+    unsubscribe?.();
+  };
 };
 
 // ==================== COLLECTION-SPECIFIC HELPERS ====================
@@ -745,6 +889,39 @@ export const usersCollection = {
   update: (userId: string, data: any) => updateDocument('users', userId, data),
   delete: (userId: string) => deleteDocument('users', userId),
   subscribe: (userId: string, callback: any) => subscribeToDocument('users', userId, callback)
+};
+
+/**
+ * Resolve the admin Firestore profile for a Firebase Auth user.
+ * Looks up by UID first, then by email (detects email/password vs Google mismatch).
+ */
+export const resolveAdminUserProfile = async (
+  firebaseUser: FirebaseUser
+): Promise<AdminUserProfileResult> => {
+  const uidProfile = await usersCollection.get(firebaseUser.uid);
+  if (uidProfile) {
+    return { userData: uidProfile as User, mismatch: false };
+  }
+
+  const email = firebaseUser.email?.trim();
+  if (!email) {
+    return { userData: null, mismatch: false };
+  }
+
+  const emailMatches = await usersCollection.getAll([
+    { field: 'email', operator: '==', value: email },
+  ]) as User[];
+
+  if (emailMatches.length === 0) {
+    return { userData: null, mismatch: false };
+  }
+
+  const match = emailMatches[0];
+  if (match.id !== firebaseUser.uid) {
+    return { userData: null, mismatch: true, email };
+  }
+
+  return { userData: match, mismatch: false };
 };
 
 // Roles Collection
@@ -795,7 +972,8 @@ export const bookingsCollection = {
 // Memberships Collection
 export const membershipsCollection = {
   get: (membershipId: string) => getDocument('memberships', membershipId),
-  getAll: (filters?: any[]) => getDocuments('memberships', filters),
+  getAll: (filters?: any[], orderByField?: string, orderDirection?: 'asc' | 'desc') =>
+    getDocuments('memberships', filters, orderByField, orderDirection),
   create: (data: any) => createDocument('memberships', data),
   update: (membershipId: string, data: any) => updateDocument('memberships', membershipId, data),
   delete: (membershipId: string) => deleteDocument('memberships', membershipId),
@@ -916,7 +1094,7 @@ export const getVenueManagerIds = async (venueId: string): Promise<string[]> => 
 export const notifyVenueManagersOfBookingEvent = async (params: {
   venueId: string;
   bookingId: string;
-  eventType: 'booking_confirmed' | 'booking_cancelled' | 'booking_rejected';
+  eventType: 'booking_created' | 'booking_confirmed' | 'booking_cancelled' | 'booking_rejected';
   title: string;
   body?: string;
 }): Promise<void> => {
@@ -925,7 +1103,10 @@ export const notifyVenueManagersOfBookingEvent = async (params: {
     if (managerIds.length === 0) return;
     for (const recipientUserId of managerIds) {
       await createDocument('notifications', {
-        recipientUserId,
+        // Use `userId` (the schema used by all per-user notification docs) so
+        // these are excluded from the admin broadcast list and readable by
+        // per-user queries.
+        userId: recipientUserId,
         venueId: params.venueId,
         bookingId: params.bookingId,
         bookingEventType: params.eventType,
@@ -979,7 +1160,8 @@ export const syncAllVenuesCourts = async (): Promise<{ synced: number; failed: s
 // Membership Plans Collection
 export const membershipPlansCollection = {
   get: (planId: string) => getDocument('membershipPlans', planId),
-  getAll: (filters?: any[]) => getDocuments('membershipPlans', filters),
+  getAll: (filters?: any[], orderByField?: string, orderDirection?: 'asc' | 'desc') =>
+    getDocuments('membershipPlans', filters, orderByField, orderDirection),
   create: (data: any) => createDocument('membershipPlans', data),
   update: (planId: string, data: any) => updateDocument('membershipPlans', planId, data),
   delete: (planId: string) => deleteDocument('membershipPlans', planId),
@@ -1016,7 +1198,8 @@ export const reportsCollection = {
 // Products Collection (Marketplace)
 export const productsCollection = {
   get: (productId: string) => getDocument('products', productId),
-  getAll: (filters?: any[]) => getDocuments('products', filters),
+  getAll: (filters?: any[], orderByField?: string, orderDirection?: 'asc' | 'desc', limitCount?: number) =>
+    getDocuments('products', filters, orderByField, orderDirection, limitCount),
   create: (data: any) => createDocument('products', data),
   update: (productId: string, data: any) => updateDocument('products', productId, data),
   delete: (productId: string) => deleteDocument('products', productId),
@@ -1049,7 +1232,8 @@ export const sportsCollection = {
 // Orders Collection
 export const ordersCollection = {
   get: (orderId: string) => getDocument('orders', orderId),
-  getAll: (filters?: any[]) => getDocuments('orders', filters),
+  getAll: (filters?: any[], orderByField?: string, orderDirection?: 'asc' | 'desc', limitCount?: number) =>
+    getDocuments('orders', filters, orderByField, orderDirection, limitCount),
   create: (data: any) => createDocument('orders', data),
   update: (orderId: string, data: any) => updateDocument('orders', orderId, data),
   delete: (orderId: string) => deleteDocument('orders', orderId),
@@ -1310,6 +1494,6 @@ export default {
   auth,
   db,
   storage,
-  messaging
+  getMessagingInstance
 };
 

@@ -7,6 +7,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { useFCMToken } from './hooks/useFCMToken';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
+import SetPassword from './pages/SetPassword';
 import Dashboard from './pages/Dashboard';
 import Bookings from './pages/Bookings';
 import Venues from './pages/Venues';
@@ -39,6 +40,7 @@ import Notifications from './pages/Notifications';
 import Payments from './pages/Payments';
 import ActivityLog from './pages/ActivityLog';
 import UserManual from './pages/UserManual';
+import Sports from './pages/Sports';
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
 import ProtectedRoute from './components/layout/ProtectedRoute';
@@ -63,6 +65,7 @@ const AppRoutes: React.FC = () => {
         <Route path="/" element={<Landing />} />
         <Route path="/page/:slug" element={<CmsPageView />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/set-password" element={<SetPassword />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     );
@@ -83,31 +86,34 @@ const AppRoutes: React.FC = () => {
                 <Route path="/venues/:venueId" element={<VenueProtectedRoute><VenueDetail /></VenueProtectedRoute>} />
                 <Route path="/venues/courts" element={<VenueProtectedRoute><CourtManagement /></VenueProtectedRoute>} />
               <Route path="/memberships" element={<ProtectedRoute><Memberships /></ProtectedRoute>} />
-              <Route path="/financials" element={<ProtectedRoute><Financials /></ProtectedRoute>} />
+              <Route path="/financials" element={<ProtectedRoute requiredPermissions={['financials.read']}><Financials /></ProtectedRoute>} />
               <Route path="/staff" element={<ProtectedRoute><Staff /></ProtectedRoute>} />
               <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-              <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
-              <Route path="/users/:userId" element={<ProtectedRoute><UserDetail /></ProtectedRoute>} />
+              <Route path="/users" element={<ProtectedRoute requiredPermissions={['users.manage']}><Users /></ProtectedRoute>} />
+              <Route path="/users/:userId" element={<ProtectedRoute requiredPermissions={['users.manage']}><UserDetail /></ProtectedRoute>} />
               <Route path="/users/roles" element={<ProtectedRoute requireSuperAdmin><RoleManagement /></ProtectedRoute>} />
               <Route path="/users/permissions" element={<ProtectedRoute requireSuperAdmin><PermissionManagement /></ProtectedRoute>} />
               <Route path="/activity-log" element={<ProtectedRoute requireSuperAdmin><ActivityLog /></ProtectedRoute>} />
-              <Route path="/user-manual" element={<ProtectedRoute><UserManual /></ProtectedRoute>} />
+              <Route path="/user-manual" element={<ProtectedRoute requireSuperAdmin><UserManual /></ProtectedRoute>} />
               <Route path="/moderation" element={<ProtectedRoute requireSuperAdmin><Moderation /></ProtectedRoute>} />
-              <Route path="/tournaments" element={<ProtectedRoute requireSuperAdmin><Tournaments /></ProtectedRoute>} />
-              <Route path="/tournaments/:tournamentId" element={<ProtectedRoute requireSuperAdmin><TournamentDetail /></ProtectedRoute>} />
+              <Route path="/sports" element={<ProtectedRoute><Sports /></ProtectedRoute>} />
+              <Route path="/tournaments" element={<ProtectedRoute><Tournaments /></ProtectedRoute>} />
+              <Route path="/tournaments/:tournamentId" element={<ProtectedRoute><TournamentDetail /></ProtectedRoute>} />
               <Route path="/quick-matches" element={<ProtectedRoute><QuickMatches /></ProtectedRoute>} />
-              <Route path="/leaderboards" element={<ProtectedRoute requireSuperAdmin><Leaderboards /></ProtectedRoute>} />
-              <Route path="/polls" element={<ProtectedRoute requireSuperAdmin><Polls /></ProtectedRoute>} />
+              <Route path="/leaderboards" element={<ProtectedRoute><Leaderboards /></ProtectedRoute>} />
+              <Route path="/polls" element={<ProtectedRoute><Polls /></ProtectedRoute>} />
               <Route path="/flash-deals" element={<ProtectedRoute><FlashDeals /></ProtectedRoute>} />
               <Route path="/marketplace" element={<ProtectedRoute requireSuperAdmin><Marketplace /></ProtectedRoute>} />
-              <Route path="/marketing" element={<ProtectedRoute requireSuperAdmin><Marketing /></ProtectedRoute>} />
+              <Route path="/marketing" element={<ProtectedRoute requiredPermissions={['marketing.read']}><Marketing /></ProtectedRoute>} />
               <Route path="/support" element={<ProtectedRoute><Support /></ProtectedRoute>} />
               <Route path="/crm" element={<ProtectedRoute requireSuperAdmin><CRM /></ProtectedRoute>} />
               <Route path="/analytics" element={<ProtectedRoute requireSuperAdmin><Analytics /></ProtectedRoute>} />
               <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
               <Route path="/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
-              <Route path="/settings" element={<ProtectedRoute requireSuperAdmin><Settings /></ProtectedRoute>} />
+              <Route path="/settings" element={<ProtectedRoute requiredPermissions={['settings.read']}><Settings /></ProtectedRoute>} />
               <Route path="/frontend-cms" element={<ProtectedRoute requireSuperAdmin><FrontendCms /></ProtectedRoute>} />
+              {/* Keep invite/reset links working even when someone is already signed in */}
+              <Route path="/set-password" element={<SetPassword />} />
               <Route path="/login" element={<Navigate to="/" replace />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

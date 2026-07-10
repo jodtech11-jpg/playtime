@@ -3,6 +3,7 @@ import { FlashDeal } from '../../types';
 import { useVenues } from '../../hooks/useVenues';
 import { serverTimestamp, Timestamp } from 'firebase/firestore';
 import ImageUpload from '../shared/ImageUpload';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface FlashDealFormModalProps {
   isOpen: boolean;
@@ -163,7 +164,7 @@ const FlashDealFormModal: React.FC<FlashDealFormModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error('Error saving flash deal:', err);
-      setError(err.message || 'Failed to save flash deal');
+      setError(getFirebaseErrorMessage(err) || 'Failed to save flash deal');
     } finally {
       setSaving(false);
     }

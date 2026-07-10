@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { teamsCollection } from '../services/firebase';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface UseTeamsOptions {
   userId?: string;
@@ -91,7 +92,7 @@ export const useTeams = (options: UseTeamsOptions = {}) => {
         }
       } catch (err: any) {
         console.error('Error fetching teams:', err);
-        setError(err.message || 'Failed to fetch teams');
+        setError(getFirebaseErrorMessage(err, 'Failed to fetch teams'));
         setLoading(false);
       }
     };

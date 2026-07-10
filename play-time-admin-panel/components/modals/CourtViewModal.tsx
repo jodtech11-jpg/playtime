@@ -1,6 +1,7 @@
 import React from 'react';
 import { Court } from '../../types';
-import { formatCurrency, getStatusColor } from '../../utils/formatUtils';
+import { formatCurrency, getStatusColor, resolveSportName } from '../../utils/formatUtils';
+import { useSports } from '../../hooks/useSports';
 
 interface CourtViewModalProps {
   court: Court | null;
@@ -17,6 +18,8 @@ const CourtViewModal: React.FC<CourtViewModalProps> = ({
   onClose,
   onEdit
 }) => {
+  const { sports: sportsCatalog } = useSports({ activeOnly: false, realtime: false });
+
   if (!isOpen || !court) return null;
 
   const statusColors = getStatusColor(court.status);
@@ -57,7 +60,7 @@ const CourtViewModal: React.FC<CourtViewModalProps> = ({
           <div>
             <span className="text-xs font-black text-gray-400 uppercase tracking-widest">Sport & type</span>
             <p className="text-gray-900 dark:text-white font-bold mt-1">
-              {court.sport} {court.type && `• ${court.type}`}
+              {resolveSportName(court.sport, sportsCatalog)} {court.type && `• ${court.type}`}
             </p>
           </div>
 

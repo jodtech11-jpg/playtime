@@ -70,11 +70,23 @@ async function requireAdmin(req, res) {
     return null;
   }
   const role = userDoc.data().role;
-  if (role !== 'super_admin' && role !== 'venue_manager') {
+  // System admin roles are always allowed. Custom roles are allowed when a
+  // matching roles/{roleId} document exists (they are venue-scoped admins).
+  let isAdminRole = role === 'super_admin' || role === 'venue_manager';
+  if (!isAdminRole && role && role !== 'player') {
+    const roleDoc = await admin.firestore().collection('roles').doc(role).get();
+    isAdminRole = roleDoc.exists;
+  }
+  if (!isAdminRole) {
     res.status(403).json({error: 'Insufficient privileges'});
     return null;
   }
-  return {uid: decoded.uid, role, userData: userDoc.data()};
+  return {
+    uid: decoded.uid,
+    role,
+    isSuperAdmin: role === 'super_admin',
+    userData: userDoc.data(),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -316,6 +328,13 @@ exports.onBookingCreated = onDocumentCreated(
       const booking = event.data.data();
       const userId = booking.userId;
       if (!userId) return null;
+
+      // Only Confirmed bookings get a confirmation message here; Pending
+      // bookings are notified by onBookingStatusChanged when accepted.
+      if (booking.status !== 'Confirmed') {
+        console.log('Booking created with status', booking.status, '- skipping confirmation notification');
+        return null;
+      }
 
       const tokensSnapshot = await admin.firestore()
         .collection('fcmTokens')
@@ -593,6 +612,312 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
   }
 
   res.json({received: true});
+});
+
+// ---------------------------------------------------------------------------
+// User account provisioning (admin-only)
+// ---------------------------------------------------------------------------
+
+function generateTempPassword() {
+  return crypto.randomBytes(24).toString('base64url');
+}
+
+async function deleteDuplicateUserDocs(email, keepUid) {
+  const snap = await admin.firestore()
+    .collection('users')
+    .where('email', '==', email)
+    .get();
+  const batch = admin.firestore().batch();
+  let deleted = 0;
+  snap.docs.forEach((doc) => {
+    if (doc.id !== keepUid) {
+      batch.delete(doc.ref);
+      deleted++;
+    }
+  });
+  if (deleted > 0) {
+    await batch.commit();
+  }
+  return deleted;
+}
+
+async function writeUserProfile(uid, profile) {
+  await admin.firestore().collection('users').doc(uid).set({
+    ...profile,
+    id: uid,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, {merge: true});
+}
+
+function getFirebaseWebApiKey() {
+  return process.env.WEB_API_KEY ||
+    process.env.FIREBASE_WEB_API_KEY ||
+    (functions.config().app && functions.config().app.firebase_api_key) ||
+    '';
+}
+
+function getAdminPanelLoginUrl() {
+  return process.env.ADMIN_PANEL_URL ||
+    (functions.config().app && functions.config().app.admin_panel_url) ||
+    '';
+}
+
+/** Send password-reset email via Firebase Identity Toolkit REST API. */
+async function sendPasswordResetEmailViaApi(email) {
+  const apiKey = getFirebaseWebApiKey();
+  if (!apiKey) {
+    return {sent: false, reason: 'missing_api_key'};
+  }
+
+  const continueUrl = getAdminPanelLoginUrl();
+  const body = {
+    requestType: 'PASSWORD_RESET',
+    email,
+  };
+  if (continueUrl) {
+    body.continueUrl = continueUrl.replace(/\/$/, '') + '/#/set-password';
+  }
+
+  const response = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    },
+  );
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    const message = err.error?.message || `sendOobCode failed (${response.status})`;
+    throw new Error(message);
+  }
+
+  return {sent: true};
+}
+
+/** Generate a password-reset link as fallback when email delivery fails. */
+async function generatePasswordResetLink(email) {
+  const continueUrl = getAdminPanelLoginUrl();
+  const actionCodeSettings = continueUrl ? {
+    url: continueUrl.replace(/\/$/, '') + '/#/login',
+    handleCodeInApp: false,
+  } : undefined;
+
+  return admin.auth().generatePasswordResetLink(email, actionCodeSettings);
+}
+
+/**
+ * Create Firebase Auth account + Firestore user profile at the Auth UID.
+ * Requires an admin role (super_admin, venue_manager, or custom admin role).
+ * POST body: { name, email, phone, role, status, managedVenues?, customPermissions? }
+ */
+exports.createUserAccount = functions.https.onRequest(async (req, res) => {
+  applyCors(req, res);
+  if (req.method === 'OPTIONS') {
+    res.status(204).send('');
+    return;
+  }
+  if (req.method !== 'POST') {
+    res.status(405).json({error: 'Method not allowed. Use POST.'});
+    return;
+  }
+
+  const authCtx = await requireAdmin(req, res);
+  if (!authCtx) return;
+
+  try {
+    const {name, email, phone, role, status, managedVenues, customPermissions} = req.body || {};
+    if (!name || !email || !phone) {
+      res.status(400).json({error: 'Missing required fields: name, email, phone'});
+      return;
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const userRole = role || 'player';
+    const userStatus = status || 'Active';
+
+    // Non-super-admin callers (venue managers and custom admin roles) may
+    // only create vendor accounts, never super admins or custom-role admins.
+    if (!authCtx.isSuperAdmin) {
+      if (userRole === 'super_admin') {
+        res.status(403).json({error: 'Only super admins can create super admin users'});
+        return;
+      }
+      if (userRole !== 'venue_manager') {
+        res.status(403).json({error: 'Only super admins can assign this role'});
+        return;
+      }
+    }
+
+    // Non-super-admin callers may only grant venues they themselves manage;
+    // otherwise they could hand out access to arbitrary venues.
+    let allowedVenues = Array.isArray(managedVenues) ? managedVenues : [];
+    if (!authCtx.isSuperAdmin) {
+      const callerVenues = Array.isArray(authCtx.userData?.managedVenues) ?
+        authCtx.userData.managedVenues : [];
+      allowedVenues = allowedVenues.filter((venueId) => callerVenues.includes(venueId));
+    }
+
+    // Venue-scoped roles (venue_manager + custom admin roles) keep venue
+    // assignments; players and super admins do not.
+    const isScopedAdminRole = userRole !== 'player' && userRole !== 'super_admin';
+
+    // Custom permission grants can only be handed out by super admins.
+    const grantedPermissions =
+      authCtx.isSuperAdmin && isScopedAdminRole && Array.isArray(customPermissions) ?
+        customPermissions.filter((p) => typeof p === 'string') : [];
+
+    const profile = {
+      name: String(name).trim(),
+      email: normalizedEmail,
+      phone: String(phone).trim(),
+      role: userRole,
+      status: userStatus,
+      managedVenues: isScopedAdminRole ? allowedVenues : [],
+      customPermissions: grantedPermissions,
+    };
+
+    let userRecord;
+    let existingAuth = false;
+    try {
+      userRecord = await admin.auth().getUserByEmail(normalizedEmail);
+      existingAuth = true;
+    } catch (err) {
+      if (err.code !== 'auth/user-not-found') throw err;
+    }
+
+    if (!userRecord) {
+      userRecord = await admin.auth().createUser({
+        email: normalizedEmail,
+        password: generateTempPassword(),
+        displayName: profile.name,
+        emailVerified: false,
+      });
+    }
+
+    const uid = userRecord.uid;
+    const createdAt = admin.firestore.FieldValue.serverTimestamp();
+    await writeUserProfile(uid, {...profile, createdAt});
+    const migratedCount = await deleteDuplicateUserDocs(normalizedEmail, uid);
+
+    res.json({
+      uid,
+      email: normalizedEmail,
+      existingAuth,
+      migrated: migratedCount > 0,
+    });
+  } catch (error) {
+    console.error('createUserAccount error:', error);
+    res.status(500).json({error: error.message || 'Failed to create user account'});
+  }
+});
+
+/**
+ * Provision login for an existing Firestore user (creates Auth account + migrates doc ID).
+ * Requires super_admin or venue_manager.
+ * POST body: { userId }
+ */
+exports.provisionUserLogin = functions.https.onRequest(async (req, res) => {
+  applyCors(req, res);
+  if (req.method === 'OPTIONS') {
+    res.status(204).send('');
+    return;
+  }
+  if (req.method !== 'POST') {
+    res.status(405).json({error: 'Method not allowed. Use POST.'});
+    return;
+  }
+
+  const authCtx = await requireAdmin(req, res);
+  if (!authCtx) return;
+
+  try {
+    const {userId, sendEmail} = req.body || {};
+    if (!userId) {
+      res.status(400).json({error: 'Missing required field: userId'});
+      return;
+    }
+
+    const userDoc = await admin.firestore().collection('users').doc(userId).get();
+    if (!userDoc.exists) {
+      res.status(404).json({error: 'User profile not found'});
+      return;
+    }
+
+    const userData = userDoc.data();
+    const normalizedEmail = String(userData.email || '').trim().toLowerCase();
+    if (!normalizedEmail) {
+      res.status(400).json({error: 'User profile has no email address'});
+      return;
+    }
+
+    if (!authCtx.isSuperAdmin && userData.role === 'super_admin') {
+      res.status(403).json({error: 'Insufficient privileges for this user'});
+      return;
+    }
+
+    let userRecord;
+    let existingAuth = false;
+    try {
+      userRecord = await admin.auth().getUserByEmail(normalizedEmail);
+      existingAuth = true;
+    } catch (err) {
+      if (err.code !== 'auth/user-not-found') throw err;
+    }
+
+    if (!userRecord) {
+      userRecord = await admin.auth().createUser({
+        email: normalizedEmail,
+        password: generateTempPassword(),
+        displayName: userData.name || normalizedEmail,
+        emailVerified: false,
+      });
+    }
+
+    const uid = userRecord.uid;
+    const migrated = userId !== uid;
+
+    await writeUserProfile(uid, {
+      ...userData,
+      email: normalizedEmail,
+      createdAt: userData.createdAt || admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    if (migrated) {
+      await admin.firestore().collection('users').doc(userId).delete();
+    }
+
+    await deleteDuplicateUserDocs(normalizedEmail, uid);
+
+    let emailSent = false;
+    let resetLink = null;
+    if (sendEmail !== false) {
+      try {
+        const emailResult = await sendPasswordResetEmailViaApi(normalizedEmail);
+        emailSent = emailResult.sent === true;
+      } catch (emailErr) {
+        console.warn('sendPasswordResetEmailViaApi failed:', emailErr.message);
+        try {
+          resetLink = await generatePasswordResetLink(normalizedEmail);
+        } catch (linkErr) {
+          console.warn('generatePasswordResetLink failed:', linkErr.message);
+        }
+      }
+    }
+
+    res.json({
+      uid,
+      email: normalizedEmail,
+      existingAuth,
+      migrated,
+      emailSent,
+      resetLink,
+    });
+  } catch (error) {
+    console.error('provisionUserLogin error:', error);
+    res.status(500).json({error: error.message || 'Failed to provision user login'});
+  }
 });
 
 // ---------------------------------------------------------------------------

@@ -1,18 +1,21 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar } from 'recharts';
+import ChartContainer from '../components/shared/ChartContainer';
 import { useAuth } from '../contexts/AuthContext';
 import { useBookings, usePendingBookings } from '../hooks/useBookings';
 import { useActiveMemberships } from '../hooks/useMemberships';
 import { useVenues } from '../hooks/useVenues';
+import { useActiveStaff } from '../hooks/useStaff';
 import { useAnalytics } from '../hooks/useAnalytics';
-import { formatCurrency, formatNumber, getStatusColor, formatPercentage } from '../utils/formatUtils';
+import { formatCurrency, formatNumber, getStatusColor, formatPercentage, resolveSportName } from '../utils/formatUtils';
+import { useSports } from '../hooks/useSports';
 import { getRelativeTime, isToday, formatDate, formatTime, getToday, getWeekStart, getWeekEnd, getMonthStart, getMonthEnd } from '../utils/dateUtils';
 import { Booking, User } from '../types';
 import { usersCollection } from '../services/firebase';
 import DateRangePicker from '../components/shared/DateRangePicker';
 
 const Dashboard: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isSuperAdmin } = useAuth();
   const [dateRangeType, setDateRangeType] = useState<'today' | 'week' | 'month' | 'custom'>('today');
   const [customDateRange, setCustomDateRange] = useState<{ start: Date; end: Date } | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -49,8 +52,11 @@ const Dashboard: React.FC = () => {
   const { bookings: pendingBookings } = usePendingBookings();
   const { memberships: activeMemberships, loading: membershipsLoading } = useActiveMemberships();
   const { venues, loading: venuesLoading } = useVenues({ realtime: true });
+  const { staff: activeStaff } = useActiveStaff();
+  const { sports: sportsCatalog } = useSports({ activeOnly: false, realtime: false });
 
   useEffect(() => {
+    if (!isSuperAdmin) return;
     let mounted = true;
     usersCollection.getRecent(8)
       .then((users) => {
@@ -60,7 +66,7 @@ const Dashboard: React.FC = () => {
         console.error('Dashboard: failed to load recent signups', err);
       });
     return () => { mounted = false; };
-  }, []);
+  }, [isSuperAdmin]);
 
   // Fetch analytics data with period comparison
   const { periodComparison, loading: analyticsLoading } = useAnalytics({
@@ -87,14 +93,24 @@ const Dashboard: React.FC = () => {
     // Calculate active memberships count
     const activeMembersCount = activeMemberships.length;
 
+    // Unique customers from bookings in date range
+    const uniqueCustomers = new Set(
+      bookings
+        .map((b) => b.userId || b.user)
+        .filter(Boolean)
+    ).size;
+
     return {
       bookings: bookingsCount,
       totalRevenue: totalRevenue,
       activeMembers: activeMembersCount,
       pendingPayments: pendingPayments,
-      pendingCount: pendingCount
+      pendingCount: pendingCount,
+      totalCustomers: uniqueCustomers,
+      totalVenues: venues.length,
+      activeStaff: activeStaff.length,
     };
-  }, [bookings, pendingBookings, activeMemberships]);
+  }, [bookings, pendingBookings, activeMemberships, venues.length, activeStaff.length]);
 
   // Generate revenue trend data based on selected date range
   const revenueTrendData = useMemo(() => {
@@ -174,7 +190,7 @@ const Dashboard: React.FC = () => {
           icon = 'schedule';
           color = 'text-amber-600';
           bg = 'bg-amber-100';
-          title = `New booking for ${booking.court} (${booking.sport})`;
+          title = `New booking for ${booking.court} (${resolveSportName(booking.sport, sportsCatalog)})`;
           sub = `${booking.user} • ${booking.duration} hour${booking.duration > 1 ? 's' : ''} slot`;
         } else if (booking.paymentStatus === 'Paid') {
           icon = 'payments';
@@ -196,7 +212,7 @@ const Dashboard: React.FC = () => {
           bg
         };
       });
-  }, [bookings]);
+  }, [bookings, sportsCatalog]);
 
   // Get live court status
   const liveCourtStatus = useMemo(() => {
@@ -214,7 +230,7 @@ const Dashboard: React.FC = () => {
     activeBookings.forEach((booking: Booking) => {
       courtMap.set(booking.courtId, {
         name: booking.court,
-        type: booking.sport,
+        type: resolveSportName(booking.sport, sportsCatalog),
         status: 'In Use',
         color: 'red'
       });
@@ -226,7 +242,7 @@ const Dashboard: React.FC = () => {
         if (!courtMap.has(court.id)) {
           courtMap.set(court.id, {
             name: court.name,
-            type: court.sport,
+            type: resolveSportName(court.sport, sportsCatalog),
             status: court.status === 'Maintenance' ? 'Maint.' : 'Free',
             color: court.status === 'Maintenance' ? 'yellow' : 'green'
           });
@@ -235,7 +251,7 @@ const Dashboard: React.FC = () => {
     });
 
     return Array.from(courtMap.values()).slice(0, 10);
-  }, [bookings, venues]);
+  }, [bookings, venues, sportsCatalog]);
 
   // Top venues by booking count in date range
   const topVenuesByBookings = useMemo(() => {
@@ -331,8 +347,17 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+      <div className={`grid grid-cols-1 md:grid-cols-2 ${isSuperAdmin ? 'lg:grid-cols-4' : 'lg:grid-cols-4'} gap-4 sm:gap-6`}>
         {[
+          ...(isSuperAdmin ? [{
+            label: 'Total Venues',
+            val: formatNumber(stats.totalVenues),
+            change: `${stats.totalVenues} active`,
+            trend: stats.totalVenues > 0 ? 'up' : 'neutral',
+            icon: 'stadium',
+            color: 'text-indigo-600',
+            bg: 'bg-indigo-50'
+          }] : []),
           {
             label: dateRangeType === 'today' ? "Today's Bookings" : "Bookings",
             val: formatNumber(stats.bookings),
@@ -355,7 +380,7 @@ const Dashboard: React.FC = () => {
             color: 'text-blue-600',
             bg: 'bg-blue-50'
           },
-          {
+          ...(isSuperAdmin ? [{
             label: "Active Members",
             val: formatNumber(stats.activeMembers),
             change: stats.activeMembers > 0 ? '+2%' : '0%',
@@ -363,8 +388,36 @@ const Dashboard: React.FC = () => {
             icon: 'diversity_3',
             color: 'text-purple-600',
             bg: 'bg-purple-50'
-          },
-          {
+          }] : [
+            {
+              label: 'Pending Bookings',
+              val: formatNumber(stats.pendingCount),
+              change: `${stats.pendingCount} awaiting action`,
+              trend: stats.pendingCount > 0 ? 'down' : 'neutral',
+              icon: 'pending_actions',
+              color: 'text-orange-600',
+              bg: 'bg-orange-50'
+            },
+            {
+              label: 'Active Staff',
+              val: formatNumber(stats.activeStaff),
+              change: `${stats.activeStaff} on roster`,
+              trend: stats.activeStaff > 0 ? 'up' : 'neutral',
+              icon: 'badge',
+              color: 'text-violet-600',
+              bg: 'bg-violet-50'
+            },
+            {
+              label: 'Total Customers',
+              val: formatNumber(stats.totalCustomers),
+              change: 'unique in period',
+              trend: stats.totalCustomers > 0 ? 'up' : 'neutral',
+              icon: 'groups',
+              color: 'text-teal-600',
+              bg: 'bg-teal-50'
+            },
+          ]),
+          ...(isSuperAdmin ? [{
             label: "Pending Payments",
             val: formatCurrency(stats.pendingPayments),
             change: `${stats.pendingCount} action${stats.pendingCount !== 1 ? 's' : ''}`,
@@ -372,7 +425,7 @@ const Dashboard: React.FC = () => {
             icon: 'pending_actions',
             color: 'text-orange-600',
             bg: 'bg-orange-50'
-          },
+          }] : []),
         ].map((stat, i) => (
           <div key={i} className="ui-card p-6 flex flex-col justify-between group hover:border-primary/40 transition-all duration-300">
             <div className="flex justify-between items-start">
@@ -411,8 +464,7 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
           </div>
-          <div className="h-[300px] min-h-[280px] min-w-0 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <ChartContainer height={300}>
               <AreaChart data={revenueTrendData}>
                 <defs>
                   <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
@@ -429,22 +481,19 @@ const Dashboard: React.FC = () => {
                 />
                 <Area type="monotone" dataKey="revenue" stroke="#11d473" strokeWidth={4} fillOpacity={1} fill="url(#colorRev)" />
               </AreaChart>
-            </ResponsiveContainer>
-          </div>
+          </ChartContainer>
         </div>
 
         <div className="ui-card p-6 flex flex-col">
           <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-8">Busy Hours</h3>
-          <div className="flex-1 min-h-[300px] min-w-0 w-full" style={{ minHeight: 280 }}>
-            <ResponsiveContainer width="100%" height="100%">
+          <ChartContainer height={280}>
               <BarChart data={peakHoursData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.5} />
                 <XAxis dataKey="hour" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} dy={10} />
                 <Tooltip cursor={{ fill: '#f1f5f9' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 700 }} />
                 <Bar dataKey="value" fill="#6366f1" radius={[6, 6, 0, 0]} barSize={24} />
               </BarChart>
-            </ResponsiveContainer>
-          </div>
+          </ChartContainer>
         </div>
       </div>
 
@@ -524,7 +573,8 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+      <div className={`grid grid-cols-1 ${isSuperAdmin ? 'lg:grid-cols-2' : ''} gap-4 sm:gap-6`}>
+        {isSuperAdmin && (
         <div className="ui-card overflow-hidden">
           <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
             <h3 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-tight">Top Venues by Bookings</h3>
@@ -546,6 +596,8 @@ const Dashboard: React.FC = () => {
             )}
           </div>
         </div>
+        )}
+        {isSuperAdmin && (
         <div className="ui-card overflow-hidden">
           <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
             <h3 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-tight">Recent Signups</h3>
@@ -569,6 +621,7 @@ const Dashboard: React.FC = () => {
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* Date Range Picker Modal */}

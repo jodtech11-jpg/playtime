@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { courtsCollection } from '../services/firebase';
 import { Court } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface UseCourtsOptions {
   venueId?: string;
@@ -72,7 +73,7 @@ export const useCourts = (options: UseCourtsOptions = {}) => {
       } catch (err: any) {
         console.error('Error fetching courts:', err);
         if (mounted) {
-          setError(err.message || 'Failed to fetch courts');
+          setError(getFirebaseErrorMessage(err, 'Failed to fetch courts'));
           setLoading(false);
         }
       }

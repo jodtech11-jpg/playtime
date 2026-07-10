@@ -4,6 +4,7 @@ import { sportsCollection } from '../../services/firebase';
 import { serverTimestamp } from 'firebase/firestore';
 import { useToast } from '../../contexts/ToastContext';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface SportManagementModalProps {
   isOpen: boolean;
@@ -40,7 +41,7 @@ const SportManagementModal: React.FC<SportManagementModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
-  const { showError } = useToast();
+  const { showError, showSuccess } = useToast();
   const { openConfirm, confirmDialog } = useConfirmDialog();
 
   useEffect(() => {
@@ -60,7 +61,7 @@ const SportManagementModal: React.FC<SportManagementModalProps> = ({
       setSportSpecificOptions(
         Object.entries(options).map(([key, value]) => ({
           key,
-          values: Array.isArray(value) ? value : [String(value)]
+          values: Array.isArray(value) ? value.map(String) : [String(value)]
         }))
       );
     } else {
@@ -119,6 +120,20 @@ const SportManagementModal: React.FC<SportManagementModalProps> = ({
         throw new Error('Sport name is required');
       }
 
+      const normalizedName = name.trim().toLowerCase();
+      const duplicate = sports.find(
+        (s) =>
+          s.id !== editingSport?.id &&
+          (s.name || '').trim().toLowerCase() === normalizedName
+      );
+      if (duplicate) {
+        throw new Error(
+          duplicate.isActive === false
+            ? `A sport named "${duplicate.name}" already exists (inactive). Reactivate or rename it instead of creating a duplicate.`
+            : `A sport named "${duplicate.name}" already exists. Use a different name.`
+        );
+      }
+
       // Convert array format to object
       const parsedOptions: Record<string, any> = {};
       sportSpecificOptions.forEach(option => {
@@ -127,12 +142,15 @@ const SportManagementModal: React.FC<SportManagementModalProps> = ({
         }
       });
 
+      const nextOrder =
+        sports.reduce((max, s) => Math.max(max, s.order ?? 0), 0) + 1;
+
       const sportData: Omit<Sport, 'id' | 'createdAt' | 'updatedAt'> = {
         name: name.trim(),
         description: description.trim() || undefined,
         icon: icon.trim() || undefined,
         color: color,
-        order: order ? parseInt(order) : undefined,
+        order: order ? parseInt(order, 10) : (editingSport?.order ?? nextOrder),
         isActive,
         defaultMinTeamSize: defaultMinTeamSize ? parseInt(defaultMinTeamSize) : undefined,
         defaultMaxTeamSize: defaultMaxTeamSize ? parseInt(defaultMaxTeamSize) : undefined,
@@ -154,11 +172,13 @@ const SportManagementModal: React.FC<SportManagementModalProps> = ({
         });
       }
 
+      const wasEditing = !!editingSport;
       resetForm();
       setEditingSport(null);
       onUpdate();
+      showSuccess(wasEditing ? 'Sport updated successfully.' : 'Sport created successfully.');
     } catch (err: any) {
-      setError(err.message || 'Failed to save sport');
+      setError(getFirebaseErrorMessage(err) || 'Failed to save sport');
     } finally {
       setLoading(false);
     }
@@ -178,7 +198,7 @@ const SportManagementModal: React.FC<SportManagementModalProps> = ({
           await sportsCollection.delete(sportId);
           onUpdate();
         } catch (err: any) {
-          showError('Failed to delete sport: ' + err.message);
+          showError('Failed to delete sport: ' + getFirebaseErrorMessage(err));
         } finally {
           setProcessing(null);
         }
@@ -195,7 +215,7 @@ const SportManagementModal: React.FC<SportManagementModalProps> = ({
       });
       onUpdate();
     } catch (err: any) {
-      showError('Failed to update sport: ' + err.message);
+      showError('Failed to update sport: ' + getFirebaseErrorMessage(err));
     } finally {
       setProcessing(null);
     }

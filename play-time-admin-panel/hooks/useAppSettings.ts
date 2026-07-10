@@ -3,6 +3,7 @@ import { appSettingsCollection } from '../services/firebase';
 import { AppSettings } from '../types';
 import { serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const DEFAULT_SETTINGS: AppSettings = {
   id: 'platform',
@@ -106,7 +107,7 @@ export const useAppSettings = (realtime: boolean = true) => {
         }
       } catch (err: any) {
         console.error('Error fetching app settings:', err);
-        setError(err.message || 'Failed to fetch app settings');
+        setError(getFirebaseErrorMessage(err, 'Failed to fetch app settings'));
         setSettings(DEFAULT_SETTINGS);
         setLoading(false);
       }

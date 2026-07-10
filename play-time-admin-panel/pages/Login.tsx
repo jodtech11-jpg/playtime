@@ -2,9 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { signInEmailPassword, signInWithPhone, verifyOTP, signInWithGoogle, usersCollection, auth, createUserWithEmailAndPassword, resetPassword } from '../services/firebase';
+import { signInEmailPassword, signInWithPhone, verifyOTP, signInWithGoogle, completeGoogleRedirectSignIn, resolveAdminUserProfile, auth, resetPassword } from '../services/firebase';
 import { RecaptchaVerifier, ConfirmationResult } from 'firebase/auth';
 import VendorSignupModal from '../components/modals/VendorSignupModal';
+import { isAdminPanelRole } from '../utils/rbac';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -27,6 +29,7 @@ const Login: React.FC = () => {
   const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
   const [forgotPasswordSuccess, setForgotPasswordSuccess] = useState(false);
   const recaptchaContainerRef = useRef<HTMLDivElement>(null);
+  const googleRedirectHandledRef = useRef(false);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -34,6 +37,40 @@ const Login: React.FC = () => {
       navigate('/', { replace: true });
     }
   }, [isAuthenticated, loading, navigate]);
+
+  // Complete Google redirect sign-in when returning from Google OAuth
+  useEffect(() => {
+    if (googleRedirectHandledRef.current) return;
+    googleRedirectHandledRef.current = true;
+
+    const finishRedirectSignIn = async () => {
+      try {
+        const { user: firebaseUser, error: redirectError } = await completeGoogleRedirectSignIn();
+        if (!firebaseUser && !redirectError) {
+          return;
+        }
+
+        setIsLoading(true);
+        setAuthMethod('google');
+
+        if (redirectError) {
+          setError(redirectError);
+          return;
+        }
+        if (firebaseUser) {
+          await verifyUserAndNavigate(firebaseUser);
+        }
+      } catch (err: any) {
+        console.error('Google redirect sign-in error:', err);
+        setError(getFirebaseErrorMessage(err, 'Failed to complete Google sign-in.'));
+      } finally {
+        setIsLoading(false);
+        setAuthMethod('email');
+      }
+    };
+
+    finishRedirectSignIn();
+  }, []);
 
   // Initialize reCAPTCHA when phone auth is selected
   useEffect(() => {
@@ -88,7 +125,7 @@ const Login: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Login error:', err);
-      setError(err.message || 'Failed to sign in. Please try again.');
+      setError(getFirebaseErrorMessage(err, 'Failed to sign in. Please try again.'));
     } finally {
       setIsLoading(false);
     }
@@ -122,7 +159,7 @@ const Login: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Phone auth error:', err);
-      setError(err.message || 'Failed to send OTP. Please try again.');
+      setError(getFirebaseErrorMessage(err, 'Failed to send OTP. Please try again.'));
     } finally {
       setIsLoading(false);
     }
@@ -153,7 +190,7 @@ const Login: React.FC = () => {
       }
     } catch (err: any) {
       console.error('OTP verification error:', err);
-      setError(err.message || 'Failed to verify OTP. Please try again.');
+      setError(getFirebaseErrorMessage(err, 'Failed to verify OTP. Please try again.'));
     } finally {
       setIsLoading(false);
     }
@@ -161,14 +198,24 @@ const Login: React.FC = () => {
 
   const handleGoogleSignIn = async () => {
     setError(null);
+    setAuthMethod('google');
     setIsLoading(true);
+    let redirectInProgress = false;
 
     try {
-      const { user: firebaseUser, error: googleError } = await signInWithGoogle();
+      const { user: firebaseUser, error: googleError, code } = await signInWithGoogle();
+
+      if (code === 'auth/redirect-initiated') {
+        redirectInProgress = true;
+        return;
+      }
+
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        return;
+      }
       
       if (googleError) {
-        setError(googleError || 'Failed to sign in with Google. Please try again.');
-        setIsLoading(false);
+        setError(googleError);
         return;
       }
 
@@ -177,9 +224,12 @@ const Login: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Google sign-in error:', err);
-      setError(err.message || 'Failed to sign in with Google. Please try again.');
+      setError(getFirebaseErrorMessage(err, 'Failed to sign in with Google. Please try again.'));
     } finally {
-      setIsLoading(false);
+      if (!redirectInProgress) {
+        setIsLoading(false);
+        setAuthMethod('email');
+      }
     }
   };
 
@@ -202,7 +252,7 @@ const Login: React.FC = () => {
       setError(null);
     } catch (err: any) {
       console.error('Forgot password error:', err);
-      setError(err.message || 'Failed to send password reset email. Please try again.');
+      setError(getFirebaseErrorMessage(err, 'Failed to send password reset email. Please try again.'));
     } finally {
       setForgotPasswordLoading(false);
     }
@@ -210,11 +260,27 @@ const Login: React.FC = () => {
 
   const verifyUserAndNavigate = async (firebaseUser: any) => {
     try {
-      const userData = await usersCollection.get(firebaseUser.uid);
+      const profileResult = await resolveAdminUserProfile(firebaseUser);
+
+      if (profileResult.mismatch) {
+        setError(
+          `This Google account (${profileResult.email}) is registered with email and password. Please sign in with your password instead.`
+        );
+        setIsLoading(false);
+        setAuthMethod('email');
+        await auth.signOut();
+        return;
+      }
+
+      const userData = profileResult.userData;
       
       if (!userData) {
-        setError('User account not found. Please contact administrator.');
+        setError(
+          'No admin account found for this Google sign-in. Ask your administrator to create your account with this email, or sign in with email and password.'
+        );
         setIsLoading(false);
+        setAuthMethod('email');
+        await auth.signOut();
         return;
       }
 
@@ -222,6 +288,7 @@ const Login: React.FC = () => {
       if (userData.status === 'Pending') {
         setError('Your account is pending approval. Please wait for super admin approval.');
         setIsLoading(false);
+        setAuthMethod('email');
         await auth.signOut();
         return;
       }
@@ -229,17 +296,27 @@ const Login: React.FC = () => {
       if (userData.status === 'Inactive') {
         setError('Your account has been deactivated. Please contact administrator.');
         setIsLoading(false);
+        setAuthMethod('email');
         await auth.signOut();
         return;
       }
 
-      // Auto-detect role from user account - no need for user to select
+      // Custom roles are allowed when a matching roles/{roleId} doc exists.
+      const roleAllowed = await isAdminPanelRole(userData.role as string);
+      if (!roleAllowed) {
+        setError('This account does not have admin access. Please use the mobile app.');
+        setIsLoading(false);
+        setAuthMethod('email');
+        await auth.signOut();
+        return;
+      }
 
       navigate('/', { replace: true });
     } catch (err: any) {
       console.error('Error fetching user data:', err);
       setError('Failed to verify user account. Please try again.');
       setIsLoading(false);
+      setAuthMethod('email');
     }
   };
 
@@ -314,17 +391,27 @@ const Login: React.FC = () => {
             )}
             <div className="text-center lg:text-left mb-8">
               <h2 className="text-4xl font-black tracking-tight text-gray-900 dark:text-gray-100 leading-tight">
-                {mode === 'login' ? 'Welcome back' : 'Create account'}
+                {showForgotPassword
+                  ? forgotPasswordSuccess
+                    ? 'Check your email'
+                    : 'Reset password'
+                  : mode === 'login'
+                    ? 'Welcome back'
+                    : 'Create account'}
               </h2>
               <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 font-medium">
-                {mode === 'login' 
-                  ? 'Sign in to manage your venues and bookings.' 
-                  : 'Join Play Time and start managing your sports venue.'}
+                {showForgotPassword
+                  ? forgotPasswordSuccess
+                    ? 'We sent a password reset link to your inbox.'
+                    : "Enter your email and we'll send you a link to reset your password."
+                  : mode === 'login'
+                    ? 'Sign in to manage your venues and bookings.'
+                    : 'Join Play Time and start managing your sports venue.'}
               </p>
             </div>
 
             {/* Email/Password Form - Primary Method */}
-            {mode === 'login' && authMethod === 'email' && (
+            {mode === 'login' && authMethod === 'email' && !showForgotPassword && (
                   <form onSubmit={handleCredentialsSubmit} className="space-y-6">
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Email address</label>
@@ -366,8 +453,11 @@ const Login: React.FC = () => {
                       <button 
                         type="button" 
                         onClick={() => {
+                          setForgotPasswordEmail(email);
                           setShowForgotPassword(true);
+                          setForgotPasswordSuccess(false);
                           setError(null);
+                          clearError();
                         }}
                         className="text-sm font-black text-primary hover:text-primary-hover uppercase tracking-widest text-[10px]"
                       >
@@ -399,6 +489,7 @@ const Login: React.FC = () => {
             {mode === 'login' && showForgotPassword && !forgotPasswordSuccess && (
               <div className="space-y-6">
                 <button
+                  type="button"
                   onClick={() => {
                     setShowForgotPassword(false);
                     setForgotPasswordEmail('');
@@ -409,12 +500,6 @@ const Login: React.FC = () => {
                   <span className="material-symbols-outlined text-lg">arrow_back</span>
                   <span className="font-bold">Back to Sign In</span>
                 </button>
-                <div>
-                  <h3 className="text-xl font-black text-gray-900 dark:text-gray-100 mb-2">Reset Password</h3>
-                  <p className="text-sm text-gray-500 font-medium mb-6">
-                    Enter your email address and we'll send you a link to reset your password.
-                  </p>
-                </div>
                 <form onSubmit={handleForgotPassword} className="space-y-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Email address</label>
@@ -457,11 +542,10 @@ const Login: React.FC = () => {
             {/* Forgot Password Success */}
             {mode === 'login' && showForgotPassword && forgotPasswordSuccess && (
               <div className="space-y-6">
-                <div className="text-center py-8">
+                <div className="text-center py-4">
                   <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
                     <span className="material-symbols-outlined text-3xl text-green-600">check_circle</span>
                   </div>
-                  <h3 className="text-xl font-black text-gray-900 dark:text-white mb-2">Check Your Email</h3>
                   <p className="text-sm text-gray-600 dark:text-slate-400 font-medium mb-6">
                     We've sent a password reset link to <strong>{forgotPasswordEmail}</strong>
                   </p>
@@ -469,6 +553,7 @@ const Login: React.FC = () => {
                     Click the link in the email to reset your password. If you don't see it, check your spam folder.
                   </p>
                   <button
+                    type="button"
                     onClick={() => {
                       setShowForgotPassword(false);
                       setForgotPasswordEmail('');
@@ -504,6 +589,7 @@ const Login: React.FC = () => {
                     <span className="text-sm font-bold text-gray-700 dark:text-slate-200 group-hover:text-primary">Phone</span>
                   </button>
                   <button
+                    type="button"
                     onClick={handleGoogleSignIn}
                     disabled={isLoading}
                     className="flex items-center justify-center gap-2 rounded-xl py-3 px-4 border-2 border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 hover:border-primary transition-all group disabled:opacity-50 disabled:cursor-not-allowed"

@@ -29,8 +29,10 @@ export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration
  */
 export const requestNotificationPermission = async (): Promise<NotificationPermission> => {
   if ('Notification' in window) {
-    const permission = await Notification.requestPermission();
-    return permission;
+    if (Notification.permission !== 'default') {
+      return Notification.permission;
+    }
+    return Notification.requestPermission();
   }
   return 'denied';
 };

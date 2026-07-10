@@ -11,10 +11,8 @@ function getInitials(name: string | undefined): string {
 }
 
 const Sidebar: React.FC = () => {
-  const { user, signOut } = useAuth();
+  const { user, signOut, isSuperAdmin, isVenueManager, hasPermission, roleDisplayName } = useAuth();
   const location = useLocation();
-  const isSuperAdmin = user?.role === 'super_admin';
-  const isVenueManager = user?.role === 'venue_manager';
   const [usersMenuOpen, setUsersMenuOpen] = useState(
     location.pathname.startsWith('/users') || location.pathname.startsWith('/staff')
   );
@@ -69,12 +67,14 @@ const Sidebar: React.FC = () => {
     location.pathname.startsWith('/users') || location.pathname.startsWith('/staff');
   const venuesSectionActive = location.pathname.startsWith('/venues');
 
-  // Base menu items available to all authenticated users
+  // Base menu items shared by all admin panel roles.
+  // Financials is permission-gated (super admins hold every permission;
+  // other roles see it when granted financials.read or financials.manage).
   const baseNavItems = [
     { to: '/', icon: 'dashboard', label: 'Dashboard' },
     { to: '/bookings', icon: 'calendar_month', label: 'Bookings' },
     { to: '/memberships', icon: 'groups', label: 'Memberships' },
-    { to: '/financials', icon: 'payments', label: 'Financials' },
+    ...(hasPermission('financials.read') ? [{ to: '/financials', icon: 'payments', label: 'Financials' }] : []),
     { to: '/payments', icon: 'account_balance_wallet', label: 'Payments' },
     { to: '/notifications', icon: 'notifications_active', label: 'Notifications' },
   ];
@@ -84,6 +84,7 @@ const Sidebar: React.FC = () => {
     { to: '/activity-log', icon: 'history', label: 'Activity log' },
     { to: '/moderation', icon: 'shield', label: 'Moderation' },
     { to: '/marketing', icon: 'campaign', label: 'Marketing & Offers' },
+    { to: '/sports', icon: 'sports', label: 'Sports' },
     { to: '/tournaments', icon: 'emoji_events', label: 'Tournaments' },
     { to: '/quick-matches', icon: 'sports_soccer', label: 'Quick Matches' },
     { to: '/leaderboards', icon: 'leaderboard', label: 'Leaderboards' },
@@ -98,10 +99,19 @@ const Sidebar: React.FC = () => {
     { to: '/user-manual', icon: 'menu_book', label: 'User manual' },
   ];
 
-  // Venue Manager only menu items (excluding venues which is now nested)
+  // Venue Manager (and custom role) menu items (excluding venues which is now nested).
+  // Permission-gated items surface when granted via Role/Permission Management.
   const venueManagerNavItems = [
+    { to: '/sports', icon: 'sports', label: 'Sports' },
+    ...(!hasPermission('users.manage') ? [{ to: '/staff', icon: 'badge', label: 'Staff' }] : []),
+    { to: '/tournaments', icon: 'emoji_events', label: 'Tournaments' },
+    { to: '/quick-matches', icon: 'sports_soccer', label: 'Quick Matches' },
+    { to: '/leaderboards', icon: 'leaderboard', label: 'Leaderboards' },
+    { to: '/polls', icon: 'poll', label: 'Polls' },
+    { to: '/flash-deals', icon: 'local_offer', label: 'Flash Deals' },
+    ...(hasPermission('marketing.read') ? [{ to: '/marketing', icon: 'campaign', label: 'Marketing & Offers' }] : []),
+    ...(hasPermission('settings.read') ? [{ to: '/settings', icon: 'settings', label: 'Settings' }] : []),
     { to: '/support', icon: 'support_agent', label: 'Support & Disputes' },
-    { to: '/user-manual', icon: 'menu_book', label: 'User manual' },
   ];
 
   const flyoutClass =
@@ -192,7 +202,8 @@ const Sidebar: React.FC = () => {
               </NavLink>
             ))}
 
-            {/* Users Menu with vertical submenu */}
+            {/* Users Menu with vertical submenu (requires users.manage; super admins always have it) */}
+            {hasPermission('users.manage') && (
             <div className="mt-1">
               {collapsed ? (
                 <div ref={usersFlyoutRef} className="relative">
@@ -367,6 +378,7 @@ const Sidebar: React.FC = () => {
                 </>
               )}
             </div>
+            )}
 
             {/* Venues Menu with vertical submenu */}
             {(isSuperAdmin || isVenueManager) && (
@@ -393,18 +405,20 @@ const Sidebar: React.FC = () => {
                     </button>
                     {collapsedFlyout === 'venues' && (
                       <div className={flyoutClass} role="menu">
-                        <NavLink
-                          to="/venues"
-                          role="menuitem"
-                          onClick={() => {
-                            setMobileMenuOpen(false);
-                            closeCollapsedFlyout();
-                          }}
-                          className={({ isActive }) => flyoutLinkClass(isActive)}
-                        >
-                          <span className="material-symbols-outlined text-[18px]">location_on</span>
-                          <span className="text-sm font-medium">All Venues</span>
-                        </NavLink>
+                        {isSuperAdmin && (
+                          <NavLink
+                            to="/venues"
+                            role="menuitem"
+                            onClick={() => {
+                              setMobileMenuOpen(false);
+                              closeCollapsedFlyout();
+                            }}
+                            className={({ isActive }) => flyoutLinkClass(isActive)}
+                          >
+                            <span className="material-symbols-outlined text-[18px]">location_on</span>
+                            <span className="text-sm font-medium">All Venues</span>
+                          </NavLink>
+                        )}
                         <NavLink
                           to="/venues/courts"
                           role="menuitem"
@@ -451,20 +465,22 @@ const Sidebar: React.FC = () => {
                     </button>
                     {venuesMenuOpen && (
                       <div className="ml-4 mt-1 pl-2 border-l border-white/10 dark:border-gray-700 flex flex-col gap-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
-                        <NavLink
-                          to="/venues"
-                          onClick={() => setMobileMenuOpen(false)}
-                          className={({ isActive }) =>
-                            `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                              isActive
-                                ? 'bg-primary text-white shadow-lg shadow-primary/20'
-                                : 'text-gray-400 dark:text-gray-500 hover:text-white hover:bg-white/5 dark:hover:bg-gray-800'
-                            }`
-                          }
-                        >
-                          <span className="material-symbols-outlined text-[18px]">location_on</span>
-                          <span className="text-sm font-medium">All Venues</span>
-                        </NavLink>
+                        {isSuperAdmin && (
+                          <NavLink
+                            to="/venues"
+                            onClick={() => setMobileMenuOpen(false)}
+                            className={({ isActive }) =>
+                              `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                                isActive
+                                  ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                                  : 'text-gray-400 dark:text-gray-500 hover:text-white hover:bg-white/5 dark:hover:bg-gray-800'
+                              }`
+                            }
+                          >
+                            <span className="material-symbols-outlined text-[18px]">location_on</span>
+                            <span className="text-sm font-medium">All Venues</span>
+                          </NavLink>
+                        )}
                         <NavLink
                           to="/venues/courts"
                           onClick={() => setMobileMenuOpen(false)}
@@ -548,11 +564,7 @@ const Sidebar: React.FC = () => {
                 <NavLink to="/profile" className="flex-1 min-w-0 hover:opacity-80 transition-opacity">
                   <p className="text-sm font-medium text-white truncate">{user?.name || 'User'}</p>
                   <p className="text-xs text-gray-400 dark:text-gray-500 truncate">
-                    {user?.role === 'super_admin'
-                      ? 'Super Admin'
-                      : user?.role === 'venue_manager'
-                        ? 'Venue Manager'
-                        : 'Player'}
+                    {isSuperAdmin ? 'Super Admin' : isVenueManager ? 'Vendor' : (roleDisplayName || 'User')}
                   </p>
                 </NavLink>
               )}

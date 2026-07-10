@@ -6,6 +6,7 @@
 
 import { Booking, Membership, Venue, AppSettings } from '../types';
 import { getDocument } from './firebase';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 // Razorpay types
 interface RazorpayOptions {
@@ -132,7 +133,7 @@ export const initiateBookingPayment = async (
     razorpay.open();
   } catch (error: any) {
     console.error('Error initiating Razorpay payment:', error);
-    onError(error.message || 'Failed to initiate payment');
+    onError(getFirebaseErrorMessage(error, 'Failed to initiate payment'));
   }
 };
 
@@ -200,7 +201,7 @@ export const initiateMembershipPayment = async (
     razorpay.open();
   } catch (error: any) {
     console.error('Error initiating Razorpay payment:', error);
-    onError(error.message || 'Failed to initiate payment');
+    onError(getFirebaseErrorMessage(error, 'Failed to initiate payment'));
   }
 };
 

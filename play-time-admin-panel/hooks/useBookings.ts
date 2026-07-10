@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { bookingsCollection } from '../services/firebase';
 import { Booking } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface UseBookingsOptions {
   venueId?: string;
@@ -38,7 +39,16 @@ export const useBookings = (options: UseBookingsOptions = {}) => {
       return;
     }
 
+    // limit: 0 means "skip fetching" (used by consumers like global search
+    // when idle) — don't load the entire collection.
+    if (options.limit === 0) {
+      setBookings([]);
+      setLoading(false);
+      return;
+    }
+
     let unsubscribe: (() => void) | undefined;
+    let mounted = true;
 
     const fetchBookings = async () => {
       try {
@@ -65,10 +75,11 @@ export const useBookings = (options: UseBookingsOptions = {}) => {
               value: options.venueId,
             });
           } else {
-            const ids = managedVenues.slice(0, 10);
-            if (managedVenues.length > 10) {
+            // Firestore `in` supports up to 30 values
+            const ids = managedVenues.slice(0, 30);
+            if (managedVenues.length > 30) {
               console.warn(
-                'useBookings: venue manager has more than 10 managedVenues; only the first 10 are queried (Firestore in limit).'
+                'useBookings: venue manager has more than 30 managedVenues; only the first 30 are queried (Firestore in limit).'
               );
             }
             filters.push({
@@ -122,6 +133,7 @@ export const useBookings = (options: UseBookingsOptions = {}) => {
           // Real-time subscription
           unsubscribe = bookingsCollection.subscribeAll(
             (data: Booking[]) => {
+              if (!mounted) return;
               setBookings(data);
               setLoading(false);
             },
@@ -137,12 +149,14 @@ export const useBookings = (options: UseBookingsOptions = {}) => {
             'desc',
             options.limit
           ) as Booking[];
+          if (!mounted) return;
           setBookings(data as Booking[]);
           setLoading(false);
         }
       } catch (err: any) {
         console.error('Error fetching bookings:', err);
-        setError(err.message || 'Failed to fetch bookings');
+        if (!mounted) return;
+        setError(getFirebaseErrorMessage(err, 'Failed to fetch bookings'));
         setLoading(false);
       }
     };
@@ -150,6 +164,7 @@ export const useBookings = (options: UseBookingsOptions = {}) => {
     fetchBookings();
 
     return () => {
+      mounted = false;
       if (unsubscribe) {
         unsubscribe();
       }

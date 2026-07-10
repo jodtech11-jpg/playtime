@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Poll } from '../types';
 import { pollsCollection } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { vendorIdFilter } from '../utils/vendorScope';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface UsePollsOptions {
   venueId?: string;
@@ -22,42 +24,29 @@ export const usePolls = (options: UsePollsOptions = {}) => {
       return;
     }
 
+    if (isVenueManager && !user.id) {
+      setPolls([]);
+      setLoading(false);
+      return;
+    }
+
+    let mounted = true;
+    let unsubscribe: (() => void) | null = null;
+
     const fetchPolls = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        const filters: any[] = [];
+        const filters: { field: string; operator: string; value: unknown }[] = [];
 
-        const managed = user.managedVenues?.filter(Boolean) ?? [];
-        if (isVenueManager) {
-          if (managed.length === 0) {
-            setPolls([]);
-            setLoading(false);
-            return;
-          }
-          if (options.venueId && !managed.includes(options.venueId)) {
-            setPolls([]);
-            setLoading(false);
-            return;
-          }
+        if (isVenueManager && user.id) {
+          filters.push(vendorIdFilter(user.id));
           if (options.venueId) {
             filters.push({
               field: 'venueId',
               operator: '==',
               value: options.venueId,
-            });
-          } else {
-            const ids = managed.slice(0, 10);
-            if (managed.length > 10) {
-              console.warn(
-                'usePolls: venue manager has more than 10 managedVenues; only the first 10 are queried.'
-              );
-            }
-            filters.push({
-              field: 'venueId',
-              operator: 'in',
-              value: ids,
             });
           }
         } else if (options.venueId) {
@@ -86,36 +75,46 @@ export const usePolls = (options: UsePollsOptions = {}) => {
           });
         }
 
+        const sortByCreatedDesc = (rows: Poll[]) =>
+          [...rows].sort((a, b) => {
+            const aTime = a.createdAt?.toMillis?.() ?? a.createdAt?.seconds ?? 0;
+            const bTime = b.createdAt?.toMillis?.() ?? b.createdAt?.seconds ?? 0;
+            return bTime - aTime;
+          });
+
+        // Sort in memory — avoid orderBy so vendor filters don't need composite indexes.
         if (options.realtime) {
-          const unsubscribe = pollsCollection.subscribeAll(
+          unsubscribe = pollsCollection.subscribeAll(
             (data: Poll[]) => {
-              setPolls(data);
+              if (!mounted) return;
+              setPolls(sortByCreatedDesc(data || []));
               setLoading(false);
             },
-            filters.length > 0 ? filters : undefined,
-            'createdAt',
-            'desc'
+            filters.length > 0 ? filters : undefined
           );
-
-          return () => unsubscribe();
         } else {
           const data = await pollsCollection.getAll(
-            filters.length > 0 ? filters : undefined,
-            'createdAt',
-            'desc'
+            filters.length > 0 ? filters : undefined
           );
-          setPolls(data as Poll[]);
+          if (!mounted) return;
+          setPolls(sortByCreatedDesc(data as Poll[]));
           setLoading(false);
         }
       } catch (err: any) {
+        if (!mounted) return;
         console.error('Error fetching polls:', err);
-        setError(err.message || 'Failed to fetch polls');
+        setError(getFirebaseErrorMessage(err, 'Failed to fetch polls'));
         setLoading(false);
       }
     };
 
     fetchPolls();
-  }, [user, options.venueId, options.sport, options.status, options.realtime, isVenueManager]);
+
+    return () => {
+      mounted = false;
+      if (unsubscribe) unsubscribe();
+    };
+  }, [user?.id, options.venueId, options.sport, options.status, options.realtime, isVenueManager]);
 
   return { polls, loading, error };
 };

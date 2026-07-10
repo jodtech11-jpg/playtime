@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MembershipPlan } from '../../types';
 import { useVenues } from '../../hooks/useVenues';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface MembershipPlanFormModalProps {
   plan: MembershipPlan | null;
@@ -82,7 +83,7 @@ const MembershipPlanFormModal: React.FC<MembershipPlanFormModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error('Error saving membership plan:', err);
-      setError(err.message || 'Failed to save membership plan');
+      setError(getFirebaseErrorMessage(err) || 'Failed to save membership plan');
     } finally {
       setLoading(false);
     }

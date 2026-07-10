@@ -9,28 +9,37 @@ import { getRelativeTime } from '../utils/dateUtils';
 import { serverTimestamp } from 'firebase/firestore';
 import CreateCampaignModal from '../components/modals/CreateCampaignModal';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
+import { useAuth } from '../contexts/AuthContext';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const Marketing: React.FC = () => {
+  const { isSuperAdmin, isVenueManager } = useAuth();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
   const { showSuccess, showError } = useToast();
-  const [campaignType, setCampaignType] = useState<'Global' | 'Venue'>('Global');
+  const [campaignType, setCampaignType] = useState<'Global' | 'Venue'>(
+    isVenueManager && !isSuperAdmin ? 'Venue' : 'Global'
+  );
   const [processing, setProcessing] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<MarketingCampaign | null>(null);
   const [deletingCampaignId, setDeletingCampaignId] = useState<string | null>(null);
 
-  const { campaigns, loading } = useMarketingCampaigns({ realtime: true });
+  const { campaigns, loading, error } = useMarketingCampaigns({ realtime: true });
   const { venues } = useVenues({ realtime: true });
 
-  // Register "New Entry" handler for Header button
+  // Only super admins can create/edit campaigns (Firestore write is super-admin only).
   useEffect(() => {
+    if (!isSuperAdmin) {
+      unsetNewEntryHandler();
+      return;
+    }
     setNewEntryHandler(() => {
       setShowCreateModal(true);
     });
     return () => {
       unsetNewEntryHandler();
     };
-  }, [setNewEntryHandler, unsetNewEntryHandler]);
+  }, [setNewEntryHandler, unsetNewEntryHandler, isSuperAdmin]);
 
   // Filter campaigns by type
   const filteredCampaigns = useMemo(() => {
@@ -78,7 +87,7 @@ const Marketing: React.FC = () => {
       });
     } catch (error: any) {
       console.error('Error toggling campaign:', error);
-      showError('Failed to update campaign: ' + error.message);
+      showError('Failed to update campaign: ' + getFirebaseErrorMessage(error));
     } finally {
       setProcessing(null);
     }
@@ -95,7 +104,7 @@ const Marketing: React.FC = () => {
       showSuccess('Campaign deleted successfully.');
     } catch (error: any) {
       console.error('Error deleting campaign:', error);
-      showError('Failed to delete campaign: ' + error.message);
+      showError('Failed to delete campaign: ' + getFirebaseErrorMessage(error));
     } finally {
       setProcessing(null);
     }
@@ -176,18 +185,29 @@ const Marketing: React.FC = () => {
 
   return (
     <div className="p-4 sm:p-8 space-y-6 sm:space-y-10 bg-background-light dark:bg-background-dark min-h-full">
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-900 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+          {error}
+        </div>
+      )}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <h2 className="text-3xl font-black text-gray-900 dark:text-gray-100 tracking-tight">Marketing & Offers</h2>
-          <p className="text-gray-500 mt-1">Manage in-app banners, global offers, and venue announcements.</p>
+          <p className="text-gray-500 mt-1">
+            {isSuperAdmin
+              ? 'Manage in-app banners, global offers, and venue announcements.'
+              : 'View in-app banners and offers. Campaign creation is managed by super admins.'}
+          </p>
         </div>
-        <button 
-          onClick={() => setShowCreateModal(true)}
-          className="bg-primary text-primary-content px-6 py-3 rounded-xl font-black text-sm hover:shadow-lg transition-all flex items-center gap-2"
-        >
-          <span className="material-symbols-outlined">add_photo_alternate</span>
-          Create New Campaign
-        </button>
+        {isSuperAdmin && (
+          <button 
+            onClick={() => setShowCreateModal(true)}
+            className="bg-primary text-primary-content px-6 py-3 rounded-xl font-black text-sm hover:shadow-lg transition-all flex items-center gap-2"
+          >
+            <span className="material-symbols-outlined">add_photo_alternate</span>
+            Create New Campaign
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8">

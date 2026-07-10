@@ -11,7 +11,7 @@ export interface Permission {
   id: string;
   name: string;
   description?: string;
-  category: 'users' | 'bookings' | 'venues' | 'financials' | 'staff' | 'marketing' | 'settings' | 'other';
+  category: 'users' | 'bookings' | 'venues' | 'tournaments' | 'memberships' | 'financials' | 'staff' | 'marketing' | 'settings' | 'other';
   resource: string; // e.g., 'users.create', 'bookings.edit'
   action: 'create' | 'read' | 'update' | 'delete' | 'manage';
   createdAt?: any;
@@ -79,7 +79,17 @@ export interface AuthContextType {
   error: string | null;
   isAuthenticated: boolean;
   isSuperAdmin: boolean;
+  /**
+   * True for venue managers and custom-role admin users. Both are scoped to
+   * their assigned venues / vendor-owned resources (unlike super admins).
+   */
   isVenueManager: boolean;
+  /** Human-readable role label (e.g. "Regional Coordinator"). */
+  roleDisplayName: string;
+  /** Effective permission IDs: role permissions plus per-user customPermissions. */
+  permissions: string[];
+  /** True if the user holds ALL of the given permission IDs. Super admins always pass. */
+  hasPermission: (...permissionIds: string[]) => boolean;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
   clearError: () => void;
@@ -91,8 +101,11 @@ export interface Booking {
   courtId: string;
   court: string;
   sport: string;
+  sportId?: string;
+  sportOptions?: Record<string, string>;
   userId: string;
   user: string;
+  userPhone?: string;
   date: string;
   time: string;
   startTime: any;
@@ -127,6 +140,10 @@ export interface Venue {
     lng: number;
   };
   managerId?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  description?: string;
   sports: string[];
   courts: Court[];
   amenities: string[];
@@ -162,6 +179,7 @@ export interface Court {
   venueId: string;
   name: string;
   sport: 'Badminton' | 'Cricket' | 'Football' | string;
+  sportId?: string;
   type: string;
   pricePerHour: number;
   availability: {
@@ -182,6 +200,7 @@ export interface Membership {
   venueId: string;
   planId: string;
   planName: string;
+  venueName?: string; // Denormalized venue name stored at creation time
   planType: 'Monthly' | '6 Months' | 'Annual';
   price: number;
   paymentStatus?: 'Pending' | 'Paid' | 'Refunded';
@@ -232,6 +251,8 @@ export interface Invoice {
   type: 'Booking' | 'Membership' | 'Commission' | 'Settlement';
   source: string;
   sourceId: string;
+  /** Venue this invoice belongs to (required for vendor-scoped reads). */
+  venueId?: string;
   amount: number;
   breakdown: {
     gross: number;
@@ -405,29 +426,12 @@ export interface Sport {
   defaultMaxTeamSize?: number;
   defaultMatchDuration?: number; // in minutes
   defaultScoringFormat?: string; // e.g., "Best of 3", "First to 21"
-  // Sport-specific options (flexible JSON structure)
+  // Sport-specific options — fully dynamic, keyed by option name.
+  // Examples: courtType: ['Indoor', 'Outdoor'], format: ['T20', 'ODI', 'Test'],
+  // fieldSize: ['5v5', '7v7', '11v11'], courtSurface: ['Hard', 'Clay', 'Grass'],
+  // gameTypes: ['Singles', 'Doubles'], overs: [6, 10, 20, 50], etc.
   sportSpecificOptions?: {
-    // Badminton
-    courtType?: 'Indoor' | 'Outdoor' | 'Both';
-    gameTypes?: string[]; // e.g., ['Singles', 'Doubles', 'Mixed Doubles']
-    shuttleType?: string[]; // e.g., ['Plastic', 'Feather']
-    // Cricket
-    format?: string[]; // e.g., ['T20', 'ODI', 'Test']
-    overs?: number[];
-    ballType?: string[]; // e.g., ['Leather', 'Tennis']
-    pitchType?: string[]; // e.g., ['Turf', 'Concrete', 'Matting']
-    // Football
-    fieldSize?: string[]; // e.g., ['5v5', '7v7', '11v11']
-    matchDuration?: number[]; // in minutes
-    ballSize?: string[]; // e.g., ['Size 4', 'Size 5']
-    // Tennis
-    courtSurface?: string[]; // e.g., ['Hard', 'Clay', 'Grass', 'Carpet']
-    matchFormat?: string[]; // e.g., ['Best of 3', 'Best of 5']
-    // Basketball
-    courtType?: string[]; // e.g., ['Indoor', 'Outdoor']
-    ballSize?: string[]; // e.g., ['Size 6', 'Size 7']
-    // Generic custom fields
-    [key: string]: any;
+    [key: string]: string[] | number[] | string | number;
   };
   createdAt?: any;
   updatedAt?: any;
@@ -439,8 +443,10 @@ export interface Tournament {
   description?: string;
   sport: string; // Sport ID or name (for backward compatibility)
   sportId?: string; // Reference to Sport document
+  sportOptions?: Record<string, string>; // Selected values from sport-specific options
   venueId: string;
   venueName?: string;
+  vendorId?: string;
   startDate: any;
   endDate: any;
   registrationStartDate: any;
@@ -635,6 +641,9 @@ export interface SupportTicket {
   userId: string;
   userName?: string;
   userEmail?: string;
+  /** Venue this ticket relates to (vendors only see tickets for managed venues). */
+  venueId?: string;
+  venueName?: string;
   type: 'Refund Request' | 'App Crash' | 'Payment Sync' | 'Booking Issue' | 'Membership Issue' | 'Other';
   priority: 'Low' | 'Medium' | 'High' | 'Critical';
   subject: string;
@@ -656,7 +665,10 @@ export interface QuickMatch {
   id: string;
   venueId: string;
   venueName?: string;
+  vendorId?: string;
   sport: string;
+  sportId?: string;
+  sportOptions?: Record<string, string>;
   courtId?: string;
   courtName?: string;
   date: any; // Firestore timestamp
@@ -672,7 +684,9 @@ export interface QuickMatch {
 
 export interface Leaderboard {
   id: string;
+  vendorId?: string;
   venueId?: string; // Optional: venue-specific leaderboard
+  venueName?: string;
   sport: string;
   type: 'Global' | 'Venue' | 'Monthly' | 'All-Time';
   entries: Array<{
@@ -691,6 +705,7 @@ export interface Leaderboard {
 
 export interface Poll {
   id: string;
+  vendorId?: string;
   question: string;
   options: Array<{
     id: string;
@@ -709,6 +724,7 @@ export interface Poll {
 
 export interface FlashDeal {
   id: string;
+  vendorId?: string;
   title: string;
   description?: string;
   venueId: string;
@@ -725,6 +741,18 @@ export interface FlashDeal {
   imageUrl?: string;
   createdAt?: any;
   updatedAt?: any;
+}
+
+// Shared shape for Razorpay/WhatsApp integrations. Fields not used by a given
+// provider simply stay undefined (e.g. phoneNumberId for Razorpay).
+export interface IntegrationConfig {
+  enabled: boolean;
+  status: 'Connected' | 'Disconnected' | 'Setup Required';
+  apiKey?: string;
+  apiSecret?: string;
+  webhookSecret?: string;
+  phoneNumberId?: string;
+  businessAccountId?: string;
 }
 
 export interface AppSettings {
@@ -793,20 +821,8 @@ export interface AppSettings {
   
   // API Integrations
   integrations: {
-    razorpay: {
-      enabled: boolean;
-      status: 'Connected' | 'Disconnected' | 'Setup Required';
-      apiKey?: string;
-      apiSecret?: string;
-      webhookSecret?: string;
-    };
-    whatsapp: {
-      enabled: boolean;
-      status: 'Connected' | 'Disconnected' | 'Setup Required';
-      apiKey?: string;
-      phoneNumberId?: string;
-      businessAccountId?: string;
-    };
+    razorpay: IntegrationConfig;
+    whatsapp: IntegrationConfig;
     email?: {
       enabled: boolean;
       status: 'Connected' | 'Disconnected' | 'Setup Required';

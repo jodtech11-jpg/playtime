@@ -7,10 +7,16 @@ import { serverTimestamp } from 'firebase/firestore';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import PollFormModal from '../components/modals/PollFormModal';
+import { useSports } from '../hooks/useSports';
 import { formatDate } from '../utils/dateUtils';
+import { withVendorId } from '../utils/vendorScope';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const Polls: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isSuperAdmin, isVenueManager } = useAuth();
+  // Vendor-like roles (venue managers + custom roles) own and manage their content
+  const isVendor = isVenueManager;
+  const canManage = isSuperAdmin || isVendor;
   const { showSuccess, showError } = useToast();
   const { openConfirm, confirmDialog } = useConfirmDialog();
   const [statusFilter, setStatusFilter] = useState<string>('All');
@@ -19,11 +25,12 @@ const Polls: React.FC = () => {
   const [selectedPoll, setSelectedPoll] = useState<Poll | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
 
-  const { polls, loading } = usePolls({
+  const { polls, loading, error } = usePolls({
     realtime: true,
     status: statusFilter !== 'All' ? statusFilter as Poll['status'] : undefined,
     sport: sportFilter !== 'All' ? sportFilter : undefined,
   });
+  const { sports: sportsCatalog } = useSports({ activeOnly: true, realtime: false });
 
   const filteredPolls = polls.filter(poll => {
     if (statusFilter !== 'All' && poll.status !== statusFilter) return false;
@@ -52,11 +59,16 @@ const Polls: React.FC = () => {
         });
         showSuccess('Poll updated successfully');
       } else {
-        await pollsCollection.create({
-          ...pollData,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
+        await pollsCollection.create(
+          withVendorId(
+            {
+              ...pollData,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            },
+            isVenueManager ? user?.id : undefined
+          )
+        );
         showSuccess('Poll created successfully');
       }
 
@@ -64,7 +76,7 @@ const Polls: React.FC = () => {
       setSelectedPoll(null);
     } catch (error: any) {
       console.error('Error saving poll:', error);
-      showError('Failed to save poll: ' + error.message);
+      showError('Failed to save poll: ' + getFirebaseErrorMessage(error));
     } finally {
       setProcessing(null);
     }
@@ -81,7 +93,7 @@ const Polls: React.FC = () => {
           showSuccess('Poll deleted successfully');
         } catch (error: any) {
           console.error('Error deleting poll:', error);
-          showError('Failed to delete poll: ' + error.message);
+          showError('Failed to delete poll: ' + getFirebaseErrorMessage(error));
         } finally {
           setProcessing(null);
         }
@@ -99,29 +111,38 @@ const Polls: React.FC = () => {
       showSuccess('Status updated successfully');
     } catch (error: any) {
       console.error('Error updating status:', error);
-      showError('Failed to update status: ' + error.message);
+      showError('Failed to update status: ' + getFirebaseErrorMessage(error));
     } finally {
       setProcessing(null);
     }
   };
 
-  const sports = ['All', 'Football', 'Cricket', 'Badminton', 'Tennis', 'Basketball'];
+  const sportFilterOptions = ['All', ...sportsCatalog.map((s) => s.name)];
   const statuses = ['All', 'Active', 'Closed'];
 
   return (
     <div className="p-4 sm:p-6 space-y-6">
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-900 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+          {error}
+        </div>
+      )}
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-black text-slate-900 dark:text-white mb-2">Polls</h1>
-          <p className="text-slate-500 dark:text-gray-400 text-sm">Manage community polls and face-offs</p>
+          <p className="text-slate-500 dark:text-gray-400 text-sm">
+            {canManage ? 'Manage community polls for your venue' : 'View and manage all venue polls'}
+          </p>
         </div>
+        {canManage && (
         <button
           onClick={handleCreatePoll}
           className="px-6 py-3 bg-primary text-background-dark rounded-xl hover:bg-primary/90 transition-colors font-black text-sm uppercase tracking-wider"
         >
           + New Poll
         </button>
+        )}
       </div>
 
       {/* Filters */}
@@ -143,7 +164,7 @@ const Polls: React.FC = () => {
           onChange={(e) => setSportFilter(e.target.value)}
           className="px-4 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-surface-dark text-slate-900 dark:text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
         >
-          {sports.map((sport) => (
+          {sportFilterOptions.map((sport) => (
             <option key={sport} value={sport}>
               {sport}
             </option>
@@ -222,23 +243,25 @@ const Polls: React.FC = () => {
               </div>
 
               <div className="flex gap-2">
+                {canManage && (
                 <button
                   onClick={() => handleEditPoll(poll)}
                   className="flex-1 px-4 py-2 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-colors text-sm font-black uppercase tracking-wider"
                 >
                   Edit
                 </button>
+                )}
                 <button
                   onClick={() => handleDeletePoll(poll.id)}
                   disabled={processing === poll.id}
-                  className="px-4 py-2 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500/20 transition-colors text-sm font-black uppercase tracking-wider disabled:opacity-50"
+                  className={`${canManage ? '' : 'flex-1 '}px-4 py-2 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500/20 transition-colors text-sm font-black uppercase tracking-wider disabled:opacity-50`}
                 >
                   {processing === poll.id ? '...' : 'Delete'}
                 </button>
               </div>
 
               {/* Quick Status Update */}
-              {poll.status === 'Active' && (
+              {canManage && poll.status === 'Active' && (
                 <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-800">
                   <button
                     onClick={() => handleUpdateStatus(poll.id, 'Closed')}

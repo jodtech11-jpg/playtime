@@ -8,6 +8,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { formatCurrency } from '../../utils/formatUtils';
 import { formatDate } from '../../utils/dateUtils';
 import { generateInvoicePDFFile, getInvoiceVenueName } from '../../services/invoiceService';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface CreateInvoiceModalProps {
   isOpen: boolean;
@@ -59,7 +60,8 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({
       if (booking) {
         const bookingAmount = booking.amount || 0;
         const calculatedCommission = bookingAmount * PLATFORM_COMMISSION_RATE;
-        const calculatedConvenienceFee = CONVENIENCE_FEE;
+        // Convenience fee only applies to first-time bookings
+        const calculatedConvenienceFee = booking.isFirstTimeBooking === true ? CONVENIENCE_FEE : 0;
         const calculatedGatewayFee = calculatedCommission * 0.06; // 6% of commission
         const net = calculatedCommission + calculatedConvenienceFee - calculatedGatewayFee;
 
@@ -147,6 +149,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({
         type: invoiceType,
         source: sourceName,
         sourceId: invoiceType === 'Booking' ? selectedBookingId : invoiceType === 'Membership' ? selectedMembershipId : resolvedSourceId,
+        venueId: resolvedSourceId || undefined,
         amount: netAmount,
         breakdown: {
           gross: grossAmount,
@@ -175,31 +178,32 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({
       setStatus('Draft');
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Failed to create invoice');
+      setError(getFirebaseErrorMessage(err) || 'Failed to create invoice');
     } finally {
       setLoading(false);
     }
   };
 
   const handleGeneratePDF = async () => {
-    if (!gross || !amount) {
-      setError('Please fill in all required fields before generating PDF');
+    const netAmount = parseFloat(amount) || parseFloat(gross) || 0;
+    if (!netAmount) {
+      setError('Please enter at least the net amount (or gross) before previewing the document');
       return;
     }
 
     try {
-      const grossAmount = parseFloat(gross) || 0;
+      const grossAmount = parseFloat(gross) || netAmount;
       const commissionAmount = parseFloat(commission) || 0;
       const convenienceFeeAmount = parseFloat(convenienceFee) || 0;
       const gatewayFeeAmount = parseFloat(gatewayFee) || 0;
-      const netAmount = parseFloat(amount) || 0;
 
       const tempInvoice: Invoice = {
         id: 'temp',
         invoiceNumber: `PREVIEW-${Date.now()}`,
         type: invoiceType,
-        source: sourceName,
-        sourceId: selectedSourceId,
+        source: sourceName || 'Preview',
+        sourceId: invoiceType === 'Booking' ? selectedBookingId : invoiceType === 'Membership' ? selectedMembershipId : selectedSourceId,
+        venueId: selectedSourceId || undefined,
         amount: netAmount,
         breakdown: {
           gross: grossAmount,
@@ -213,9 +217,9 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({
       };
 
       const venueName = getInvoiceVenueName(tempInvoice, venues);
-      await generateInvoicePDFFile(tempInvoice, venueName);
+      await generateInvoicePDFFile(tempInvoice, venueName, { preview: true });
     } catch (err: any) {
-      setError(err.message || 'Failed to generate PDF');
+      setError(getFirebaseErrorMessage(err) || 'Failed to generate PDF preview. Fill in Gross and Net amounts, then try again.');
     }
   };
 
@@ -435,12 +439,12 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({
                 </div>
               </div>
 
-              <div className="ui-card p-6 bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-none flex items-center justify-between">
+              <div className="ui-card p-6 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Net Platform Revenue</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Net Platform Revenue</p>
                   <div className="flex items-center gap-3 mt-1">
-                    <span className="text-2xl font-black tracking-tighter">{amount ? formatCurrency(parseFloat(amount) || 0) : '₹0.00'}</span>
-                    <span className="text-[9px] font-black uppercase tracking-widest bg-white/10 dark:bg-slate-900/10 px-2 py-0.5 rounded-full border border-white/20 dark:border-slate-900/20">Final Amount</span>
+                    <span className="text-2xl font-black tracking-tighter text-slate-900 dark:text-white">{amount ? formatCurrency(parseFloat(amount) || 0) : '₹0.00'}</span>
+                    <span className="text-[9px] font-black uppercase tracking-widest bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-600">Final Amount</span>
                   </div>
                 </div>
                 <input
@@ -448,7 +452,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({
                   step="0.01"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  className="bg-transparent text-right text-sm font-black border-none focus:ring-0 w-32 placeholder:text-white/30 dark:placeholder:text-slate-900/30"
+                  className="bg-transparent text-right text-sm font-black text-slate-900 dark:text-white border-none focus:ring-0 w-32 placeholder:text-slate-300 dark:placeholder:text-slate-600"
                   placeholder="0.00"
                   required
                 />
@@ -483,7 +487,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({
           <button
             type="button"
             onClick={handleGeneratePDF}
-            disabled={!gross || !amount}
+            disabled={!amount && !gross}
             className="px-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 h-14 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-all active:scale-95 disabled:opacity-50 flex items-center gap-3"
           >
             <span className="material-symbols-outlined text-lg">picture_as_pdf</span>

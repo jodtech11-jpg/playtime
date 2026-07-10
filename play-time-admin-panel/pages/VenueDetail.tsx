@@ -8,10 +8,13 @@ import { venuesCollection } from '../services/firebase';
 import { Venue } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { formatCurrency, getStatusColor } from '../utils/formatUtils';
+import { formatCurrency, getStatusColor, resolveSportName } from '../utils/formatUtils';
 import { formatDate, getRelativeTime } from '../utils/dateUtils';
+import { useSports } from '../hooks/useSports';
+import SportBadge from '../components/shared/SportBadge';
 import VenueFormModal from '../components/modals/VenueFormModal';
 import { serverTimestamp } from 'firebase/firestore';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const VenueDetail: React.FC = () => {
   const { venueId } = useParams<{ venueId: string }>();
@@ -24,6 +27,7 @@ const VenueDetail: React.FC = () => {
 
   const { bookings, loading: bookingsLoading } = useBookings({ venueId: venueId, realtime: true });
   const { courts, loading: courtsLoading } = useCourts({ venueId: venueId, realtime: true });
+  const { sports: sportsCatalog } = useSports({ activeOnly: false, realtime: false });
   const { users } = useUsers({ limit: 100 });
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -69,7 +73,7 @@ const VenueDetail: React.FC = () => {
     } catch (err: any) {
       console.error('Error saving venue:', err);
       setProcessing(null);
-      showError(`Failed to save venue: ${err.message}`);
+      showError(`Failed to save venue: ${getFirebaseErrorMessage(err)}`);
     }
   };
 
@@ -297,12 +301,7 @@ const VenueDetail: React.FC = () => {
             <div className="flex flex-wrap gap-2">
               {venue.sports && venue.sports.length > 0 ? (
                 venue.sports.map((sport, idx) => (
-                  <div key={idx} className="px-5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl flex items-center gap-3 transition-all hover:bg-white dark:hover:bg-slate-800 hover:border-amber-400/40 group">
-                    <span className="material-symbols-outlined text-amber-500 text-sm">sports_score</span>
-                    <span className="text-xs font-black text-slate-700 dark:text-slate-200 uppercase tracking-widest">
-                      {sport}
-                    </span>
-                  </div>
+                  <SportBadge key={idx} sportName={sport} sports={sportsCatalog} />
                 ))
               ) : (
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">No sports added</p>
@@ -457,7 +456,7 @@ const VenueDetail: React.FC = () => {
                   <div key={court.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700 hover:border-emerald-400/30 transition-all group">
                     <div>
                       <p className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-widest group-hover:text-primary transition-colors">{court.name}</p>
-                      <p className="text-[9px] font-bold text-slate-500 mt-1">{court.sport}</p>
+                      <p className="text-[9px] font-bold text-slate-500 mt-1">{resolveSportName(court.sport, sportsCatalog)}</p>
                     </div>
                     <div className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest ${court.status === 'Active' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
                       }`}>

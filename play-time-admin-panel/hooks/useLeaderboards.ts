@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Leaderboard } from '../types';
 import { leaderboardsCollection } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { vendorIdFilter } from '../utils/vendorScope';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface UseLeaderboardsOptions {
   venueId?: string;
@@ -22,42 +24,29 @@ export const useLeaderboards = (options: UseLeaderboardsOptions = {}) => {
       return;
     }
 
+    if (isVenueManager && !user.id) {
+      setLeaderboards([]);
+      setLoading(false);
+      return;
+    }
+
+    let mounted = true;
+    let unsubscribe: (() => void) | null = null;
+
     const fetchLeaderboards = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        const filters: any[] = [];
+        const filters: { field: string; operator: string; value: unknown }[] = [];
 
-        const managed = user.managedVenues?.filter(Boolean) ?? [];
-        if (isVenueManager) {
-          if (managed.length === 0) {
-            setLeaderboards([]);
-            setLoading(false);
-            return;
-          }
-          if (options.venueId && !managed.includes(options.venueId)) {
-            setLeaderboards([]);
-            setLoading(false);
-            return;
-          }
+        if (isVenueManager && user.id) {
+          filters.push(vendorIdFilter(user.id));
           if (options.venueId) {
             filters.push({
               field: 'venueId',
               operator: '==',
               value: options.venueId,
-            });
-          } else {
-            const ids = managed.slice(0, 10);
-            if (managed.length > 10) {
-              console.warn(
-                'useLeaderboards: venue manager has more than 10 managedVenues; only the first 10 are queried.'
-              );
-            }
-            filters.push({
-              field: 'venueId',
-              operator: 'in',
-              value: ids,
             });
           }
         } else if (options.venueId) {
@@ -86,36 +75,46 @@ export const useLeaderboards = (options: UseLeaderboardsOptions = {}) => {
           });
         }
 
+        const sortByUpdatedDesc = (rows: Leaderboard[]) =>
+          [...rows].sort((a, b) => {
+            const aTime = a.updatedAt?.toMillis?.() ?? a.updatedAt?.seconds ?? a.createdAt?.toMillis?.() ?? a.createdAt?.seconds ?? 0;
+            const bTime = b.updatedAt?.toMillis?.() ?? b.updatedAt?.seconds ?? b.createdAt?.toMillis?.() ?? b.createdAt?.seconds ?? 0;
+            return bTime - aTime;
+          });
+
+        // Sort in memory — avoid orderBy so vendor filters don't need composite indexes.
         if (options.realtime) {
-          const unsubscribe = leaderboardsCollection.subscribeAll(
+          unsubscribe = leaderboardsCollection.subscribeAll(
             (data: Leaderboard[]) => {
-              setLeaderboards(data);
+              if (!mounted) return;
+              setLeaderboards(sortByUpdatedDesc(data || []));
               setLoading(false);
             },
-            filters.length > 0 ? filters : undefined,
-            'updatedAt',
-            'desc'
+            filters.length > 0 ? filters : undefined
           );
-
-          return () => unsubscribe();
         } else {
           const data = await leaderboardsCollection.getAll(
-            filters.length > 0 ? filters : undefined,
-            'updatedAt',
-            'desc'
+            filters.length > 0 ? filters : undefined
           );
-          setLeaderboards(data as Leaderboard[]);
+          if (!mounted) return;
+          setLeaderboards(sortByUpdatedDesc(data as Leaderboard[]));
           setLoading(false);
         }
       } catch (err: any) {
+        if (!mounted) return;
         console.error('Error fetching leaderboards:', err);
-        setError(err.message || 'Failed to fetch leaderboards');
+        setError(getFirebaseErrorMessage(err, 'Failed to fetch leaderboards'));
         setLoading(false);
       }
     };
 
     fetchLeaderboards();
-  }, [user, options.venueId, options.sport, options.type, options.realtime, isVenueManager]);
+
+    return () => {
+      mounted = false;
+      if (unsubscribe) unsubscribe();
+    };
+  }, [user?.id, options.venueId, options.sport, options.type, options.realtime, isVenueManager]);
 
   return { leaderboards, loading, error };
 };

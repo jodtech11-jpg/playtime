@@ -7,6 +7,7 @@ import { useTournaments } from './useTournaments';
 import { useProducts } from './useProducts';
 import { useOrders } from './useOrders';
 import { useNotifications } from './useNotifications';
+import { useAuth } from '../contexts/AuthContext';
 
 export interface SearchResult {
   id: string;
@@ -22,6 +23,7 @@ export interface SearchResult {
 export const useGlobalSearch = (query: string, enabled: boolean = true) => {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const { isSuperAdmin } = useAuth();
 
   // Only fetch data if search is enabled and query is long enough
   const shouldSearch = enabled && query.trim().length >= 2;
@@ -29,13 +31,13 @@ export const useGlobalSearch = (query: string, enabled: boolean = true) => {
   // Fetch all data (with limits for performance) - only when searching
   const bookingsOptions = shouldSearch ? { realtime: false, limit: 50 } : { realtime: false, limit: 0 };
   const { bookings } = useBookings(bookingsOptions);
-  const { users } = useUsers(shouldSearch ? { limit: 50 } : { limit: 0 });
+  const { users } = useUsers(shouldSearch && isSuperAdmin ? { limit: 50 } : { limit: 0 });
   const { venues } = useVenues(shouldSearch ? { realtime: false } : { realtime: false });
   const { staff } = useStaff(shouldSearch ? { realtime: false } : { realtime: false });
   const { tournaments } = useTournaments(shouldSearch ? { realtime: false } : { realtime: false });
-  const { products } = useProducts(shouldSearch ? { realtime: false, limit: 50 } : { realtime: false, limit: 0 });
-  const { orders } = useOrders(shouldSearch ? { realtime: false, limit: 50 } : { realtime: false, limit: 0 });
-  const { notifications } = useNotifications(shouldSearch);
+  const { products } = useProducts(shouldSearch && isSuperAdmin ? { realtime: false, limit: 50 } : { realtime: false, limit: 0 });
+  const { orders } = useOrders(shouldSearch && isSuperAdmin ? { realtime: false, limit: 50 } : { realtime: false, limit: 0 });
+  const { notifications } = useNotifications(shouldSearch && isSuperAdmin);
 
   // Perform search
   useEffect(() => {

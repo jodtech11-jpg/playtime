@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ordersCollection } from '../services/firebase';
 import { Order } from '../types';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface UseOrdersOptions {
   status?: Order['status'];
@@ -16,7 +17,15 @@ export const useOrders = (options: UseOrdersOptions = {}) => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // limit: 0 means "skip fetching" (e.g. global search while idle)
+    if (options.limit === 0) {
+      setOrders([]);
+      setLoading(false);
+      return;
+    }
+
     let unsubscribe: (() => void) | undefined;
+    let mounted = true;
 
     const fetchOrders = async () => {
       try {
@@ -52,6 +61,7 @@ export const useOrders = (options: UseOrdersOptions = {}) => {
         if (options.realtime) {
           unsubscribe = ordersCollection.subscribeAll(
             (data: Order[]) => {
+              if (!mounted) return;
               setOrders(data);
               setLoading(false);
             },
@@ -61,14 +71,19 @@ export const useOrders = (options: UseOrdersOptions = {}) => {
           );
         } else {
           const data = await ordersCollection.getAll(
-            filters.length > 0 ? filters : undefined
+            filters.length > 0 ? filters : undefined,
+            'createdAt',
+            'desc',
+            options.limit
           ) as Order[];
+          if (!mounted) return;
           setOrders(data);
           setLoading(false);
         }
       } catch (err: any) {
         console.error('Error fetching orders:', err);
-        setError(err.message || 'Failed to fetch orders');
+        if (!mounted) return;
+        setError(getFirebaseErrorMessage(err, 'Failed to fetch orders'));
         setLoading(false);
       }
     };
@@ -76,6 +91,7 @@ export const useOrders = (options: UseOrdersOptions = {}) => {
     fetchOrders();
 
     return () => {
+      mounted = false;
       if (unsubscribe) {
         unsubscribe();
       }

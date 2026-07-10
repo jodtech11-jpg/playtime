@@ -1,7 +1,8 @@
-import React from 'react';
-import { Booking } from '../../types';
-import { formatCurrency, getStatusColor } from '../../utils/formatUtils';
+import React, { useEffect, useState } from 'react';
+import { Booking, Sport } from '../../types';
+import { formatCurrency, formatBookingReference, getStatusColor, resolveSportName, resolveBookingUserName } from '../../utils/formatUtils';
 import { formatDate, formatTime } from '../../utils/dateUtils';
+import { usersCollection } from '../../services/firebase';
 
 interface BookingDetailsModalProps {
   booking: Booking | null;
@@ -10,6 +11,7 @@ interface BookingDetailsModalProps {
   onAccept?: (bookingId: string) => void;
   onReject?: (bookingId: string) => void;
   onCancel?: (bookingId: string) => void;
+  sports?: Sport[];
 }
 
 const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
@@ -18,11 +20,50 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
   onClose,
   onAccept,
   onReject,
-  onCancel
+  onCancel,
+  sports = []
 }) => {
+  const [resolvedUserName, setResolvedUserName] = useState('');
+
+  useEffect(() => {
+    if (!booking) {
+      setResolvedUserName('');
+      return;
+    }
+
+    const cachedName = resolveBookingUserName(booking);
+    if (cachedName) {
+      setResolvedUserName(cachedName);
+      return;
+    }
+
+    if (!booking.userId) {
+      setResolvedUserName('—');
+      return;
+    }
+
+    let cancelled = false;
+    usersCollection
+      .get(booking.userId)
+      .then((doc) => {
+        if (cancelled) return;
+        const user = doc as { name?: string; email?: string } | null;
+        setResolvedUserName(user?.name?.trim() || user?.email?.trim() || 'Unknown user');
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedUserName('Unknown user');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [booking?.id, booking?.user, booking?.userId]);
+
   if (!isOpen || !booking) return null;
 
   const statusColors = getStatusColor(booking.status);
+  const sportName = resolveSportName(booking.sport, sports);
+  const bookingRef = formatBookingReference(booking.id);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
@@ -31,7 +72,9 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
         <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between z-10">
           <div>
             <h2 className="text-2xl font-black text-gray-900">Booking Details</h2>
-            <p className="text-sm text-gray-500 mt-1">ID: {booking.id}</p>
+            <p className="text-sm text-gray-500 mt-1" title={booking.id}>
+              Ref: {bookingRef}
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -63,11 +106,11 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
           <div className="grid grid-cols-2 gap-6">
             <div>
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">User</label>
-              <p className="text-base font-bold text-gray-900">{booking.user}</p>
+              <p className="text-base font-bold text-gray-900">{resolvedUserName || '…'}</p>
             </div>
             <div>
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Sport</label>
-              <p className="text-base font-bold text-gray-900">{booking.sport}</p>
+              <p className="text-base font-bold text-gray-900">{sportName}</p>
             </div>
             <div>
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Court</label>

@@ -1,8 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { QuickMatch } from '../../types';
+import { useSports } from '../../hooks/useSports';
 import { useVenues } from '../../hooks/useVenues';
+import { courtMatchesSport, getSportsForVenue, findSport, cleanSportOptions } from '../../utils/sportUtils';
 import { useCourts } from '../../hooks/useCourts';
+import SportOptionsFields from '../shared/SportOptionsFields';
 import { serverTimestamp, Timestamp } from 'firebase/firestore';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface QuickMatchFormModalProps {
   isOpen: boolean;
@@ -11,6 +15,18 @@ interface QuickMatchFormModalProps {
   match?: QuickMatch | null;
 }
 
+// Format a Date as YYYY-MM-DD in local time (toISOString would shift the day in non-UTC timezones)
+const toLocalDateInputValue = (d: Date): string => {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+// Parse a YYYY-MM-DD input value as local time (new Date('YYYY-MM-DD') parses as UTC midnight)
+const parseLocalDateTime = (dateStr: string, hours: number, minutes: number): Date => {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d, hours, minutes, 0, 0);
+};
+
 const QuickMatchFormModal: React.FC<QuickMatchFormModalProps> = ({
   isOpen,
   onClose,
@@ -18,86 +34,114 @@ const QuickMatchFormModal: React.FC<QuickMatchFormModalProps> = ({
   match
 }) => {
   const { venues, loading: venuesLoading } = useVenues({ realtime: false });
+  const { sports: allSports, loading: sportsLoading } = useSports({ activeOnly: true, realtime: false });
   const [selectedVenueId, setSelectedVenueId] = useState<string>(match?.venueId || '');
   const { courts, loading: courtsLoading } = useCourts({ venueId: selectedVenueId, realtime: false });
 
+  const selectedVenue = venues.find((v) => v.id === selectedVenueId);
+  const venueSports = useMemo(
+    () => getSportsForVenue(selectedVenue, allSports),
+    [selectedVenue, allSports]
+  );
+
   const [formData, setFormData] = useState({
     venueId: match?.venueId || '',
-    sport: match?.sport || '',
+    sportId: match?.sportId || '',
     courtId: match?.courtId || '',
-    date: match?.date ? new Date(match.date.toDate()).toISOString().split('T')[0] : '',
+    date: match?.date ? toLocalDateInputValue(match.date.toDate()) : '',
     time: match?.time || '',
     maxPlayers: match?.maxPlayers || 4,
     status: match?.status || 'Open' as QuickMatch['status'],
   });
+  const [sportOptions, setSportOptions] = useState<Record<string, string>>(match?.sportOptions || {});
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const selectedSport = findSport(formData.sportId || match?.sport, venueSports.length ? venueSports : allSports);
+
   useEffect(() => {
     if (match) {
+      const sportRecord = findSport(match.sportId || match.sport, allSports);
       setFormData({
         venueId: match.venueId,
-        sport: match.sport,
+        sportId: sportRecord?.id || match.sportId || '',
         courtId: match.courtId || '',
-        date: match.date ? new Date(match.date.toDate()).toISOString().split('T')[0] : '',
+        date: match.date ? toLocalDateInputValue(match.date.toDate()) : '',
         time: match.time,
         maxPlayers: match.maxPlayers,
         status: match.status,
       });
+      setSportOptions(match.sportOptions || {});
       setSelectedVenueId(match.venueId);
     } else {
       setFormData({
         venueId: '',
-        sport: '',
+        sportId: '',
         courtId: '',
         date: '',
         time: '',
         maxPlayers: 4,
         status: 'Open',
       });
+      setSportOptions({});
       setSelectedVenueId('');
     }
-  }, [match, isOpen]);
+  }, [match, isOpen, allSports]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (!formData.venueId || !formData.sport || !formData.date || !formData.time) {
+    if (!formData.venueId || !formData.sportId || !formData.date || !formData.time) {
       setError('Please fill in all required fields');
       return;
+    }
+
+    const currentPlayers = match?.currentPlayers ?? 0;
+    if (formData.maxPlayers < currentPlayers) {
+      setError(`Max players cannot be less than the current player count (${currentPlayers})`);
+      return;
+    }
+
+    // Keep Open/Full status consistent with the player count
+    let status = formData.status;
+    if (currentPlayers >= formData.maxPlayers && status === 'Open') {
+      status = 'Full';
+    } else if (currentPlayers < formData.maxPlayers && status === 'Full') {
+      status = 'Open';
     }
 
     try {
       setSaving(true);
 
-      const selectedVenue = venues.find(v => v.id === formData.venueId);
+      const venue = venues.find(v => v.id === formData.venueId);
+      const sport = findSport(formData.sportId, allSports);
       const selectedCourt = courts.find(c => c.id === formData.courtId);
 
-      // Combine date and time into a Firestore timestamp
       const [hours, minutes] = formData.time.split(':').map(Number);
-      const matchDate = new Date(formData.date);
-      matchDate.setHours(hours, minutes, 0, 0);
+      const matchDate = parseLocalDateTime(formData.date, hours, minutes);
 
       const matchData: Partial<QuickMatch> = {
         venueId: formData.venueId,
-        venueName: selectedVenue?.name,
-        sport: formData.sport,
+        venueName: venue?.name,
+        sport: sport?.name || formData.sportId,
+        sportId: sport?.id || '',
+        // Empty object (not undefined) so edits clear stale options in Firestore
+        sportOptions: cleanSportOptions(sportOptions) ?? {},
         courtId: formData.courtId || undefined,
         courtName: selectedCourt?.name,
         date: Timestamp.fromDate(matchDate),
         time: formData.time,
         maxPlayers: formData.maxPlayers,
-        status: formData.status,
+        status,
         currentPlayers: match?.currentPlayers || 0,
         playerIds: match?.playerIds || [],
         updatedAt: serverTimestamp(),
       };
 
-      // If creating new, set createdBy and createdAt
       if (!match) {
-        matchData.createdBy = ''; // Will be set from auth context
+        matchData.createdBy = '';
         matchData.createdAt = serverTimestamp();
       }
 
@@ -105,7 +149,7 @@ const QuickMatchFormModal: React.FC<QuickMatchFormModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error('Error saving quick match:', err);
-      setError(err.message || 'Failed to save quick match');
+      setError(getFirebaseErrorMessage(err) || 'Failed to save quick match');
     } finally {
       setSaving(false);
     }
@@ -113,7 +157,13 @@ const QuickMatchFormModal: React.FC<QuickMatchFormModalProps> = ({
 
   if (!isOpen) return null;
 
-  const sports = ['Football', 'Cricket', 'Badminton', 'Tennis', 'Basketball'];
+  // Venue-scoped list, but keep the currently selected sport visible when
+  // editing a legacy match whose sport is no longer assigned to the venue.
+  const baseSportList = selectedVenueId ? venueSports : allSports;
+  const sportList =
+    selectedSport && !baseSportList.some((s) => s.id === selectedSport.id)
+      ? [selectedSport, ...baseSportList]
+      : baseSportList;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -139,7 +189,6 @@ const QuickMatchFormModal: React.FC<QuickMatchFormModalProps> = ({
             </div>
           )}
 
-          {/* Venue Selection */}
           <div>
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
               Venue *
@@ -147,8 +196,9 @@ const QuickMatchFormModal: React.FC<QuickMatchFormModalProps> = ({
             <select
               value={formData.venueId}
               onChange={(e) => {
-                setFormData({ ...formData, venueId: e.target.value, courtId: '' });
+                setFormData({ ...formData, venueId: e.target.value, sportId: '', courtId: '' });
                 setSelectedVenueId(e.target.value);
+                setSportOptions({});
               }}
               className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-surface-dark text-gray-900 dark:text-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
               required
@@ -163,28 +213,53 @@ const QuickMatchFormModal: React.FC<QuickMatchFormModalProps> = ({
             </select>
           </div>
 
-          {/* Sport Selection */}
           <div>
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
               Sport *
             </label>
             <select
-              value={formData.sport}
-              onChange={(e) => setFormData({ ...formData, sport: e.target.value })}
+              value={formData.sportId}
+              onChange={(e) => {
+                const sport = findSport(e.target.value, allSports);
+                setFormData({
+                  ...formData,
+                  sportId: e.target.value,
+                  courtId: '',
+                  maxPlayers: sport?.defaultMaxTeamSize || formData.maxPlayers,
+                });
+                setSportOptions({});
+              }}
               className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-surface-dark text-gray-900 dark:text-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
               required
+              disabled={sportsLoading || !selectedVenueId}
             >
-              <option value="">Select Sport</option>
-              {sports.map((sport) => (
-                <option key={sport} value={sport}>
-                  {sport}
+              <option value="">
+                {!selectedVenueId
+                  ? 'Select a venue first'
+                  : sportsLoading
+                    ? 'Loading sports...'
+                    : sportList.length === 0
+                      ? 'No sports at this venue'
+                      : 'Select Sport'}
+              </option>
+              {sportList.map((sport) => (
+                <option key={sport.id} value={sport.id}>
+                  {sport.name}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Court Selection (Optional) */}
-          {selectedVenueId && (
+          {selectedSport && (
+            <SportOptionsFields
+              sport={selectedSport}
+              values={sportOptions}
+              onChange={setSportOptions}
+              compact
+            />
+          )}
+
+          {selectedVenueId && formData.sportId && (
             <div>
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
                 Court (Optional)
@@ -197,7 +272,7 @@ const QuickMatchFormModal: React.FC<QuickMatchFormModalProps> = ({
               >
                 <option value="">No specific court</option>
                 {courts
-                  .filter(court => court.sport === formData.sport)
+                  .filter((court) => courtMatchesSport(court.sport, formData.sportId, allSports))
                   .map((court) => (
                     <option key={court.id} value={court.id}>
                       {court.name}
@@ -207,7 +282,6 @@ const QuickMatchFormModal: React.FC<QuickMatchFormModalProps> = ({
             </div>
           )}
 
-          {/* Date */}
           <div>
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
               Date *
@@ -218,11 +292,10 @@ const QuickMatchFormModal: React.FC<QuickMatchFormModalProps> = ({
               onChange={(e) => setFormData({ ...formData, date: e.target.value })}
               className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-surface-dark text-gray-900 dark:text-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
               required
-              min={new Date().toISOString().split('T')[0]}
+              min={toLocalDateInputValue(new Date())}
             />
           </div>
 
-          {/* Time */}
           <div>
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
               Time *
@@ -236,7 +309,6 @@ const QuickMatchFormModal: React.FC<QuickMatchFormModalProps> = ({
             />
           </div>
 
-          {/* Max Players */}
           <div>
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
               Max Players *
@@ -252,7 +324,6 @@ const QuickMatchFormModal: React.FC<QuickMatchFormModalProps> = ({
             />
           </div>
 
-          {/* Status */}
           <div>
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
               Status *
@@ -294,4 +365,3 @@ const QuickMatchFormModal: React.FC<QuickMatchFormModalProps> = ({
 };
 
 export default QuickMatchFormModal;
-

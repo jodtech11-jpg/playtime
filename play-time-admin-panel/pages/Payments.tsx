@@ -12,6 +12,7 @@ import { formatDate, getRelativeTime } from '../utils/dateUtils';
 import SettlementConfirmationModal from '../components/modals/SettlementConfirmationModal';
 import { createOfflinePayment } from '../services/paymentService';
 import { useToast } from '../contexts/ToastContext';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const Payments: React.FC = () => {
   const { user, isSuperAdmin, isVenueManager } = useAuth();
@@ -22,22 +23,30 @@ const Payments: React.FC = () => {
   const [selectedSettlement, setSelectedSettlement] = useState<Settlement | null>(null);
   const [showSettlementModal, setShowSettlementModal] = useState(false);
 
-  // Fetch payments based on role
+  // Fetch payments based on role — include all managed venues (not just the first)
   const paymentOptions = useMemo(() => {
-    if (isVenueManager && user?.managedVenues) {
+    if (isVenueManager && user?.managedVenues?.length) {
       return {
-        venueId: user.managedVenues[0], // For venue managers, show their venue's payments
-        realtime: true
+        venueIds: user.managedVenues.filter(Boolean).slice(0, 30),
+        realtime: true as const,
       };
     }
-    return { realtime: true };
-  }, [isVenueManager, user]);
+    return { realtime: true as const };
+  }, [isVenueManager, user?.managedVenues?.join(',')]);
 
-  const { payments, loading: paymentsLoading } = usePayments(paymentOptions);
-  const { settlements, loading: settlementsLoading, confirmSettlement } = useSettlements({
-    venueId: isVenueManager && user?.managedVenues ? user.managedVenues[0] : undefined,
-    realtime: true
-  });
+  const settlementOptions = useMemo(() => {
+    if (isVenueManager && user?.managedVenues?.length) {
+      return {
+        venueIds: user.managedVenues.filter(Boolean).slice(0, 30),
+        realtime: true as const,
+      };
+    }
+    return { realtime: true as const };
+  }, [isVenueManager, user?.managedVenues?.join(',')]);
+
+  const { payments, loading: paymentsLoading, error: paymentsError } = usePayments(paymentOptions);
+  const { settlements, loading: settlementsLoading, error: settlementsError, confirmSettlement } = useSettlements(settlementOptions);
+  const listError = paymentsError || settlementsError;
   const { venues } = useVenues({ realtime: false });
   const { users } = useUsers({ limit: 100 });
 
@@ -98,7 +107,7 @@ const Payments: React.FC = () => {
       setSelectedSettlement(null);
     } catch (error: any) {
       console.error('Error confirming settlement:', error);
-      showError('Failed to confirm settlement: ' + error.message);
+      showError('Failed to confirm settlement: ' + getFirebaseErrorMessage(error));
     }
   };
 
@@ -117,6 +126,11 @@ const Payments: React.FC = () => {
 
   return (
     <div className="p-4 sm:p-8 space-y-6 sm:space-y-10 bg-background-light dark:bg-background-dark min-h-full">
+      {listError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-900 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+          {listError}
+        </div>
+      )}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 sm:gap-6">
         <div>
           <h2 className="text-3xl font-black text-gray-900 dark:text-gray-100 tracking-tight">Payment Management</h2>

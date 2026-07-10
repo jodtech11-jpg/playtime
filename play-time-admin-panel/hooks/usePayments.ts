@@ -2,18 +2,30 @@ import { useState, useEffect } from 'react';
 import { paymentsCollection } from '../services/firebase';
 import { Payment } from '../types';
 import { serverTimestamp } from 'firebase/firestore';
+import { useAuth } from '../contexts/AuthContext';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface UsePaymentsOptions {
   type?: Payment['type'];
   direction?: Payment['direction'];
   venueId?: string;
+  /** When set, filters with venueId `in` (up to 30). Takes precedence over venueId. */
+  venueIds?: string[];
   userId?: string;
   status?: Payment['status'];
   limit?: number;
   realtime?: boolean;
 }
 
+const sortByCreatedDesc = (rows: Payment[]) =>
+  [...rows].sort((a, b) => {
+    const aTime = a.createdAt?.toMillis?.() ?? a.createdAt?.seconds ?? 0;
+    const bTime = b.createdAt?.toMillis?.() ?? b.createdAt?.seconds ?? 0;
+    return bTime - aTime;
+  });
+
 export const usePayments = (options: UsePaymentsOptions = {}) => {
+  const { user, isVenueManager, isSuperAdmin } = useAuth();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -27,63 +39,79 @@ export const usePayments = (options: UsePaymentsOptions = {}) => {
         setLoading(true);
         setError(null);
 
-        const filters: any[] = [];
+        if (!user) {
+          if (mounted) {
+            setPayments([]);
+            setLoading(false);
+          }
+          return;
+        }
+
+        // Vendors with no managed venues: never run an unscoped query.
+        if (isVenueManager && !isSuperAdmin) {
+          const managed = options.venueIds?.length
+            ? options.venueIds
+            : options.venueId
+              ? [options.venueId]
+              : (user.managedVenues?.filter(Boolean) ?? []);
+          if (managed.length === 0) {
+            if (mounted) {
+              setPayments([]);
+              setLoading(false);
+            }
+            return;
+          }
+        }
+
+        const filters: { field: string; operator: string; value: unknown }[] = [];
 
         if (options.type) {
-          filters.push({
-            field: 'type',
-            operator: '==',
-            value: options.type
-          });
+          filters.push({ field: 'type', operator: '==', value: options.type });
         }
-
         if (options.direction) {
-          filters.push({
-            field: 'direction',
-            operator: '==',
-            value: options.direction
-          });
+          filters.push({ field: 'direction', operator: '==', value: options.direction });
         }
 
-        if (options.venueId) {
+        if (options.venueIds && options.venueIds.length > 0) {
           filters.push({
             field: 'venueId',
-            operator: '==',
-            value: options.venueId
+            operator: 'in',
+            value: options.venueIds.slice(0, 30),
+          });
+        } else if (options.venueId) {
+          filters.push({ field: 'venueId', operator: '==', value: options.venueId });
+        } else if (isVenueManager && !isSuperAdmin) {
+          const managed = user.managedVenues?.filter(Boolean) ?? [];
+          filters.push({
+            field: 'venueId',
+            operator: 'in',
+            value: managed.slice(0, 30),
           });
         }
 
         if (options.userId) {
-          filters.push({
-            field: 'userId',
-            operator: '==',
-            value: options.userId
-          });
+          filters.push({ field: 'userId', operator: '==', value: options.userId });
         }
-
         if (options.status) {
-          filters.push({
-            field: 'status',
-            operator: '==',
-            value: options.status
-          });
+          filters.push({ field: 'status', operator: '==', value: options.status });
         }
 
+        // Sort in memory — avoid orderBy so venueId-in queries don't need a composite index.
         if (options.realtime) {
           unsubscribe = paymentsCollection.subscribeAll(
             (data: Payment[]) => {
               if (mounted) {
-                setPayments(data || []);
+                setPayments(sortByCreatedDesc(data || []));
                 setLoading(false);
               }
             },
             filters.length > 0 ? filters : undefined,
-            'createdAt',
-            'desc',
+            undefined,
+            undefined,
             (subscribeError: any) => {
               console.error('Error in payment subscription:', subscribeError);
               if (mounted) {
-                setError(subscribeError.message || 'Failed to subscribe to payments');
+                setError(getFirebaseErrorMessage(subscribeError, 'Failed to subscribe to payments'));
                 setPayments([]);
                 setLoading(false);
               }
@@ -92,19 +120,19 @@ export const usePayments = (options: UsePaymentsOptions = {}) => {
         } else {
           const data = await paymentsCollection.getAll(
             filters.length > 0 ? filters : undefined,
-            'createdAt',
-            'desc',
+            undefined,
+            undefined,
             options.limit
           );
           if (mounted) {
-            setPayments(data as Payment[]);
+            setPayments(sortByCreatedDesc(data as Payment[]));
             setLoading(false);
           }
         }
       } catch (err: any) {
         console.error('Error fetching payments:', err);
         if (mounted) {
-          setError(err.message || 'Failed to fetch payments');
+          setError(getFirebaseErrorMessage(err, 'Failed to fetch payments'));
           setLoading(false);
         }
       }
@@ -114,11 +142,22 @@ export const usePayments = (options: UsePaymentsOptions = {}) => {
 
     return () => {
       mounted = false;
-      if (unsubscribe) {
-        unsubscribe();
-      }
+      if (unsubscribe) unsubscribe();
     };
-  }, [options.type, options.direction, options.venueId, options.userId, options.status, options.limit, options.realtime]);
+  }, [
+    user?.id,
+    isVenueManager,
+    isSuperAdmin,
+    user?.managedVenues?.join(','),
+    options.type,
+    options.direction,
+    options.venueId,
+    options.venueIds?.join(','),
+    options.userId,
+    options.status,
+    options.limit,
+    options.realtime,
+  ]);
 
   const createPayment = async (paymentData: Omit<Payment, 'id' | 'createdAt' | 'updatedAt'>) => {
     setLoading(true);
@@ -127,12 +166,12 @@ export const usePayments = (options: UsePaymentsOptions = {}) => {
       await paymentsCollection.create({
         ...paymentData,
         createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
       });
       setLoading(false);
     } catch (err: any) {
       console.error('Error creating payment:', err);
-      setError(err.message || 'Failed to create payment');
+      setError(getFirebaseErrorMessage(err, 'Failed to create payment'));
       setLoading(false);
       throw err;
     }
@@ -144,12 +183,12 @@ export const usePayments = (options: UsePaymentsOptions = {}) => {
     try {
       await paymentsCollection.update(paymentId, {
         ...paymentData,
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
       });
       setLoading(false);
     } catch (err: any) {
       console.error('Error updating payment:', err);
-      setError(err.message || 'Failed to update payment');
+      setError(getFirebaseErrorMessage(err, 'Failed to update payment'));
       setLoading(false);
       throw err;
     }
@@ -157,4 +196,3 @@ export const usePayments = (options: UsePaymentsOptions = {}) => {
 
   return { payments, loading, error, createPayment, updatePayment };
 };
-

@@ -3,15 +3,27 @@ import { settlementsCollection } from '../services/firebase';
 import { Settlement } from '../types';
 import { serverTimestamp } from 'firebase/firestore';
 import { useVenues } from './useVenues';
+import { useAuth } from '../contexts/AuthContext';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface UseSettlementsOptions {
   venueId?: string;
+  /** When set, filters with venueId `in` (up to 30). Takes precedence over venueId. */
+  venueIds?: string[];
   status?: Settlement['status'];
   limit?: number;
   realtime?: boolean;
 }
 
+const sortByCreatedDesc = (rows: Settlement[]) =>
+  [...rows].sort((a, b) => {
+    const aTime = a.createdAt?.toMillis?.() ?? a.createdAt?.seconds ?? 0;
+    const bTime = b.createdAt?.toMillis?.() ?? b.createdAt?.seconds ?? 0;
+    return bTime - aTime;
+  });
+
 export const useSettlements = (options: UseSettlementsOptions = {}) => {
+  const { user, isVenueManager, isSuperAdmin } = useAuth();
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,39 +38,69 @@ export const useSettlements = (options: UseSettlementsOptions = {}) => {
         setLoading(true);
         setError(null);
 
-        const filters: any[] = [];
+        if (!user) {
+          if (mounted) {
+            setSettlements([]);
+            setLoading(false);
+          }
+          return;
+        }
 
-        if (options.venueId) {
+        // Vendors with no managed venues: never run an unscoped query.
+        if (isVenueManager && !isSuperAdmin) {
+          const managed = options.venueIds?.length
+            ? options.venueIds
+            : options.venueId
+              ? [options.venueId]
+              : (user.managedVenues?.filter(Boolean) ?? []);
+          if (managed.length === 0) {
+            if (mounted) {
+              setSettlements([]);
+              setLoading(false);
+            }
+            return;
+          }
+        }
+
+        const filters: { field: string; operator: string; value: unknown }[] = [];
+
+        if (options.venueIds && options.venueIds.length > 0) {
           filters.push({
             field: 'venueId',
-            operator: '==',
-            value: options.venueId
+            operator: 'in',
+            value: options.venueIds.slice(0, 30),
+          });
+        } else if (options.venueId) {
+          filters.push({ field: 'venueId', operator: '==', value: options.venueId });
+        } else if (isVenueManager && !isSuperAdmin) {
+          const managed = user.managedVenues?.filter(Boolean) ?? [];
+          filters.push({
+            field: 'venueId',
+            operator: 'in',
+            value: managed.slice(0, 30),
           });
         }
 
         if (options.status) {
-          filters.push({
-            field: 'status',
-            operator: '==',
-            value: options.status
-          });
+          filters.push({ field: 'status', operator: '==', value: options.status });
         }
 
+        // Sort in memory — avoid orderBy so venueId-in queries don't need a composite index.
         if (options.realtime) {
           unsubscribe = settlementsCollection.subscribeAll(
             (data: Settlement[]) => {
               if (mounted) {
-                setSettlements(data || []);
+                setSettlements(sortByCreatedDesc(data || []));
                 setLoading(false);
               }
             },
             filters.length > 0 ? filters : undefined,
-            'createdAt',
-            'desc',
+            undefined,
+            undefined,
             (subscribeError: any) => {
               console.error('Error in settlement subscription:', subscribeError);
               if (mounted) {
-                setError(subscribeError.message || 'Failed to subscribe to settlements');
+                setError(getFirebaseErrorMessage(subscribeError, 'Failed to subscribe to settlements'));
                 setSettlements([]);
                 setLoading(false);
               }
@@ -67,19 +109,19 @@ export const useSettlements = (options: UseSettlementsOptions = {}) => {
         } else {
           const data = await settlementsCollection.getAll(
             filters.length > 0 ? filters : undefined,
-            'createdAt',
-            'desc',
+            undefined,
+            undefined,
             options.limit
           );
           if (mounted) {
-            setSettlements(data as Settlement[]);
+            setSettlements(sortByCreatedDesc(data as Settlement[]));
             setLoading(false);
           }
         }
       } catch (err: any) {
         console.error('Error fetching settlements:', err);
         if (mounted) {
-          setError(err.message || 'Failed to fetch settlements');
+          setError(getFirebaseErrorMessage(err, 'Failed to fetch settlements'));
           setLoading(false);
         }
       }
@@ -89,11 +131,19 @@ export const useSettlements = (options: UseSettlementsOptions = {}) => {
 
     return () => {
       mounted = false;
-      if (unsubscribe) {
-        unsubscribe();
-      }
+      if (unsubscribe) unsubscribe();
     };
-  }, [options.venueId, options.status, options.limit, options.realtime]);
+  }, [
+    user?.id,
+    isVenueManager,
+    isSuperAdmin,
+    user?.managedVenues?.join(','),
+    options.venueId,
+    options.venueIds?.join(','),
+    options.status,
+    options.limit,
+    options.realtime,
+  ]);
 
   const createSettlement = async (settlementData: Omit<Settlement, 'id' | 'createdAt' | 'updatedAt'>) => {
     setLoading(true);
@@ -102,12 +152,12 @@ export const useSettlements = (options: UseSettlementsOptions = {}) => {
       await settlementsCollection.create({
         ...settlementData,
         createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
       });
       setLoading(false);
     } catch (err: any) {
       console.error('Error creating settlement:', err);
-      setError(err.message || 'Failed to create settlement');
+      setError(getFirebaseErrorMessage(err, 'Failed to create settlement'));
       setLoading(false);
       throw err;
     }
@@ -119,12 +169,12 @@ export const useSettlements = (options: UseSettlementsOptions = {}) => {
     try {
       await settlementsCollection.update(settlementId, {
         ...settlementData,
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
       });
       setLoading(false);
     } catch (err: any) {
       console.error('Error updating settlement:', err);
-      setError(err.message || 'Failed to update settlement');
+      setError(getFirebaseErrorMessage(err, 'Failed to update settlement'));
       setLoading(false);
       throw err;
     }
@@ -140,6 +190,14 @@ export const useSettlements = (options: UseSettlementsOptions = {}) => {
     setLoading(true);
     setError(null);
     try {
+      const existing = await settlementsCollection.get(settlementId) as Settlement | null;
+      if (!existing) {
+        throw new Error('Settlement not found');
+      }
+      if (existing.status !== 'Pending') {
+        throw new Error('Settlement has already been marked as paid');
+      }
+
       await settlementsCollection.update(settlementId, {
         status: 'Paid',
         paymentMethod: paymentData.paymentMethod,
@@ -149,35 +207,33 @@ export const useSettlements = (options: UseSettlementsOptions = {}) => {
         receiptUrl: paymentData.receiptUrl,
         confirmedBy: paymentData.confirmedBy,
         confirmedAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
       });
       setLoading(false);
     } catch (err: any) {
       console.error('Error confirming settlement:', err);
-      setError(err.message || 'Failed to confirm settlement');
+      setError(getFirebaseErrorMessage(err, 'Failed to confirm settlement'));
       setLoading(false);
       throw err;
     }
   };
 
-  // Populate venue names in settlements
   const settlementsWithVenueNames = useMemo(() => {
-    return settlements.map(settlement => {
-      const venue = venues.find(v => v.id === settlement.venueId);
+    return settlements.map((settlement) => {
+      const venue = venues.find((v) => v.id === settlement.venueId);
       return {
         ...settlement,
-        venueName: venue?.name || settlement.venueName || 'Unknown Venue'
+        venueName: venue?.name || settlement.venueName || 'Unknown Venue',
       };
     });
   }, [settlements, venues]);
 
-  return { 
-    settlements: settlementsWithVenueNames, 
-    loading, 
-    error, 
-    createSettlement, 
-    updateSettlement, 
-    confirmSettlement 
+  return {
+    settlements: settlementsWithVenueNames,
+    loading,
+    error,
+    createSettlement,
+    updateSettlement,
+    confirmSettlement,
   };
 };
-

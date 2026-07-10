@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { useVenues } from '../hooks/useVenues';
 import { useBookings } from '../hooks/useBookings';
 import { useUsers } from '../hooks/useUsers';
@@ -8,20 +8,27 @@ import { Venue } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
 import { useToast } from '../contexts/ToastContext';
-import { formatCurrency, getStatusColor } from '../utils/formatUtils';
+import { formatCurrency, getStatusColor, resolveSportName } from '../utils/formatUtils';
 import { formatDate } from '../utils/dateUtils';
+import { useSports } from '../hooks/useSports';
 import VenueFormModal from '../components/modals/VenueFormModal';
 import CourtManagementModal from '../components/modals/CourtManagementModal';
 import { serverTimestamp } from 'firebase/firestore';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const Venues: React.FC = () => {
   const navigate = useNavigate();
-  const { user, firebaseUser, isSuperAdmin } = useAuth();
+  const { user, firebaseUser, isSuperAdmin, isVenueManager, refreshUser } = useAuth();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
   const { showSuccess, showError } = useToast();
   const { venues, loading: venuesLoading } = useVenues({ realtime: true });
   const { bookings } = useBookings({ realtime: true });
   const { users } = useUsers({ limit: 100 });
+  const { sports: sportsCatalog } = useSports({ activeOnly: false, realtime: false });
+
+  if (isVenueManager && !isSuperAdmin) {
+    return <Navigate to="/venues/courts" replace />;
+  }
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedVenue, setSelectedVenue] = useState<Venue | null>(null);
@@ -73,14 +80,22 @@ const Venues: React.FC = () => {
     return stats;
   }, [venues, bookings]);
 
-  // Get all unique sports for filter
+  // Prefer full sports catalog (deduped); fall back to venue-assigned names
   const allSports = useMemo(() => {
-    const sportsSet = new Set<string>();
-    venues.forEach(venue => {
-      venue.sports?.forEach(sport => sportsSet.add(sport));
+    if (sportsCatalog.length > 0) {
+      return sportsCatalog.map((s) => s.name).filter(Boolean);
+    }
+    const sportsSet = new Map<string, string>();
+    venues.forEach((venue) => {
+      venue.sports?.forEach((sport) => {
+        const key = sport.trim().toLowerCase();
+        if (key && !sportsSet.has(key)) {
+          sportsSet.set(key, resolveSportName(sport, sportsCatalog) || sport);
+        }
+      });
     });
-    return Array.from(sportsSet).sort();
-  }, [venues]);
+    return Array.from(sportsSet.values()).sort();
+  }, [venues, sportsCatalog]);
 
   // Get all managers for filter
   const allManagers = useMemo(() => {
@@ -252,6 +267,7 @@ const Venues: React.FC = () => {
               managedVenues: [...currentManaged, venueId],
               updatedAt: serverTimestamp(),
             });
+            await refreshUser();
           }
         }
 
@@ -296,7 +312,7 @@ const Venues: React.FC = () => {
       showSuccess('Venue deleted successfully.');
     } catch (error: any) {
       console.error('Error deleting venue:', error);
-      showError('Failed to delete venue: ' + error.message);
+      showError('Failed to delete venue: ' + getFirebaseErrorMessage(error));
     } finally {
       setProcessing(null);
     }
@@ -327,7 +343,7 @@ const Venues: React.FC = () => {
       showSuccess('Venue approved successfully.');
     } catch (error: any) {
       console.error('Error approving venue:', error);
-      showError('Failed to approve venue: ' + error.message);
+      showError('Failed to approve venue: ' + getFirebaseErrorMessage(error));
     } finally {
       setProcessing(null);
     }

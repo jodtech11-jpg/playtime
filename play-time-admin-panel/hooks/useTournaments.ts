@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { tournamentsCollection } from '../services/firebase';
 import { Tournament } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { vendorIdFilter } from '../utils/vendorScope';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface UseTournamentsOptions {
   venueId?: string;
@@ -21,42 +23,29 @@ export const useTournaments = (options: UseTournamentsOptions = {}) => {
       return;
     }
 
+    if (isVenueManager && !user.id) {
+      setTournaments([]);
+      setLoading(false);
+      return;
+    }
+
+    let mounted = true;
+    let unsubscribe: (() => void) | null = null;
+
     const fetchTournaments = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        const filters: any[] = [];
+        const filters: { field: string; operator: string; value: unknown }[] = [];
 
-        const managed = user.managedVenues?.filter(Boolean) ?? [];
-        if (isVenueManager) {
-          if (managed.length === 0) {
-            setTournaments([]);
-            setLoading(false);
-            return;
-          }
-          if (options.venueId && !managed.includes(options.venueId)) {
-            setTournaments([]);
-            setLoading(false);
-            return;
-          }
+        if (isVenueManager && user.id) {
+          filters.push(vendorIdFilter(user.id));
           if (options.venueId) {
             filters.push({
               field: 'venueId',
               operator: '==',
               value: options.venueId,
-            });
-          } else {
-            const ids = managed.slice(0, 10);
-            if (managed.length > 10) {
-              console.warn(
-                'useTournaments: venue manager has more than 10 managedVenues; only the first 10 are queried.'
-              );
-            }
-            filters.push({
-              field: 'venueId',
-              operator: 'in',
-              value: ids,
             });
           }
         } else if (options.venueId) {
@@ -77,8 +66,9 @@ export const useTournaments = (options: UseTournamentsOptions = {}) => {
         }
 
         if (options.realtime) {
-          const unsubscribe = tournamentsCollection.subscribeAll(
+          unsubscribe = tournamentsCollection.subscribeAll(
             (data: Tournament[]) => {
+              if (!mounted) return;
               setTournaments(data);
               setLoading(false);
             },
@@ -86,26 +76,31 @@ export const useTournaments = (options: UseTournamentsOptions = {}) => {
             'createdAt',
             'desc'
           );
-
-          return () => unsubscribe();
         } else {
           const data = await tournamentsCollection.getAll(
             filters.length > 0 ? filters : undefined,
             'createdAt',
             'desc'
           );
+          if (!mounted) return;
           setTournaments(data as Tournament[]);
           setLoading(false);
         }
       } catch (err: any) {
+        if (!mounted) return;
         console.error('Error fetching tournaments:', err);
-        setError(err.message || 'Failed to fetch tournaments');
+        setError(getFirebaseErrorMessage(err, 'Failed to fetch tournaments'));
         setLoading(false);
       }
     };
 
     fetchTournaments();
-  }, [user, options.venueId, options.status, options.realtime, isVenueManager]);
+
+    return () => {
+      mounted = false;
+      if (unsubscribe) unsubscribe();
+    };
+  }, [user?.id, options.venueId, options.status, options.realtime, isVenueManager]);
 
   return { tournaments, loading, error };
 };

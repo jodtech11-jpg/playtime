@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Staff } from '../../types';
 import { useVenues } from '../../hooks/useVenues';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface StaffFormModalProps {
   staff: Staff | null;
@@ -93,7 +94,7 @@ const StaffFormModal: React.FC<StaffFormModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error('Error saving staff:', err);
-      setError(err.message || 'Failed to save staff');
+      setError(getFirebaseErrorMessage(err) || 'Failed to save staff');
     } finally {
       setLoading(false);
     }

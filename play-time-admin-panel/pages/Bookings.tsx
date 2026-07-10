@@ -1,19 +1,21 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useBookings, usePendingBookings } from '../hooks/useBookings';
 import { useVenues } from '../hooks/useVenues';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
-import { bookingsCollection, logActivity, notifyVenueManagersOfBookingEvent } from '../services/firebase';
-import { Booking } from '../types';
+import { bookingsCollection, logActivity, notifyVenueManagersOfBookingEvent, usersCollection } from '../services/firebase';
+import { Booking, User } from '../types';
 import { formatDate, formatTime, getWeekStart, getWeekEnd, getToday } from '../utils/dateUtils';
-import { formatCurrency, getStatusColor } from '../utils/formatUtils';
+import { formatCurrency, formatBookingReference, getStatusColor, resolveSportName, resolveBookingUserName } from '../utils/formatUtils';
 import { exportBookingsToCSV, exportBookingsToPDF } from '../utils/exportUtils';
 import BookingDetailsModal from '../components/modals/BookingDetailsModal';
 import BookingFormModal from '../components/modals/BookingFormModal';
 import SportManagementModal from '../components/modals/SportManagementModal';
 import { useSports } from '../hooks/useSports';
+import { buildSportStylesMap, getSportStyle } from '../utils/sportUtils';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 import DatePicker from '../components/shared/DatePicker';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import { serverTimestamp } from 'firebase/firestore';
@@ -25,7 +27,7 @@ const Bookings: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
   const { showSuccess, showError } = useToast();
-  const { user, firebaseUser } = useAuth();
+  const { user, firebaseUser, isSuperAdmin, hasPermission } = useAuth();
   const actorId = firebaseUser?.uid ?? user?.id;
   const actorEmail = user?.email ?? firebaseUser?.email ?? undefined;
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>(() => {
@@ -47,7 +49,7 @@ const Bookings: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [showSportModal, setShowSportModal] = useState(false);
-  const { sports } = useSports({ activeOnly: false, realtime: true });
+  const { sports: sportsCatalog } = useSports({ activeOnly: false, realtime: true });
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [processing, setProcessing] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -104,7 +106,7 @@ const Bookings: React.FC = () => {
   }, [viewMode, selectedDate]);
 
   // Fetch bookings
-  const { bookings, loading: bookingsLoading } = useBookings({
+  const { bookings, loading: bookingsLoading, error: bookingsError } = useBookings({
     dateRange,
     sport: selectedSport !== 'All Sports' ? selectedSport : undefined,
     venueId: selectedVenueId || undefined,
@@ -114,6 +116,51 @@ const Bookings: React.FC = () => {
 
   const { bookings: pendingBookings } = usePendingBookings();
   const { venues } = useVenues({ realtime: true });
+  const [usersById, setUsersById] = useState<Record<string, User>>({});
+  const loadedUserIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const userIds = new Set<string>();
+    [...bookings, ...pendingBookings].forEach((booking) => {
+      if (!booking.user?.trim() && booking.userId && booking.userId !== 'admin-walk-in') {
+        userIds.add(booking.userId);
+      }
+    });
+
+    const missingIds = [...userIds].filter((id) => !loadedUserIdsRef.current.has(id));
+    if (missingIds.length === 0) return;
+
+    let cancelled = false;
+    missingIds.forEach((id) => loadedUserIdsRef.current.add(id));
+
+    Promise.all(
+      missingIds.map(async (id) => {
+        const doc = await usersCollection.get(id);
+        return { id, user: doc as User | null };
+      })
+    ).then((results) => {
+      if (cancelled) return;
+      setUsersById((prev) => {
+        const next = { ...prev };
+        results.forEach(({ id, user }) => {
+          if (user) next[id] = user;
+        });
+        return next;
+      });
+    }).catch((err) => {
+      console.error('Failed to load booking user names:', err);
+      missingIds.forEach((id) => loadedUserIdsRef.current.delete(id));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bookings, pendingBookings]);
+
+  const getBookingUserName = useCallback((booking: Booking): string => {
+    const name = resolveBookingUserName(booking, usersById);
+    return name || '…';
+  }, [usersById]);
 
   // Generate days for week view based on selected date
   const weekDays = useMemo(() => {
@@ -153,23 +200,22 @@ const Bookings: React.FC = () => {
     return slots;
   }, []);
 
-  // Sport color configuration
-  const sportStyles: Record<string, { bg: string; border: string; text: string }> = {
-    'Football': { bg: 'bg-emerald-50', border: 'border-emerald-500', text: 'text-emerald-900' },
-    'Tennis': { bg: 'bg-blue-50', border: 'border-blue-500', text: 'text-blue-900' },
-    'Badminton': { bg: 'bg-purple-50', border: 'border-purple-500', text: 'text-purple-900' },
-    'Cricket': { bg: 'bg-orange-50', border: 'border-orange-500', text: 'text-orange-900' },
-    'Basketball': { bg: 'bg-pink-50', border: 'border-pink-500', text: 'text-pink-900' },
-  };
+  // Dynamic sport colors from catalog
+  const sportStyles = useMemo(() => buildSportStylesMap(sportsCatalog), [sportsCatalog]);
 
-  // Get unique sports from bookings
+  // All configured sports (not just sports appearing in existing bookings)
   const availableSports = useMemo(() => {
-    const sports = new Set<string>();
-    bookings.forEach(booking => {
-      if (booking.sport) sports.add(booking.sport);
+    if (sportsCatalog.length > 0) {
+      return sportsCatalog.map((s) => s.name).sort();
+    }
+    const fromBookings = new Set<string>();
+    bookings.forEach((booking) => {
+      if (booking.sport) {
+        fromBookings.add(resolveSportName(booking.sport, sportsCatalog));
+      }
     });
-    return Array.from(sports);
-  }, [bookings]);
+    return Array.from(fromBookings).sort();
+  }, [bookings, sportsCatalog]);
 
   // Calculate booking position on calendar
   const getBookingPosition = (booking: Booking) => {
@@ -184,10 +230,15 @@ const Bookings: React.FC = () => {
     );
     if (dayIndex === -1) return null;
 
-    // Find time slot index
+    // Find time slot index (fractional, so sub-hour starts like 09:30 render offset within the slot)
     const startHour = startDate.getHours();
-    const timeIndex = timeSlots.findIndex(slot => slot.hour === startHour);
-    if (timeIndex === -1) return null;
+    let timeIndex = timeSlots.findIndex(slot => slot.hour === startHour);
+    if (timeIndex === -1) {
+      // Off-grid hours: clamp to the first/last slot instead of hiding the booking
+      timeIndex = startHour < timeSlots[0].hour ? 0 : timeSlots.length - 1;
+    } else {
+      timeIndex += startDate.getMinutes() / 60;
+    }
 
     // Calculate duration in hours
     const durationMs = endDate.getTime() - startDate.getTime();
@@ -208,8 +259,34 @@ const Bookings: React.FC = () => {
     return b?.venueId;
   };
 
+  const getBookingById = (bookingId: string): Booking | undefined => {
+    return bookings.find((x) => x.id === bookingId)
+      || pendingBookings.find((x) => x.id === bookingId)
+      || (selectedBooking?.id === bookingId ? selectedBooking : undefined);
+  };
+
+  // Find another active booking on the same court with an overlapping time range
+  const findConflictingBooking = (booking: Booking): Booking | undefined => {
+    if (!booking.courtId || !booking.startTime || !booking.endTime) return undefined;
+    const toDate = (value: any): Date => (value?.toDate ? value.toDate() : new Date(value));
+    const start = toDate(booking.startTime);
+    const end = toDate(booking.endTime);
+    return bookings.find((b) =>
+      b.id !== booking.id &&
+      b.courtId === booking.courtId &&
+      (b.status === 'Pending' || b.status === 'Confirmed') &&
+      b.startTime && b.endTime &&
+      toDate(b.startTime) < end && toDate(b.endTime) > start
+    );
+  };
+
   // Handle booking actions
   const handleAccept = async (bookingId: string) => {
+    const booking = getBookingById(bookingId);
+    if (booking && findConflictingBooking(booking)) {
+      showError('Cannot confirm: this booking overlaps another active booking on the same court.');
+      return;
+    }
     try {
       setProcessing(bookingId);
       await bookingsCollection.update(bookingId, {
@@ -240,7 +317,7 @@ const Bookings: React.FC = () => {
       setSelectedBooking(null);
     } catch (error: any) {
       console.error('Error accepting booking:', error);
-      showError('Failed to accept booking: ' + error.message);
+      showError('Failed to accept booking: ' + getFirebaseErrorMessage(error));
     } finally {
       setProcessing(null);
     }
@@ -288,7 +365,7 @@ const Bookings: React.FC = () => {
       setSelectedBooking(null);
     } catch (error: any) {
       console.error('Error rejecting booking:', error);
-      showError('Failed to reject booking: ' + error.message);
+      showError('Failed to reject booking: ' + getFirebaseErrorMessage(error));
     } finally {
       setProcessing(null);
     }
@@ -335,7 +412,7 @@ const Bookings: React.FC = () => {
       setSelectedBooking(null);
     } catch (error: any) {
       console.error('Error cancelling booking:', error);
-      showError('Failed to cancel booking: ' + error.message);
+      showError('Failed to cancel booking: ' + getFirebaseErrorMessage(error));
     } finally {
       setProcessing(null);
     }
@@ -380,7 +457,14 @@ const Bookings: React.FC = () => {
   const _doBulkConfirm = async (toConfirm: string[]) => {
     try {
       setBulkProcessing(true);
+      let confirmedCount = 0;
+      let skippedCount = 0;
       for (const bookingId of toConfirm) {
+        const booking = getBookingById(bookingId);
+        if (booking && findConflictingBooking(booking)) {
+          skippedCount++;
+          continue;
+        }
         const venueId = getBookingVenueId(bookingId);
         await bookingsCollection.update(bookingId, {
           status: 'Confirmed',
@@ -405,12 +489,18 @@ const Bookings: React.FC = () => {
             details: { status: 'Confirmed' },
           });
         }
+        confirmedCount++;
       }
       setSelectedIds(new Set());
-      showSuccess(`Confirmed ${toConfirm.length} booking(s).`);
+      if (skippedCount > 0) {
+        showError(`Skipped ${skippedCount} booking(s) that overlap another active booking on the same court.`);
+      }
+      if (confirmedCount > 0) {
+        showSuccess(`Confirmed ${confirmedCount} booking(s).`);
+      }
     } catch (error: any) {
       console.error('Bulk confirm error:', error);
-      showError('Failed to confirm some bookings: ' + error.message);
+      showError('Failed to confirm some bookings: ' + getFirebaseErrorMessage(error));
     } finally {
       setBulkProcessing(false);
     }
@@ -464,7 +554,7 @@ const Bookings: React.FC = () => {
       showSuccess(`Cancelled ${ids.length} booking(s).`);
     } catch (error: any) {
       console.error('Bulk cancel error:', error);
-      showError('Failed to cancel some bookings: ' + error.message);
+      showError('Failed to cancel some bookings: ' + getFirebaseErrorMessage(error));
     } finally {
       setBulkProcessing(false);
     }
@@ -515,7 +605,7 @@ const Bookings: React.FC = () => {
       setIsCreateModalOpen(false);
     } catch (error: any) {
       console.error('Error creating booking:', error);
-      showError('Failed to create booking: ' + error.message);
+      showError('Failed to create booking: ' + getFirebaseErrorMessage(error));
       throw error;
     } finally {
       setProcessing(null);
@@ -562,6 +652,7 @@ const Bookings: React.FC = () => {
         onAccept={handleAccept}
         onReject={handleReject}
         onCancel={handleCancel}
+        sports={sportsCatalog}
       />
 
       <BookingFormModal
@@ -573,7 +664,7 @@ const Bookings: React.FC = () => {
       <SportManagementModal
         isOpen={showSportModal}
         onClose={() => setShowSportModal(false)}
-        sports={sports}
+        sports={sportsCatalog}
         onUpdate={() => {}}
       />
 
@@ -623,6 +714,11 @@ const Bookings: React.FC = () => {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 flex flex-col h-full min-h-0 overflow-hidden bg-slate-50 dark:bg-slate-900">
+      {bookingsError && (
+        <div className="flex-shrink-0 mb-4 rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-900 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+          {bookingsError}
+        </div>
+      )}
       {/* Header Controls */}
       <div className="flex-shrink-0 flex flex-col xl:flex-row xl:items-center justify-between gap-4 xl:gap-6">
         <div className="flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-1 shadow-sm h-12 w-fit">
@@ -723,6 +819,7 @@ const Bookings: React.FC = () => {
                   <option key={sport} value={sport}>{sport}</option>
                 ))}
               </select>
+              {isSuperAdmin && (
               <button
                 onClick={() => setShowSportModal(true)}
                 className="size-12 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-primary rounded-xl shadow-sm hover:scale-105 transition-all flex items-center justify-center shrink-0"
@@ -731,11 +828,13 @@ const Bookings: React.FC = () => {
               >
                 <span className="material-symbols-outlined font-black">add</span>
               </button>
+              )}
             </div>
 
             <div className="h-12 w-px bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block"></div>
 
             <div className="flex items-center gap-2">
+              {hasPermission('bookings.create') && (
               <button
                 onClick={handleCreateBooking}
                 className="size-12 bg-primary text-white rounded-xl shadow-lg shadow-primary/20 hover:scale-105 transition-all flex items-center justify-center shrink-0"
@@ -744,6 +843,7 @@ const Bookings: React.FC = () => {
               >
                 <span className="material-symbols-outlined font-black">event_available</span>
               </button>
+              )}
 
               <div className="relative group">
                 <button
@@ -848,31 +948,34 @@ const Bookings: React.FC = () => {
                   const position = getBookingPosition(booking);
                   if (!position) return null;
 
-                  const style = sportStyles[booking.sport] || sportStyles['Football'];
+                  const sportName = resolveSportName(booking.sport, sportsCatalog);
+                  const style = sportStyles[sportName] || getSportStyle(sportName, sportsCatalog);
                   const statusColors = getStatusColor(booking.status);
 
                   return (
                     <div
                       key={booking.id}
                       onClick={() => handleBookingClick(booking)}
-                      className={`absolute rounded-2xl p-3 shadow-lg shadow-gray-200/50 border-l-4 transition-all hover:scale-[1.02] cursor-pointer group z-20 ${style.bg} ${style.border}`}
+                      className="absolute rounded-2xl p-3 shadow-lg shadow-gray-200/50 border-l-4 transition-all hover:scale-[1.02] cursor-pointer group z-20"
                       style={{
                         top: `${position.timeIndex * 112 + 8}px`,
                         left: `${(position.dayIndex * 14.28) + 0.5}%`,
                         width: '13.28%',
-                        height: `${Math.max(position.duration * 112 - 16, 60)}px`
+                        height: `${Math.max(position.duration * 112 - 16, 60)}px`,
+                        backgroundColor: style.backgroundColor,
+                        borderLeftColor: style.borderColor,
                       }}
                     >
                       <div className="flex flex-col h-full justify-between">
                         <div>
                           <div className="flex justify-between items-start gap-1">
-                            <p className={`text-xs font-black truncate ${style.text}`}>{booking.user}</p>
+                            <p className="text-xs font-black truncate" style={{ color: style.color }}>{getBookingUserName(booking)}</p>
                             <span className="material-symbols-outlined text-xs opacity-30 group-hover:opacity-100 transition-opacity">
                               open_in_new
                             </span>
                           </div>
-                          <p className={`text-[9px] font-bold opacity-60 uppercase tracking-widest mt-1 ${style.text}`}>
-                            {booking.sport} • {booking.court}
+                          <p className="text-[9px] font-bold opacity-60 uppercase tracking-widest mt-1" style={{ color: style.color }}>
+                            {sportName} • {booking.court}
                           </p>
                         </div>
                         <div className="flex items-center justify-between mt-2">
@@ -884,7 +987,7 @@ const Bookings: React.FC = () => {
                             }`}>
                             {booking.status}
                           </span>
-                          <span className={`text-[8px] font-bold opacity-40 uppercase ${style.text}`}>
+                          <span className="text-[8px] font-bold opacity-40 uppercase" style={{ color: style.color }}>
                             {booking.duration}hr
                           </span>
                         </div>
@@ -903,12 +1006,18 @@ const Bookings: React.FC = () => {
           <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl mb-4">
             <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Legend:</span>
             <div className="flex flex-wrap gap-1.5">
-              {Object.entries(sportStyles).map(([name, s]) => (
-                <span key={name} className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-50 dark:bg-slate-800/50">
-                  <span className={`size-2 rounded-full ${s.bg} ${s.border} border`}></span>
-                  <span className="text-[9px] font-bold text-slate-600 dark:text-slate-400">{name}</span>
-                </span>
-              ))}
+              {(sportsCatalog.length > 0 ? sportsCatalog.filter((s) => s.isActive !== false) : []).map((sport) => {
+                const style = sportStyles[sport.name] || getSportStyle(sport.name, sportsCatalog);
+                return (
+                  <span key={sport.id} className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-50 dark:bg-slate-800/50">
+                    <span
+                      className="size-2 rounded-full border"
+                      style={{ backgroundColor: style.backgroundColor, borderColor: style.borderColor }}
+                    />
+                    <span className="text-[9px] font-bold text-slate-600 dark:text-slate-400">{sport.name}</span>
+                  </span>
+                );
+              })}
             </div>
           </div>
 
@@ -986,7 +1095,7 @@ const Bookings: React.FC = () => {
                           className="rounded border-slate-300 text-primary focus:ring-primary size-4 shrink-0"
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{booking.user}</p>
+                          <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{getBookingUserName(booking)}</p>
                           <p className="text-[10px] text-slate-500 dark:text-slate-400">
                             {formatTime(booking.startTime)} • {venue?.name || '—'} • {formatCurrency(booking.amount)}
                           </p>

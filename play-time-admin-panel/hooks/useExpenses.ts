@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { expensesCollection } from '../services/firebase';
 import { Expense } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface UseExpensesOptions {
   venueId?: string;
@@ -22,6 +23,9 @@ export const useExpenses = (options: UseExpensesOptions = {}) => {
       setLoading(false);
       return;
     }
+
+    let mounted = true;
+    let unsubscribe: (() => void) | null = null;
 
     const fetchExpenses = async () => {
       try {
@@ -49,10 +53,10 @@ export const useExpenses = (options: UseExpensesOptions = {}) => {
               value: options.venueId,
             });
           } else {
-            const ids = managed.slice(0, 10);
-            if (managed.length > 10) {
+            const ids = managed.slice(0, 30);
+            if (managed.length > 30) {
               console.warn(
-                'useExpenses: venue manager has more than 10 managedVenues; only the first 10 are queried.'
+                'useExpenses: venue manager has more than 30 managedVenues; only the first 30 are queried.'
               );
             }
             filters.push({
@@ -87,36 +91,47 @@ export const useExpenses = (options: UseExpensesOptions = {}) => {
           });
         }
 
+        const sortByDateDesc = (rows: Expense[]) =>
+          [...rows].sort((a, b) => {
+            const aTime = a.date?.toMillis?.() ?? a.date?.seconds ?? a.createdAt?.toMillis?.() ?? 0;
+            const bTime = b.date?.toMillis?.() ?? b.date?.seconds ?? b.createdAt?.toMillis?.() ?? 0;
+            return bTime - aTime;
+          });
+
         if (options.realtime) {
-          const unsubscribe = expensesCollection.subscribeAll(
+          unsubscribe = expensesCollection.subscribeAll(
             (data: Expense[]) => {
-              setExpenses(data);
+              if (!mounted) return;
+              setExpenses(sortByDateDesc(data));
               setLoading(false);
             },
-            filters.length > 0 ? filters : undefined,
-            'date',
-            'desc'
+            filters.length > 0 ? filters : undefined
           );
-
-          return () => unsubscribe();
         } else {
           const data = await expensesCollection.getAll(
             filters.length > 0 ? filters : undefined,
-            'date',
-            'desc',
+            undefined,
+            undefined,
             options.limit
           );
-          setExpenses(data as Expense[]);
+          if (!mounted) return;
+          setExpenses(sortByDateDesc(data as Expense[]));
           setLoading(false);
         }
       } catch (err: any) {
+        if (!mounted) return;
         console.error('Error fetching expenses:', err);
-        setError(err.message || 'Failed to fetch expenses');
+        setError(getFirebaseErrorMessage(err, 'Failed to fetch expenses'));
         setLoading(false);
       }
     };
 
     fetchExpenses();
+
+    return () => {
+      mounted = false;
+      if (unsubscribe) unsubscribe();
+    };
   }, [user, options.venueId, options.staffId, options.category, options.limit, options.realtime, isVenueManager]);
 
   return { expenses, loading, error };

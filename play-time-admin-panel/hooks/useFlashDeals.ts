@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { FlashDeal } from '../types';
 import { flashDealsCollection } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { vendorIdFilter } from '../utils/vendorScope';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface UseFlashDealsOptions {
   venueId?: string;
@@ -21,42 +23,29 @@ export const useFlashDeals = (options: UseFlashDealsOptions = {}) => {
       return;
     }
 
+    if (isVenueManager && !user.id) {
+      setDeals([]);
+      setLoading(false);
+      return;
+    }
+
+    let mounted = true;
+    let unsubscribe: (() => void) | null = null;
+
     const fetchDeals = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        const filters: any[] = [];
+        const filters: { field: string; operator: string; value: unknown }[] = [];
 
-        const managed = user.managedVenues?.filter(Boolean) ?? [];
-        if (isVenueManager) {
-          if (managed.length === 0) {
-            setDeals([]);
-            setLoading(false);
-            return;
-          }
-          if (options.venueId && !managed.includes(options.venueId)) {
-            setDeals([]);
-            setLoading(false);
-            return;
-          }
+        if (isVenueManager && user.id) {
+          filters.push(vendorIdFilter(user.id));
           if (options.venueId) {
             filters.push({
               field: 'venueId',
               operator: '==',
               value: options.venueId,
-            });
-          } else {
-            const ids = managed.slice(0, 10);
-            if (managed.length > 10) {
-              console.warn(
-                'useFlashDeals: venue manager has more than 10 managedVenues; only the first 10 are queried.'
-              );
-            }
-            filters.push({
-              field: 'venueId',
-              operator: 'in',
-              value: ids,
             });
           }
         } else if (options.venueId) {
@@ -76,36 +65,46 @@ export const useFlashDeals = (options: UseFlashDealsOptions = {}) => {
           });
         }
 
+        const sortByStartDesc = (rows: FlashDeal[]) =>
+          [...rows].sort((a, b) => {
+            const aTime = a.startTime?.toMillis?.() ?? a.startTime?.seconds ?? a.createdAt?.toMillis?.() ?? a.createdAt?.seconds ?? 0;
+            const bTime = b.startTime?.toMillis?.() ?? b.startTime?.seconds ?? b.createdAt?.toMillis?.() ?? b.createdAt?.seconds ?? 0;
+            return bTime - aTime;
+          });
+
+        // Sort in memory — avoid orderBy so vendor filters don't need composite indexes.
         if (options.realtime) {
-          const unsubscribe = flashDealsCollection.subscribeAll(
+          unsubscribe = flashDealsCollection.subscribeAll(
             (data: FlashDeal[]) => {
-              setDeals(data);
+              if (!mounted) return;
+              setDeals(sortByStartDesc(data || []));
               setLoading(false);
             },
-            filters.length > 0 ? filters : undefined,
-            'startTime',
-            'desc'
+            filters.length > 0 ? filters : undefined
           );
-
-          return () => unsubscribe();
         } else {
           const data = await flashDealsCollection.getAll(
-            filters.length > 0 ? filters : undefined,
-            'startTime',
-            'desc'
+            filters.length > 0 ? filters : undefined
           );
-          setDeals(data as FlashDeal[]);
+          if (!mounted) return;
+          setDeals(sortByStartDesc(data as FlashDeal[]));
           setLoading(false);
         }
       } catch (err: any) {
+        if (!mounted) return;
         console.error('Error fetching flash deals:', err);
-        setError(err.message || 'Failed to fetch flash deals');
+        setError(getFirebaseErrorMessage(err, 'Failed to fetch flash deals'));
         setLoading(false);
       }
     };
 
     fetchDeals();
-  }, [user, options.venueId, options.status, options.realtime, isVenueManager]);
+
+    return () => {
+      mounted = false;
+      if (unsubscribe) unsubscribe();
+    };
+  }, [user?.id, options.venueId, options.status, options.realtime, isVenueManager]);
 
   return { deals, loading, error };
 };

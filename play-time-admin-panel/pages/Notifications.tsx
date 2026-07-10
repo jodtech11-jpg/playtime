@@ -9,9 +9,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const Notifications: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isSuperAdmin } = useAuth();
   const { showSuccess, showError, showWarning } = useToast();
   const { openConfirm, confirmDialog } = useConfirmDialog();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
@@ -133,6 +134,11 @@ const Notifications: React.FC = () => {
       return;
     }
 
+    if (!isSuperAdmin && (formData.targetAudience === 'All Users' || formData.targetAudience === 'Venue Managers')) {
+      showWarning('Only super admins can send to this audience. Please choose Specific Users or Venue Users.');
+      return;
+    }
+
     try {
       setSending('creating');
       
@@ -184,7 +190,7 @@ const Notifications: React.FC = () => {
       setShowSendModal(false);
     } catch (error: any) {
       console.error('Error sending notification:', error);
-      const errorMessage = error.message || 'Failed to send notification';
+      const errorMessage = getFirebaseErrorMessage(error, 'Failed to send notification');
       showError(errorMessage);
     } finally {
       setSending(null);
@@ -204,7 +210,7 @@ const Notifications: React.FC = () => {
           showSuccess('Notification resent successfully!');
         } catch (error: any) {
           console.error('Error resending notification:', error);
-          const errorMessage = error.message || 'Failed to resend notification';
+          const errorMessage = getFirebaseErrorMessage(error, 'Failed to resend notification');
           if (
             errorMessage.includes('FCM server key not configured') ||
             errorMessage.includes('FCM')
@@ -232,7 +238,7 @@ const Notifications: React.FC = () => {
           showSuccess('Notification deleted successfully!');
         } catch (error: any) {
           console.error('Error deleting notification:', error);
-          showError('Failed to delete notification: ' + error.message);
+          showError('Failed to delete notification: ' + getFirebaseErrorMessage(error));
         }
       },
     });
@@ -282,6 +288,11 @@ const Notifications: React.FC = () => {
       return;
     }
 
+    if (!isSuperAdmin && (formData.targetAudience === 'All Users' || formData.targetAudience === 'Venue Managers')) {
+      showError('Only super admins can send to this audience. Please choose Specific Users or Venue Users.');
+      return;
+    }
+
     try {
       setSending(selectedNotification.id);
       
@@ -320,7 +331,7 @@ const Notifications: React.FC = () => {
       });
     } catch (error: any) {
       console.error('Error updating notification:', error);
-      showError('Failed to update notification: ' + error.message);
+      showError('Failed to update notification: ' + getFirebaseErrorMessage(error));
     } finally {
       setSending(null);
     }
@@ -643,8 +654,9 @@ const Notifications: React.FC = () => {
                     onChange={(e) => setFormData({ ...formData, targetAudience: e.target.value as Notification['targetAudience'], targetUserIds: [], targetVenueId: '' })}
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
                   >
-                    <option value="All Users">All Users</option>
-                    <option value="Venue Managers">Venue Managers</option>
+                    {/* Broad audiences are super-admin only; venue managers target their own venues/users */}
+                    {isSuperAdmin && <option value="All Users">All Users</option>}
+                    {isSuperAdmin && <option value="Venue Managers">Venue Managers</option>}
                     <option value="Specific Users">Specific Users</option>
                     <option value="Venue Users">Venue Users</option>
                   </select>
@@ -1026,8 +1038,8 @@ const Notifications: React.FC = () => {
                       onChange={(e) => setFormData({ ...formData, targetAudience: e.target.value as Notification['targetAudience'] })}
                       className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
                     >
-                      <option value="All Users">All Users</option>
-                      <option value="Venue Managers">Venue Managers</option>
+                      {isSuperAdmin && <option value="All Users">All Users</option>}
+                      {isSuperAdmin && <option value="Venue Managers">Venue Managers</option>}
                       <option value="Specific Users">Specific Users</option>
                       <option value="Venue Users">Venue Users</option>
                     </select>

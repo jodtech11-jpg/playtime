@@ -11,6 +11,7 @@ import { serverTimestamp } from 'firebase/firestore';
 import HistoryLogModal from '../components/modals/HistoryLogModal';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const Moderation: React.FC = () => {
   const { user } = useAuth();
@@ -123,7 +124,7 @@ const Moderation: React.FC = () => {
             next.delete(postId);
             return next;
           });
-          showError('Failed to remove post: ' + error.message);
+          showError('Failed to remove post: ' + getFirebaseErrorMessage(error));
         } finally {
           setProcessing(null);
         }
@@ -164,7 +165,7 @@ const Moderation: React.FC = () => {
           }
         } catch (error: any) {
           console.error('Error banning user:', error);
-          showError('Failed to ban user: ' + error.message);
+          showError('Failed to ban user: ' + getFirebaseErrorMessage(error));
         } finally {
           setProcessing(null);
         }
@@ -183,7 +184,7 @@ const Moderation: React.FC = () => {
       });
     } catch (error: any) {
       console.error('Error dismissing report:', error);
-      showError('Failed to dismiss report: ' + error.message);
+      showError('Failed to dismiss report: ' + getFirebaseErrorMessage(error));
     } finally {
       setProcessing(null);
     }
@@ -198,7 +199,7 @@ const Moderation: React.FC = () => {
       });
     } catch (error: any) {
       console.error('Error approving post:', error);
-      showError('Failed to approve post: ' + error.message);
+      showError('Failed to approve post: ' + getFirebaseErrorMessage(error));
     } finally {
       setProcessing(null);
     }
@@ -219,7 +220,7 @@ const Moderation: React.FC = () => {
           });
         } catch (error: any) {
           console.error('Error rejecting post:', error);
-          showError('Failed to reject post: ' + error.message);
+          showError('Failed to reject post: ' + getFirebaseErrorMessage(error));
         } finally {
           setProcessing(null);
         }

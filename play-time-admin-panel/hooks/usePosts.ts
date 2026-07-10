@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { postsCollection } from '../services/firebase';
 import { Post } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface UsePostsOptions {
   venueId?: string;
@@ -23,6 +24,9 @@ export const usePosts = (options: UsePostsOptions = {}) => {
       setLoading(false);
       return;
     }
+
+    let mounted = true;
+    let unsubscribe: (() => void) | null = null;
 
     const fetchPosts = async () => {
       try {
@@ -50,10 +54,10 @@ export const usePosts = (options: UsePostsOptions = {}) => {
               value: options.venueId,
             });
           } else {
-            const ids = managed.slice(0, 10);
-            if (managed.length > 10) {
+            const ids = managed.slice(0, 30);
+            if (managed.length > 30) {
               console.warn(
-                'usePosts: venue manager has more than 10 managedVenues; only the first 10 are queried.'
+                'usePosts: venue manager has more than 30 managedVenues; only the first 30 are queried.'
               );
             }
             filters.push({
@@ -98,8 +102,9 @@ export const usePosts = (options: UsePostsOptions = {}) => {
         }
 
         if (options.realtime) {
-          const unsubscribe = postsCollection.subscribeAll(
+          unsubscribe = postsCollection.subscribeAll(
             (data: Post[]) => {
+              if (!mounted) return;
               setPosts(data);
               setLoading(false);
             },
@@ -107,8 +112,6 @@ export const usePosts = (options: UsePostsOptions = {}) => {
             'createdAt',
             'desc'
           );
-
-          return () => unsubscribe();
         } else {
           const data = await postsCollection.getAll(
             filters.length > 0 ? filters : undefined,
@@ -116,17 +119,24 @@ export const usePosts = (options: UsePostsOptions = {}) => {
             'desc',
             options.limit
           );
+          if (!mounted) return;
           setPosts(data as Post[]);
           setLoading(false);
         }
       } catch (err: any) {
+        if (!mounted) return;
         console.error('Error fetching posts:', err);
-        setError(err.message || 'Failed to fetch posts');
+        setError(getFirebaseErrorMessage(err, 'Failed to fetch posts'));
         setLoading(false);
       }
     };
 
     fetchPosts();
+
+    return () => {
+      mounted = false;
+      if (unsubscribe) unsubscribe();
+    };
   }, [user, options.venueId, options.status, options.type, options.isReported, options.limit, options.realtime, isVenueManager]);
 
   return { posts, loading, error };

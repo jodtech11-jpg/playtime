@@ -3,6 +3,7 @@ import { landingPageCollection } from '../services/firebase';
 import { LandingPageContent } from '../types';
 import { serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const DEFAULT_LANDING_PAGE: LandingPageContent = {
   id: 'landing',
@@ -143,7 +144,7 @@ export const useLandingPage = (realtime: boolean = true) => {
         }
       } catch (err: any) {
         console.error('Error fetching landing page content:', err);
-        setError(err.message);
+        setError(getFirebaseErrorMessage(err));
         setContent(DEFAULT_LANDING_PAGE);
         setLoading(false);
       }

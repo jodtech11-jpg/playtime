@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { categoriesCollection } from '../services/firebase';
 import { Category } from '../types';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 interface UseCategoriesOptions {
   activeOnly?: boolean;
@@ -67,7 +68,7 @@ export const useCategories = (options: UseCategoriesOptions = {}) => {
         }
       } catch (err: any) {
         console.error('Error fetching categories:', err);
-        setError(err.message || 'Failed to fetch categories');
+        setError(getFirebaseErrorMessage(err, 'Failed to fetch categories'));
         setLoading(false);
       }
     };

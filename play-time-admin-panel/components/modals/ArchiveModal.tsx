@@ -7,6 +7,7 @@ import { getRelativeTime, formatDate } from '../../utils/dateUtils';
 import { serverTimestamp } from 'firebase/firestore';
 import { useToast } from '../../contexts/ToastContext';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface ArchiveModalProps {
   isOpen: boolean;
@@ -62,7 +63,7 @@ const ArchiveModal: React.FC<ArchiveModalProps> = ({ isOpen, onClose }) => {
           });
         } catch (error: any) {
           console.error('Error restoring ticket:', error);
-          showError('Failed to restore ticket: ' + error.message);
+          showError('Failed to restore ticket: ' + getFirebaseErrorMessage(error));
         } finally {
           setProcessing(null);
         }
@@ -80,7 +81,7 @@ const ArchiveModal: React.FC<ArchiveModalProps> = ({ isOpen, onClose }) => {
           await supportTicketsCollection.delete(ticketId);
         } catch (error: any) {
           console.error('Error deleting ticket:', error);
-          showError('Failed to delete ticket: ' + error.message);
+          showError('Failed to delete ticket: ' + getFirebaseErrorMessage(error));
         } finally {
           setProcessing(null);
         }

@@ -9,9 +9,11 @@ import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import FlashDealFormModal from '../components/modals/FlashDealFormModal';
 import { formatDate, formatTime } from '../utils/dateUtils';
 import { formatCurrency } from '../utils/formatUtils';
+import { withVendorId } from '../utils/vendorScope';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const FlashDeals: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isVenueManager } = useAuth();
   const { showSuccess, showError } = useToast();
   const { openConfirm, confirmDialog } = useConfirmDialog();
   const [statusFilter, setStatusFilter] = useState<string>('All');
@@ -19,7 +21,7 @@ const FlashDeals: React.FC = () => {
   const [selectedDeal, setSelectedDeal] = useState<FlashDeal | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
 
-  const { deals, loading } = useFlashDeals({
+  const { deals, loading, error } = useFlashDeals({
     realtime: true,
     status: statusFilter !== 'All' ? statusFilter as FlashDeal['status'] : undefined,
   });
@@ -85,12 +87,17 @@ const FlashDeals: React.FC = () => {
         });
         showSuccess('Flash deal updated successfully');
       } else {
-        await flashDealsCollection.create({
-          ...dealData,
-          currentBookings: 0,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
+        await flashDealsCollection.create(
+          withVendorId(
+            {
+              ...dealData,
+              currentBookings: 0,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            },
+            isVenueManager ? user?.id : undefined
+          )
+        );
         showSuccess('Flash deal created successfully');
       }
 
@@ -98,7 +105,7 @@ const FlashDeals: React.FC = () => {
       setSelectedDeal(null);
     } catch (error: any) {
       console.error('Error saving flash deal:', error);
-      showError('Failed to save flash deal: ' + error.message);
+      showError('Failed to save flash deal: ' + getFirebaseErrorMessage(error));
     } finally {
       setProcessing(null);
     }
@@ -115,7 +122,7 @@ const FlashDeals: React.FC = () => {
           showSuccess('Flash deal deleted successfully');
         } catch (error: any) {
           console.error('Error deleting flash deal:', error);
-          showError('Failed to delete flash deal: ' + error.message);
+          showError('Failed to delete flash deal: ' + getFirebaseErrorMessage(error));
         } finally {
           setProcessing(null);
         }
@@ -133,7 +140,7 @@ const FlashDeals: React.FC = () => {
       showSuccess('Status updated successfully');
     } catch (error: any) {
       console.error('Error updating status:', error);
-      showError('Failed to update status: ' + error.message);
+      showError('Failed to update status: ' + getFirebaseErrorMessage(error));
     } finally {
       setProcessing(null);
     }
@@ -158,6 +165,11 @@ const FlashDeals: React.FC = () => {
 
   return (
     <div className="p-4 sm:p-6 space-y-6">
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-900 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+          {error}
+        </div>
+      )}
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>

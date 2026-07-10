@@ -1,6 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Court } from '../../types';
 import { useSports } from '../../hooks/useSports';
+import { useVenues } from '../../hooks/useVenues';
+import { getSportsForVenue } from '../../utils/sportUtils';
+import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface CourtFormModalProps {
   court: Court | null;
@@ -17,6 +20,25 @@ const CourtFormModal: React.FC<CourtFormModalProps> = ({
   onClose,
   onSave
 }) => {
+  const { venues } = useVenues({ realtime: false });
+  const venue = venues.find((v) => v.id === venueId);
+  const { sports: allSports } = useSports({ activeOnly: true, realtime: false });
+  const availableSports = useMemo(() => {
+    const venueScoped = getSportsForVenue(venue, allSports);
+    // Keep the current court's sport selectable when editing a legacy court
+    // whose sport is no longer assigned to the venue.
+    const currentField = court?.sportId || court?.sport;
+    if (currentField) {
+      const current = allSports.find(
+        (s) => s.id === currentField || s.name.toLowerCase() === currentField.toLowerCase()
+      );
+      if (current && !venueScoped.some((s) => s.id === current.id)) {
+        return [current, ...venueScoped];
+      }
+    }
+    return venueScoped;
+  }, [venue, allSports, court?.sportId, court?.sport]);
+
   const [formData, setFormData] = useState<Partial<Court>>({
     name: '',
     venueId: '',
@@ -36,16 +58,19 @@ const CourtFormModal: React.FC<CourtFormModalProps> = ({
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { sports } = useSports({ activeOnly: true, realtime: false });
 
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
   useEffect(() => {
     if (court) {
+      const sportField = court.sportId || court.sport || '';
+      const matchedSport = availableSports.find(
+        (s) => s.id === sportField || s.name === sportField || s.id === court.sportId
+      );
       setFormData({
         name: court.name || '',
         venueId: court.venueId || venueId,
-        sport: court.sport || '',
+        sport: matchedSport?.id ?? sportField,
         type: court.type || '',
         pricePerHour: court.pricePerHour || 0,
         availability: court.availability || {
@@ -78,7 +103,7 @@ const CourtFormModal: React.FC<CourtFormModalProps> = ({
         status: 'Active'
       });
     }
-  }, [court, venueId, isOpen]);
+  }, [court, venueId, isOpen, availableSports]);
 
   const handleInputChange = (field: keyof Court, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -114,11 +139,22 @@ const CourtFormModal: React.FC<CourtFormModalProps> = ({
     setLoading(true);
 
     try {
-      await onSave(formData);
+      const selectedSport = availableSports.find(
+        (s) => s.id === formData.sport || s.name === formData.sport
+      );
+      if (!selectedSport) {
+        throw new Error('Please select a valid sport offered at this venue');
+      }
+      const payload = {
+        ...formData,
+        sport: selectedSport.name,
+        sportId: selectedSport.id,
+      };
+      await onSave(payload);
       onClose();
     } catch (err: any) {
       console.error('Error saving court:', err);
-      setError(err.message || 'Failed to save court');
+      setError(getFirebaseErrorMessage(err) || 'Failed to save court');
     } finally {
       setLoading(false);
     }
@@ -129,7 +165,6 @@ const CourtFormModal: React.FC<CourtFormModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
         <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between z-10">
           <h2 className="text-2xl font-black text-gray-900">
             {court ? 'Edit Court' : 'Add New Court'}
@@ -142,7 +177,6 @@ const CourtFormModal: React.FC<CourtFormModalProps> = ({
           </button>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
@@ -150,7 +184,6 @@ const CourtFormModal: React.FC<CourtFormModalProps> = ({
             </div>
           )}
 
-          {/* Basic Information */}
           <div className="grid grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-black text-gray-700 mb-2">Court Name *</label>
@@ -170,18 +203,18 @@ const CourtFormModal: React.FC<CourtFormModalProps> = ({
                 onChange={(e) => handleInputChange('sport', e.target.value)}
                 className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
                 required
-                disabled={sports.length === 0}
+                disabled={availableSports.length === 0}
               >
-                <option value="">{sports.length === 0 ? 'No sports available' : 'Select Sport'}</option>
-                {sports.map(sport => (
+                <option value="">{availableSports.length === 0 ? 'No sports available' : 'Select Sport'}</option>
+                {availableSports.map(sport => (
                   <option key={sport.id} value={sport.id}>
                     {sport.name}
                   </option>
                 ))}
               </select>
-              {sports.length === 0 && (
+              {availableSports.length === 0 && (
                 <p className="text-xs text-amber-600 mt-1">
-                  No sports found. Please create sports in Tournaments settings.
+                  No sports assigned to this venue. Add disciplines in venue settings or contact your platform admin.
                 </p>
               )}
             </div>
@@ -195,7 +228,7 @@ const CourtFormModal: React.FC<CourtFormModalProps> = ({
                 value={formData.type}
                 onChange={(e) => handleInputChange('type', e.target.value)}
                 className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
-                placeholder="e.g., Indoor, Outdoor, Synthetic"
+                placeholder="e.g., Indoor, Turf, Hard Court"
               />
             </div>
             <div>
@@ -213,12 +246,11 @@ const CourtFormModal: React.FC<CourtFormModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-sm font-black text-gray-700 mb-2">Status *</label>
+            <label className="block text-sm font-black text-gray-700 mb-2">Status</label>
             <select
               value={formData.status}
               onChange={(e) => handleInputChange('status', e.target.value)}
               className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
-              required
             >
               <option value="Active">Active</option>
               <option value="Maintenance">Maintenance</option>
@@ -226,73 +258,76 @@ const CourtFormModal: React.FC<CourtFormModalProps> = ({
             </select>
           </div>
 
-          {/* Availability Schedule */}
           <div>
             <div className="flex items-center justify-between mb-4">
-              <label className="block text-sm font-black text-gray-700">Availability Schedule</label>
-              <button
-                type="button"
-                onClick={() => handleSetAllDays('08:00', '22:00', true)}
-                className="text-xs font-bold text-primary hover:text-primary-hover"
-              >
-                Set All Days
-              </button>
+              <label className="block text-sm font-black text-gray-700">Weekly Availability</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSetAllDays('08:00', '22:00', true)}
+                  className="text-xs px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-lg font-bold"
+                >
+                  Set All 8AM-10PM
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetAllDays('08:00', '22:00', false)}
+                  className="text-xs px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-lg font-bold"
+                >
+                  Close All
+                </button>
+              </div>
             </div>
-            <div className="space-y-3 border border-gray-200 rounded-xl p-4">
-              {daysOfWeek.map(day => {
-                const dayAvailability = formData.availability?.[day] || { start: '08:00', end: '22:00', available: true };
-                return (
-                  <div key={day} className="flex items-center gap-4">
-                    <div className="w-24">
-                      <label className="text-sm font-bold text-gray-700">{day}</label>
-                    </div>
-                    <div className="flex items-center gap-2">
+            <div className="space-y-3">
+              {daysOfWeek.map(day => (
+                <div key={day} className="flex items-center gap-4 p-3 bg-gray-50 rounded-xl">
+                  <div className="w-24">
+                    <label className="flex items-center gap-2">
                       <input
                         type="checkbox"
-                        checked={dayAvailability.available}
+                        checked={formData.availability?.[day]?.available ?? true}
                         onChange={(e) => handleAvailabilityChange(day, 'available', e.target.checked)}
-                        className="h-4 w-4 rounded border-gray-200 text-primary focus:ring-primary"
+                        className="rounded"
                       />
-                      <span className="text-xs text-gray-500">Available</span>
-                    </div>
-                    {dayAvailability.available && (
-                      <>
-                        <input
-                          type="time"
-                          value={dayAvailability.start}
-                          onChange={(e) => handleAvailabilityChange(day, 'start', e.target.value)}
-                          className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
-                        />
-                        <span className="text-gray-400">to</span>
-                        <input
-                          type="time"
-                          value={dayAvailability.end}
-                          onChange={(e) => handleAvailabilityChange(day, 'end', e.target.value)}
-                          className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
-                        />
-                      </>
-                    )}
+                      <span className="text-sm font-bold text-gray-700">{day}</span>
+                    </label>
                   </div>
-                );
-              })}
+                  {formData.availability?.[day]?.available && (
+                    <>
+                      <input
+                        type="time"
+                        value={formData.availability?.[day]?.start || '08:00'}
+                        onChange={(e) => handleAvailabilityChange(day, 'start', e.target.value)}
+                        className="px-3 py-1 border border-gray-200 rounded-lg text-sm"
+                      />
+                      <span className="text-gray-400">to</span>
+                      <input
+                        type="time"
+                        value={formData.availability?.[day]?.end || '22:00'}
+                        onChange={(e) => handleAvailabilityChange(day, 'end', e.target.value)}
+                        className="px-3 py-1 border border-gray-200 rounded-lg text-sm"
+                      />
+                    </>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="flex gap-3 pt-4 border-t border-gray-200">
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex-1 bg-primary text-primary-content py-3 rounded-xl text-sm font-black uppercase tracking-widest hover:bg-primary-hover shadow-lg shadow-primary/10 transition-all disabled:opacity-50"
-            >
-              {loading ? 'Saving...' : court ? 'Update Court' : 'Create Court'}
-            </button>
+          <div className="flex gap-4 pt-4">
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-3 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-50 transition-all"
+              className="flex-1 px-6 py-3 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 font-black text-sm uppercase"
             >
               Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 px-6 py-3 bg-primary text-white rounded-xl hover:bg-primary/90 font-black text-sm uppercase disabled:opacity-50"
+            >
+              {loading ? 'Saving...' : court ? 'Update Court' : 'Create Court'}
             </button>
           </div>
         </form>
@@ -302,4 +337,3 @@ const CourtFormModal: React.FC<CourtFormModalProps> = ({
 };
 
 export default CourtFormModal;
-

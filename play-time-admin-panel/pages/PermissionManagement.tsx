@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { permissionsCollection } from '../services/firebase';
-import { Permission } from '../types';
+import { permissionsCollection, rolesCollection } from '../services/firebase';
+import { Permission, RoleDefinition } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
 import { formatDate } from '../utils/dateUtils';
 import { serverTimestamp } from 'firebase/firestore';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { DEFAULT_PERMISSIONS, mergeWithDefaultPermissions } from '../utils/rbac';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const PermissionManagement: React.FC = () => {
   const { user: currentUser } = useAuth();
@@ -22,81 +24,21 @@ const PermissionManagement: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
 
-  // Default permissions
-  const defaultPermissions: Permission[] = [
-    // User permissions
-    { id: 'users.create', name: 'Create Users', description: 'Allow creating new user accounts', category: 'users', resource: 'users', action: 'create' },
-    { id: 'users.read', name: 'View Users', description: 'Allow viewing user information', category: 'users', resource: 'users', action: 'read' },
-    { id: 'users.update', name: 'Edit Users', description: 'Allow editing user information', category: 'users', resource: 'users', action: 'update' },
-    { id: 'users.delete', name: 'Delete Users', description: 'Allow deleting user accounts', category: 'users', resource: 'users', action: 'delete' },
-    { id: 'users.manage', name: 'Manage Users', description: 'Full user management access', category: 'users', resource: 'users', action: 'manage' },
-    
-    // Booking permissions
-    { id: 'bookings.create', name: 'Create Bookings', description: 'Allow creating new bookings', category: 'bookings', resource: 'bookings', action: 'create' },
-    { id: 'bookings.read', name: 'View Bookings', description: 'Allow viewing bookings', category: 'bookings', resource: 'bookings', action: 'read' },
-    { id: 'bookings.update', name: 'Edit Bookings', description: 'Allow editing bookings', category: 'bookings', resource: 'bookings', action: 'update' },
-    { id: 'bookings.delete', name: 'Delete Bookings', description: 'Allow deleting bookings', category: 'bookings', resource: 'bookings', action: 'delete' },
-    { id: 'bookings.manage', name: 'Manage Bookings', description: 'Full booking management access', category: 'bookings', resource: 'bookings', action: 'manage' },
-    
-    // Venue permissions
-    { id: 'venues.create', name: 'Create Venues', description: 'Allow creating new venues', category: 'venues', resource: 'venues', action: 'create' },
-    { id: 'venues.read', name: 'View Venues', description: 'Allow viewing venues', category: 'venues', resource: 'venues', action: 'read' },
-    { id: 'venues.update', name: 'Edit Venues', description: 'Allow editing venues', category: 'venues', resource: 'venues', action: 'update' },
-    { id: 'venues.delete', name: 'Delete Venues', description: 'Allow deleting venues', category: 'venues', resource: 'venues', action: 'delete' },
-    { id: 'venues.manage', name: 'Manage Venues', description: 'Full venue management access', category: 'venues', resource: 'venues', action: 'manage' },
-    
-    // Staff permissions
-    { id: 'staff.create', name: 'Create Staff', description: 'Allow creating new staff members', category: 'staff', resource: 'staff', action: 'create' },
-    { id: 'staff.read', name: 'View Staff', description: 'Allow viewing staff information', category: 'staff', resource: 'staff', action: 'read' },
-    { id: 'staff.update', name: 'Edit Staff', description: 'Allow editing staff information', category: 'staff', resource: 'staff', action: 'update' },
-    { id: 'staff.delete', name: 'Delete Staff', description: 'Allow deleting staff members', category: 'staff', resource: 'staff', action: 'delete' },
-    { id: 'staff.manage', name: 'Manage Staff', description: 'Full staff management access', category: 'staff', resource: 'staff', action: 'manage' },
-    
-    // Financial permissions
-    { id: 'financials.read', name: 'View Financials', description: 'Allow viewing financial reports', category: 'financials', resource: 'financials', action: 'read' },
-    { id: 'financials.manage', name: 'Manage Financials', description: 'Full financial management access', category: 'financials', resource: 'financials', action: 'manage' },
-    
-    // Marketing permissions
-    { id: 'marketing.create', name: 'Create Campaigns', description: 'Allow creating marketing campaigns', category: 'marketing', resource: 'marketing', action: 'create' },
-    { id: 'marketing.read', name: 'View Campaigns', description: 'Allow viewing marketing campaigns', category: 'marketing', resource: 'marketing', action: 'read' },
-    { id: 'marketing.update', name: 'Edit Campaigns', description: 'Allow editing marketing campaigns', category: 'marketing', resource: 'marketing', action: 'update' },
-    { id: 'marketing.delete', name: 'Delete Campaigns', description: 'Allow deleting marketing campaigns', category: 'marketing', resource: 'marketing', action: 'delete' },
-    
-    // Settings permissions
-    { id: 'settings.read', name: 'View Settings', description: 'Allow viewing platform settings', category: 'settings', resource: 'settings', action: 'read' },
-    { id: 'settings.update', name: 'Edit Settings', description: 'Allow editing platform settings', category: 'settings', resource: 'settings', action: 'update' },
-  ];
-
   useEffect(() => {
     const fetchPermissions = async () => {
       try {
         setLoading(true);
         setError(null);
         
-        // Fetch custom permissions from Firestore
+        // Fetch custom permissions from Firestore and merge with defaults
         const customPermissions = await permissionsCollection.getAll() as Permission[];
-        
-        // Combine default permissions with custom permissions
-        // Use a Map to avoid duplicates based on ID
-        const permissionMap = new Map<string, Permission>();
-        
-        // Add default permissions first
-        defaultPermissions.forEach(perm => {
-          permissionMap.set(perm.id, perm);
-        });
-        
-        // Add/override with custom permissions from Firestore
-        customPermissions.forEach(perm => {
-          permissionMap.set(perm.id, perm);
-        });
-        
-        setPermissions(Array.from(permissionMap.values()));
+        setPermissions(mergeWithDefaultPermissions(customPermissions));
         setLoading(false);
       } catch (err: any) {
         console.error('Error fetching permissions:', err);
-        setError(err.message || 'Failed to fetch permissions');
+        setError(getFirebaseErrorMessage(err, 'Failed to fetch permissions'));
         // Fallback to default permissions only
-        setPermissions(defaultPermissions);
+        setPermissions(DEFAULT_PERMISSIONS);
         setLoading(false);
       }
     };
@@ -151,7 +93,10 @@ const PermissionManagement: React.FC = () => {
           : `perm_${Date.now()}`);
       
       if (selectedPermission) {
-        await permissionsCollection.update(selectedPermission.id, {
+        // Use an upsert (setDocument with merge) instead of updateDoc. Default
+        // permissions are defined in code and may not exist as Firestore documents
+        // yet, so a plain update would fail with "No document to update".
+        await permissionsCollection.create(selectedPermission.id, {
           ...permissionData,
           id: selectedPermission.id, // Keep original ID
           updatedAt: serverTimestamp()
@@ -172,14 +117,7 @@ const PermissionManagement: React.FC = () => {
       // Refresh permissions from Firestore
       try {
         const customPermissions = await permissionsCollection.getAll() as Permission[];
-        const permissionMap = new Map<string, Permission>();
-        defaultPermissions.forEach(perm => {
-          permissionMap.set(perm.id, perm);
-        });
-        customPermissions.forEach(perm => {
-          permissionMap.set(perm.id, perm);
-        });
-        setPermissions(Array.from(permissionMap.values()));
+        setPermissions(mergeWithDefaultPermissions(customPermissions));
       } catch (refreshErr) {
         console.error('Error refreshing permissions:', refreshErr);
         // If refresh fails, at least update local state optimistically
@@ -192,12 +130,12 @@ const PermissionManagement: React.FC = () => {
     } catch (err: any) {
       console.error('Error saving permission:', err);
       setProcessing(null);
-      showError(`Failed to save permission: ${err.message}`);
+      showError(`Failed to save permission: ${getFirebaseErrorMessage(err)}`);
     }
   };
 
   const handleDeletePermission = (permissionId: string) => {
-    const isDefault = defaultPermissions.some((p) => p.id === permissionId);
+    const isDefault = DEFAULT_PERMISSIONS.some((p) => p.id === permissionId);
     if (isDefault) {
       showWarning('Default permissions cannot be deleted. They are system-defined.');
       return;
@@ -210,18 +148,33 @@ const PermissionManagement: React.FC = () => {
         try {
           setProcessing(permissionId);
           await permissionsCollection.delete(permissionId);
+
+          // Cascade: strip the deleted permission ID from every role that
+          // references it, so we don't leave dangling references behind.
+          try {
+            const allRoles = await rolesCollection.getAll() as RoleDefinition[];
+            const affectedRoles = allRoles.filter(
+              (role) => Array.isArray(role.permissions) && role.permissions.includes(permissionId)
+            );
+            await Promise.all(
+              affectedRoles.map((role) =>
+                rolesCollection.create(role.id, {
+                  id: role.id,
+                  createdAt: role.createdAt,
+                  permissions: role.permissions.filter((p) => p !== permissionId),
+                  updatedAt: serverTimestamp(),
+                })
+              )
+            );
+          } catch (cascadeErr) {
+            console.error('Error removing permission from roles:', cascadeErr);
+          }
+
           setProcessing(null);
 
           try {
             const customPermissions = await permissionsCollection.getAll() as Permission[];
-            const permissionMap = new Map<string, Permission>();
-            defaultPermissions.forEach((perm) => {
-              permissionMap.set(perm.id, perm);
-            });
-            customPermissions.forEach((perm) => {
-              permissionMap.set(perm.id, perm);
-            });
-            setPermissions(Array.from(permissionMap.values()));
+            setPermissions(mergeWithDefaultPermissions(customPermissions));
           } catch (refreshErr) {
             console.error('Error refreshing permissions:', refreshErr);
             setPermissions((prevPermissions) => prevPermissions.filter((p) => p.id !== permissionId));
@@ -229,7 +182,7 @@ const PermissionManagement: React.FC = () => {
         } catch (err: any) {
           console.error('Error deleting permission:', err);
           setProcessing(null);
-          showError(`Failed to delete permission: ${err.message}`);
+          showError(`Failed to delete permission: ${getFirebaseErrorMessage(err)}`);
         }
       },
     });
@@ -457,7 +410,7 @@ const PermissionFormModal: React.FC<PermissionFormModalProps> = ({
       const permissionId = permission?.id || `${formData.resource}.${formData.action}`;
       await onSave({ ...formData, id: permissionId });
     } catch (err: any) {
-      setError(err.message || 'Failed to save permission');
+      setError(getFirebaseErrorMessage(err, 'Failed to save permission'));
     } finally {
       setLoading(false);
     }
@@ -524,6 +477,8 @@ const PermissionFormModal: React.FC<PermissionFormModalProps> = ({
                 <option value="users">Users</option>
                 <option value="bookings">Bookings</option>
                 <option value="venues">Venues</option>
+                <option value="tournaments">Tournaments</option>
+                <option value="memberships">Memberships</option>
                 <option value="staff">Staff</option>
                 <option value="financials">Financials</option>
                 <option value="marketing">Marketing</option>
