@@ -78,6 +78,10 @@ const Marketing: React.FC = () => {
   }, [campaigns]);
 
   const handleToggleCampaign = async (campaignId: string, currentStatus: MarketingCampaign['status']) => {
+    if (!isSuperAdmin) {
+      showError('Marketing campaigns are read-only for venue managers.');
+      return;
+    }
     try {
       setProcessing(campaignId);
       const newStatus = currentStatus === 'Live' ? 'Paused' : 'Live';
@@ -94,6 +98,10 @@ const Marketing: React.FC = () => {
   };
 
   const handleDeleteCampaign = (campaignId: string) => {
+    if (!isSuperAdmin) {
+      showError('Marketing campaigns are read-only for venue managers.');
+      return;
+    }
     setDeletingCampaignId(campaignId);
   };
 
@@ -111,6 +119,9 @@ const Marketing: React.FC = () => {
   };
 
   const handleCreateCampaign = async (campaignData: Omit<MarketingCampaign, 'id' | 'createdAt' | 'updatedAt'>) => {
+    if (!isSuperAdmin) {
+      throw new Error('Only super admins can create or edit marketing campaigns.');
+    }
     if (editingCampaign) {
       // Update existing campaign
       await marketingCampaignsCollection.update(editingCampaign.id, {
@@ -289,7 +300,7 @@ const Marketing: React.FC = () => {
                           <span className="text-[9px] text-gray-400">{getRelativeTime(createdAt)}</span>
                         </div>
                       </div>
-                      <div className="flex gap-2">
+                      {isSuperAdmin && <div className="flex gap-2">
                         <button 
                           className="p-2 text-gray-400 hover:text-gray-900"
                           onClick={() => handleEditCampaign(campaign)}
@@ -316,7 +327,7 @@ const Marketing: React.FC = () => {
                         >
                           <span className="material-symbols-outlined">delete</span>
                         </button>
-                      </div>
+                      </div>}
                     </div>
                   );
                 })
@@ -374,18 +385,20 @@ const Marketing: React.FC = () => {
       </div>
 
       {/* Create/Edit Campaign Modal */}
-      <CreateCampaignModal
-        isOpen={showCreateModal}
-        onClose={() => {
-          setShowCreateModal(false);
-          setEditingCampaign(null);
-        }}
-        onCreate={handleCreateCampaign}
-        editingCampaign={editingCampaign}
-      />
+      {isSuperAdmin && (
+        <CreateCampaignModal
+          isOpen={showCreateModal}
+          onClose={() => {
+            setShowCreateModal(false);
+            setEditingCampaign(null);
+          }}
+          onCreate={handleCreateCampaign}
+          editingCampaign={editingCampaign}
+        />
+      )}
 
       {/* Delete Campaign Confirm */}
-      <ConfirmDialog
+      {isSuperAdmin && <ConfirmDialog
         isOpen={!!deletingCampaignId}
         title="Delete Campaign"
         message="Are you sure you want to delete this campaign? This action cannot be undone."
@@ -399,7 +412,7 @@ const Marketing: React.FC = () => {
           }
         }}
         onCancel={() => setDeletingCampaignId(null)}
-      />
+      />}
     </div>
   );
 };

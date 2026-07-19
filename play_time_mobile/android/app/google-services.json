@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "721347779964",
+    "project_id": "playtime-d9b83",
+    "storage_bucket": "playtime-d9b83.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:721347779964:android:8ebc174de14d07b2bed8f9",
+        "android_client_info": {
+          "package_name": "com.playtime.zekto"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "721347779964-k14ojtdgj6k4ivms6l6scjlt56ornuc8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.playtime.zekto",
+            "certificate_hash": "d9352f6cc3ec244881689ed4a2520f3e6984863a"
+          }
+        },
+        {
+          "client_id": "721347779964-39oif0m5cj2hacg6nodn00aorn556sn4.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA1-1pN_CgHsOqJN--ShyrH7BfwrTTSPzU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "721347779964-39oif0m5cj2hacg6nodn00aorn556sn4.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

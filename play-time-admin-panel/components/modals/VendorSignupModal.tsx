@@ -172,6 +172,11 @@ const VendorSignupModal: React.FC<VendorSignupModalProps> = ({ isOpen, onClose, 
         throw err;
       }
 
+      // The signup rule intentionally permits this pending venue-manager profile
+      // only while signed out. Never grant role/status/venue scope through a
+      // vendor self-update.
+      await auth.signOut();
+
       // Create user document in Firestore with Pending status
       const userData = {
         id: emailUser.uid,
@@ -180,6 +185,9 @@ const VendorSignupModal: React.FC<VendorSignupModalProps> = ({ isOpen, onClose, 
         phone: formData.phone.startsWith('+') ? formData.phone : `+91${formData.phone}`,
         role: 'venue_manager',
         status: 'Pending' as const,
+        // Venue assignment is intentionally performed by a super admin at approval.
+        // Vendors cannot safely grant themselves managedVenues.
+        managedVenues: [],
         venueName: formData.venueName,
         address: formData.address,
         city: formData.city || '',
@@ -190,9 +198,6 @@ const VendorSignupModal: React.FC<VendorSignupModalProps> = ({ isOpen, onClose, 
       };
 
       await usersCollection.create(emailUser.uid, userData);
-
-      // Sign out after creating account
-      await auth.signOut();
 
       onSuccess();
     } catch (err: any) {

@@ -70,7 +70,9 @@ export function getSportsForVenue(
   const venueSports = venue?.sports?.filter(Boolean) ?? [];
   if (venueSports.length === 0) return active;
   return active.filter((s) =>
-    venueSports.some((vs) => vs.toLowerCase() === s.name.toLowerCase())
+    venueSports.some(
+      (vs) => vs === s.id || vs.trim().toLowerCase() === s.name.trim().toLowerCase()
+    )
   );
 }
 

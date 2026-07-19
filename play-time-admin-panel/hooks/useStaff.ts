@@ -3,6 +3,7 @@ import { staffCollection } from '../services/firebase';
 import { Staff } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { getFirebaseErrorMessage } from '../utils/errorUtils';
+import { useVenues } from './useVenues';
 
 interface UseStaffOptions {
   venueId?: string;
@@ -12,6 +13,7 @@ interface UseStaffOptions {
 
 export const useStaff = (options: UseStaffOptions = {}) => {
   const { user, isVenueManager, isSuperAdmin } = useAuth();
+  const { venues } = useVenues({ realtime: true });
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +35,7 @@ export const useStaff = (options: UseStaffOptions = {}) => {
         const filters: any[] = [];
 
         const managed = user.managedVenues?.filter(Boolean) ?? [];
-        // Super Admin sees all staff (including vendor staff). Vendors are scoped to managed venues.
+        // Vendors are scoped by managed venue; Super Admin sees platform staff only.
         if (isVenueManager && !isSuperAdmin) {
           if (managed.length === 0) {
             setStaff([]);
@@ -81,13 +83,31 @@ export const useStaff = (options: UseStaffOptions = {}) => {
           });
         }
 
+        const applyOwnershipScope = (rows: Staff[]) => {
+          if (isSuperAdmin) {
+            const vendorVenueIds = new Set(
+              venues.filter((venue) => Boolean(venue.managerId)).map((venue) => venue.id)
+            );
+            return rows.filter(
+              (member) =>
+                member.ownerScope === 'platform' ||
+                (!member.ownerScope && !member.ownerId && !vendorVenueIds.has(member.venueId))
+            );
+          }
+          if (isVenueManager) {
+            // Venue staff remain with the venue when management is reassigned.
+            return rows.filter((member) => member.ownerScope !== 'platform');
+          }
+          return [];
+        };
+
         if (options.realtime) {
           // Sort in memory — avoid orderBy('createdAt') so venue managers don't
           // need a composite index (venueId + createdAt) just to list staff.
           unsubscribe = staffCollection.subscribeAll(
             (data: Staff[]) => {
               if (!mounted) return;
-              const sorted = [...data].sort((a, b) => {
+              const sorted = applyOwnershipScope(data).sort((a, b) => {
                 const aTime = a.createdAt?.toMillis?.() ?? a.createdAt?.seconds ?? 0;
                 const bTime = b.createdAt?.toMillis?.() ?? b.createdAt?.seconds ?? 0;
                 return bTime - aTime;
@@ -102,7 +122,7 @@ export const useStaff = (options: UseStaffOptions = {}) => {
             filters.length > 0 ? filters : undefined
           );
           if (!mounted) return;
-          const sorted = [...(data as Staff[])].sort((a, b) => {
+          const sorted = applyOwnershipScope(data as Staff[]).sort((a, b) => {
             const aTime = a.createdAt?.toMillis?.() ?? a.createdAt?.seconds ?? 0;
             const bTime = b.createdAt?.toMillis?.() ?? b.createdAt?.seconds ?? 0;
             return bTime - aTime;
@@ -124,7 +144,7 @@ export const useStaff = (options: UseStaffOptions = {}) => {
       mounted = false;
       if (unsubscribe) unsubscribe();
     };
-  }, [user, options.venueId, options.status, options.realtime, isVenueManager, isSuperAdmin]);
+  }, [user, options.venueId, options.status, options.realtime, isVenueManager, isSuperAdmin, venues]);
 
   return { staff, loading, error };
 };

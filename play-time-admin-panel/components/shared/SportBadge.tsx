@@ -18,6 +18,7 @@ const SportBadge: React.FC<SportBadgeProps> = ({
   const sport = findSport(sportName, sports);
   const color = sport?.color || getSportColor(sportName, sports);
   const icon = sport?.icon || 'sports_score';
+  const displayName = sport?.name || sportName;
   const isSm = size === 'sm';
 
   return (
@@ -34,13 +35,13 @@ const SportBadge: React.FC<SportBadgeProps> = ({
       <span className="material-symbols-outlined" style={{ fontSize: isSm ? '14px' : '16px', color }}>
         {icon}
       </span>
-      {sportName}
+      {displayName}
       {onRemove && (
         <button
           type="button"
           onClick={onRemove}
           className="p-0.5 hover:opacity-70 rounded-md transition-opacity"
-          aria-label={`Remove ${sportName}`}
+          aria-label={`Remove ${displayName}`}
         >
           <span className="material-symbols-outlined text-xs">close</span>
         </button>

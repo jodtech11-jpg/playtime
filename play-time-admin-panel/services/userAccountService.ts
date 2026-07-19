@@ -21,6 +21,13 @@ export interface UserAccountProvisionResult {
   resetLink?: string | null;
 }
 
+export interface VendorApprovalResult {
+  userId: string;
+  venueIds: string[];
+  managedVenues: string[];
+  status: 'Active';
+}
+
 /** Base URL for HTTPS Cloud Functions (same project as FCM functions). */
 export const getCloudFunctionsBaseUrl = (): string => {
   const explicit = import.meta.env.VITE_CLOUD_FUNCTIONS_BASE_URL;
@@ -87,3 +94,11 @@ export const sendPasswordSetupEmail = async (email: string): Promise<string | nu
 /** Provision login + send invite email via Cloud Function (preferred). */
 export const sendLoginInvite = (userId: string) =>
   callAdminFunction<UserAccountProvisionResult>('provisionUserLogin', { userId, sendEmail: true });
+
+/** Atomically approve a vendor, assign venues, and remove stale manager access. */
+export const approveVendorVenue = (userId: string, venueIds: string[]) =>
+  callAdminFunction<VendorApprovalResult>('approveVendorVenue', {
+    userId,
+    venueIds,
+    activateVenues: true,
+  });

@@ -15,7 +15,7 @@ import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const Staff: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isSuperAdmin } = useAuth();
   const { showError, showWarning, showSuccess } = useToast();
   const { openConfirm, confirmDialog } = useConfirmDialog();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
@@ -103,6 +103,9 @@ const Staff: React.FC = () => {
         // Create new staff
         await staffCollection.create({
           ...staffData,
+          ownerScope: isSuperAdmin ? 'platform' : 'vendor',
+          ...(!isSuperAdmin && user?.id ? { ownerId: user.id } : {}),
+          createdBy: user?.id,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
@@ -113,7 +116,9 @@ const Staff: React.FC = () => {
       showSuccess(selectedStaff ? 'Staff member updated successfully' : 'Staff member created successfully');
     } catch (error: any) {
       console.error('Error saving staff:', error);
-      throw error;
+      const message = getFirebaseErrorMessage(error, 'Failed to save staff member');
+      showError(message);
+      throw new Error(message);
     } finally {
       setProcessing(null);
     }

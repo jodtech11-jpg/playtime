@@ -4,7 +4,7 @@ import { useVenues } from '../hooks/useVenues';
 import { useBookings } from '../hooks/useBookings';
 import { useUsers } from '../hooks/useUsers';
 import { venuesCollection, logActivity, usersCollection } from '../services/firebase';
-import { Venue } from '../types';
+import { User, Venue } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
 import { useToast } from '../contexts/ToastContext';
@@ -13,12 +13,13 @@ import { formatDate } from '../utils/dateUtils';
 import { useSports } from '../hooks/useSports';
 import VenueFormModal from '../components/modals/VenueFormModal';
 import CourtManagementModal from '../components/modals/CourtManagementModal';
-import { serverTimestamp } from 'firebase/firestore';
+import { deleteField, serverTimestamp } from 'firebase/firestore';
 import { getFirebaseErrorMessage } from '../utils/errorUtils';
+import { resolveSportName as resolveCatalogSportName } from '../utils/sportUtils';
 
 const Venues: React.FC = () => {
   const navigate = useNavigate();
-  const { user, firebaseUser, isSuperAdmin, isVenueManager, refreshUser } = useAuth();
+  const { user, firebaseUser, isSuperAdmin, isVenueManager } = useAuth();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
   const { showSuccess, showError } = useToast();
   const { venues, loading: venuesLoading } = useVenues({ realtime: true });
@@ -117,7 +118,9 @@ const Venues: React.FC = () => {
         venue.name.toLowerCase().includes(query) ||
         venue.address.toLowerCase().includes(query) ||
         venue.id.toLowerCase().includes(query) ||
-        venue.sports?.some(sport => sport.toLowerCase().includes(query))
+        venue.sports?.some(sport =>
+          resolveCatalogSportName(sport, sportsCatalog).toLowerCase().includes(query)
+        )
       );
     }
 
@@ -128,7 +131,13 @@ const Venues: React.FC = () => {
 
     // Sport filter
     if (sportFilter !== 'All') {
-      filtered = filtered.filter(venue => venue.sports?.includes(sportFilter));
+      filtered = filtered.filter(venue =>
+        venue.sports?.some(
+          (sport) =>
+            resolveCatalogSportName(sport, sportsCatalog).toLowerCase() ===
+            sportFilter.toLowerCase()
+        )
+      );
     }
 
     // Manager filter
@@ -137,7 +146,7 @@ const Venues: React.FC = () => {
     }
 
     return filtered;
-  }, [venues, searchQuery, statusFilter, sportFilter, managerFilter]);
+  }, [venues, searchQuery, statusFilter, sportFilter, managerFilter, sportsCatalog]);
 
   // Pagination
   const totalPages = Math.ceil(filteredVenues.length / itemsPerPage);
@@ -208,14 +217,40 @@ const Venues: React.FC = () => {
 
       const actorId = firebaseUser?.uid ?? user?.id;
       const actorEmail = user?.email ?? firebaseUser?.email ?? undefined;
+      const syncManagerAssignment = async (
+        managerId: string | undefined,
+        venueId: string,
+        assigned: boolean
+      ) => {
+        if (!isSuperAdmin || !managerId) return;
+        const manager = await usersCollection.get(managerId) as User | null;
+        if (!manager) return;
+        const current = manager.managedVenues?.filter(Boolean) ?? [];
+        const next = assigned
+          ? Array.from(new Set([...current, venueId]))
+          : current.filter((id) => id !== venueId);
+        if (next.length !== current.length) {
+          await usersCollection.update(managerId, {
+            managedVenues: next,
+            updatedAt: serverTimestamp(),
+          });
+        }
+      };
 
       if (selectedVenue) {
         // Update existing venue
         const updateData = removeUndefined(venueData);
         await venuesCollection.update(selectedVenue.id, {
           ...updateData,
+          ...(isSuperAdmin
+            ? { managerId: venueData.managerId || deleteField() }
+            : {}),
           updatedAt: serverTimestamp()
         });
+        if (isSuperAdmin && selectedVenue.managerId !== venueData.managerId) {
+          await syncManagerAssignment(selectedVenue.managerId, selectedVenue.id, false);
+          await syncManagerAssignment(venueData.managerId, selectedVenue.id, true);
+        }
         if (actorId) {
           await logActivity({
             userId: actorId,
@@ -230,7 +265,7 @@ const Venues: React.FC = () => {
         // Create new venue - generate ID first
         const venueId = `VEN-${Date.now()}`;
 
-        // Clean venueData - remove undefined and managerId (we'll set it separately)
+        // Clean venueData - manager assignment is applied explicitly below.
         const { managerId, ...cleanVenueData } = venueData;
         const cleanedData = removeUndefined(cleanVenueData);
 
@@ -251,25 +286,12 @@ const Venues: React.FC = () => {
           updatedAt: serverTimestamp()
         };
 
-        // Only include managerId if user is not super admin and has an ID
-        if (!isSuperAdmin && user?.id) {
-          venuePayload.managerId = user.id;
+        if (isSuperAdmin && managerId) {
+          venuePayload.managerId = managerId;
         }
-        // managerId is NOT included if undefined - it's excluded from the spread
 
         await venuesCollection.create(venueId, venuePayload);
-
-        // Link venue to vendor's managedVenues so they can manage it immediately
-        if (!isSuperAdmin && user?.id) {
-          const currentManaged = user.managedVenues?.filter(Boolean) ?? [];
-          if (!currentManaged.includes(venueId)) {
-            await usersCollection.update(user.id, {
-              managedVenues: [...currentManaged, venueId],
-              updatedAt: serverTimestamp(),
-            });
-            await refreshUser();
-          }
-        }
+        await syncManagerAssignment(managerId, venueId, true);
 
         if (actorId) {
           await logActivity({

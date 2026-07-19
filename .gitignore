@@ -3,6 +3,8 @@
 !.gitignore
 !play-time-admin-panel/
 !play-time-admin-panel/**
+!play_time_mobile/
+!play_time_mobile/**
 
 # Inside admin panel: ignore dependencies, build, env, secrets
 play-time-admin-panel/node_modules/

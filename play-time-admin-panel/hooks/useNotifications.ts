@@ -57,17 +57,7 @@ export const useNotifications = (realtime: boolean = false) => {
                 setLoading(false);
               }
             },
-            filters.length > 0 ? filters : undefined,
-            undefined,
-            undefined,
-            (subscribeError: any) => {
-              console.error('Error setting up subscription:', subscribeError);
-              if (mounted) {
-                setError(getFirebaseErrorMessage(subscribeError, 'Failed to subscribe to notifications'));
-                setNotifications([]);
-                setLoading(false);
-              }
-            }
+            filters.length > 0 ? filters : undefined
           );
         } else {
           const data = await notificationsCollection.getAll(

@@ -7,6 +7,7 @@ import GoogleMapPicker from '../shared/GoogleMapPicker';
 import ImageUpload from '../shared/ImageUpload';
 import SportBadge from '../shared/SportBadge';
 import { getFirebaseErrorMessage } from '../../utils/errorUtils';
+import { useUsers } from '../../hooks/useUsers';
 
 interface VenueFormModalProps {
   venue: Venue | null;
@@ -23,11 +24,13 @@ const VenueFormModal: React.FC<VenueFormModalProps> = ({
 }) => {
   const { isSuperAdmin } = useAuth();
   const { sports } = useSports({ activeOnly: false, realtime: false });
+  const { users } = useUsers({ limit: 100, usePagination: false });
   const { settings } = useAppSettings(false);
   const [formData, setFormData] = useState<Partial<Venue>>({
     name: '',
     address: '',
     location: { lat: 0, lng: 0 },
+    managerId: '',
     sports: [],
     courts: [],
     amenities: [],
@@ -73,6 +76,7 @@ const VenueFormModal: React.FC<VenueFormModalProps> = ({
         images: venue.images || [],
         rules: venue.rules || '',
         status: venue.status || 'Pending',
+        managerId: venue.managerId || '',
         paymentSettings: cleanedPaymentSettings,
         userIds: venue.userIds || [],
         staffIds: venue.staffIds || []
@@ -88,6 +92,7 @@ const VenueFormModal: React.FC<VenueFormModalProps> = ({
         images: [],
         rules: '',
         status: 'Pending',
+        managerId: '',
         paymentSettings: {
           razorpay: {
             enabled: false
@@ -247,7 +252,7 @@ const VenueFormModal: React.FC<VenueFormModalProps> = ({
                 <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none">Core Specifications</h3>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className={`grid grid-cols-1 ${isSuperAdmin ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-6`}>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Facility Name</label>
                   <input
@@ -276,6 +281,25 @@ const VenueFormModal: React.FC<VenueFormModalProps> = ({
                     <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">expand_more</span>
                   </div>
                 </div>
+                {isSuperAdmin && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Venue Manager</label>
+                    <select
+                      value={formData.managerId || ''}
+                      onChange={(e) => handleInputChange('managerId', e.target.value)}
+                      className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-bold text-slate-900 dark:text-white"
+                    >
+                      <option value="">Unassigned</option>
+                      {users
+                        .filter((candidate) => candidate.role === 'venue_manager')
+                        .map((candidate) => (
+                          <option key={candidate.id} value={candidate.id}>
+                            {candidate.name} ({candidate.email})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               {/* Geographical Node */}
@@ -317,7 +341,14 @@ const VenueFormModal: React.FC<VenueFormModalProps> = ({
                     >
                       <option value="">{sports.length === 0 ? 'No sports configured' : 'Add Discipline...'}</option>
                       {sports
-                        .filter(sport => !formData.sports?.includes(sport.name))
+                        .filter(
+                          (sport) =>
+                            !formData.sports?.some(
+                              (assigned) =>
+                                assigned === sport.id ||
+                                assigned.toLowerCase() === sport.name.toLowerCase()
+                            )
+                        )
                         .map(sport => (
                           <option key={sport.id} value={sport.id}>
                             {sport.name}

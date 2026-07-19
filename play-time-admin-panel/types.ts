@@ -106,6 +106,9 @@ export interface Booking {
   userId: string;
   user: string;
   userPhone?: string;
+  /** Admin/vendor who entered an assisted or walk-in booking. */
+  createdBy?: string;
+  bookingSource?: 'customer' | 'walk_in' | 'admin';
   date: string;
   time: string;
   startTime: any;
@@ -324,6 +327,13 @@ export interface Settlement {
 export interface Staff {
   id: string;
   venueId: string;
+  /**
+   * Explicit ownership for separating platform staff from venue/vendor staff.
+   * Missing values are supported for legacy records and inferred from venue ownership.
+   */
+  ownerScope?: 'platform' | 'vendor';
+  ownerId?: string;
+  createdBy?: string;
   name: string;
   email?: string;
   phone?: string;
@@ -700,6 +710,7 @@ export interface Leaderboard {
     losses: number;
   }>;
   period?: 'January 2024' | string; // For monthly leaderboards
+  createdAt?: any;
   updatedAt?: any;
 }
 

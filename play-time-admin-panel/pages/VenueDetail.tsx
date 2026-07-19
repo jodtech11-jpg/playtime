@@ -12,6 +12,7 @@ import { formatCurrency, getStatusColor, resolveSportName } from '../utils/forma
 import { formatDate, getRelativeTime } from '../utils/dateUtils';
 import { useSports } from '../hooks/useSports';
 import SportBadge from '../components/shared/SportBadge';
+import GoogleMapDisplay from '../components/shared/GoogleMapDisplay';
 import VenueFormModal from '../components/modals/VenueFormModal';
 import { serverTimestamp } from 'firebase/firestore';
 import { getFirebaseErrorMessage } from '../utils/errorUtils';
@@ -32,6 +33,7 @@ const VenueDetail: React.FC = () => {
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [processing, setProcessing] = useState<string | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   // Filter bookings for venue managers (empty managedVenues must not show all bookings)
   const filteredBookings = useMemo(() => {
@@ -145,7 +147,12 @@ const VenueDetail: React.FC = () => {
       </div>
 
       {/* Hero Image and Status */}
-      <div className="relative h-80 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-2xl group">
+      <button
+        type="button"
+        onClick={() => venue.images?.length && setLightboxIndex(0)}
+        className="relative h-80 w-full text-left rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-2xl group"
+        aria-label={venue.images?.length ? `Open ${venue.name} photo fullscreen` : undefined}
+      >
         <img
           src={primaryImage}
           alt={venue.name}
@@ -164,7 +171,12 @@ const VenueDetail: React.FC = () => {
             {venue.status}
           </div>
         </div>
-      </div>
+        {venue.images?.length ? (
+          <span className="absolute bottom-6 right-6 px-3 py-2 rounded-xl bg-black/55 text-white text-[10px] font-black uppercase tracking-widest backdrop-blur-sm">
+            Open fullscreen
+          </span>
+        ) : null}
+      </button>
       {/* Statistics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="ui-card p-6 flex flex-col justify-between group hover:border-emerald-400/40 transition-all duration-300">
@@ -309,6 +321,24 @@ const VenueDetail: React.FC = () => {
             </div>
           </div>
 
+          {venue.location && Number.isFinite(venue.location.lat) && Number.isFinite(venue.location.lng) && (
+            <div className="ui-card overflow-hidden">
+              <div className="p-6 pb-4 flex items-center gap-2">
+                <div className="h-5 w-1 rounded-full bg-rose-500"></div>
+                <h2 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none">Venue Map</h2>
+              </div>
+              <GoogleMapDisplay
+                lat={venue.location.lat}
+                lng={venue.location.lng}
+                label={`${venue.name} location`}
+                className="h-80 w-full"
+              />
+              <p className="px-6 py-4 text-[10px] font-bold text-slate-400">
+                Read-only map. Use the map fullscreen control for a larger view.
+              </p>
+            </div>
+          )}
+
           {/* Amenities */}
           {venue.amenities && venue.amenities.length > 0 && (
             <div className="ui-card p-6">
@@ -336,7 +366,13 @@ const VenueDetail: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {venue.images.map((image, idx) => (
-                  <div key={idx} className="aspect-video rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 group cursor-pointer relative shadow-sm hover:shadow-xl transition-all">
+                  <button
+                    type="button"
+                    key={idx}
+                    onClick={() => setLightboxIndex(idx)}
+                    className="aspect-video rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 group cursor-pointer relative shadow-sm hover:shadow-xl transition-all"
+                    aria-label={`Open photo ${idx + 1} fullscreen`}
+                  >
                     <img
                       src={image}
                       alt={`${venue.name} - Photo ${idx + 1}`}
@@ -345,7 +381,7 @@ const VenueDetail: React.FC = () => {
                     <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4">
                       <p className="text-[8px] font-black text-white uppercase tracking-widest">View Photo {idx + 1}</p>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -544,6 +580,60 @@ const VenueDetail: React.FC = () => {
           onClose={() => setIsEditModalOpen(false)}
           onSave={handleSaveVenue}
         />
+      )}
+
+      {lightboxIndex !== null && venue.images?.[lightboxIndex] && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${venue.name} photo viewer`}
+          onClick={() => setLightboxIndex(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxIndex(null)}
+            className="absolute top-5 right-5 size-12 rounded-full bg-white/10 text-white hover:bg-white/20"
+            aria-label="Close fullscreen photo"
+          >
+            <span className="material-symbols-outlined">close</span>
+          </button>
+          {venue.images.length > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setLightboxIndex((lightboxIndex - 1 + venue.images.length) % venue.images.length);
+                }}
+                className="absolute left-5 size-12 rounded-full bg-white/10 text-white hover:bg-white/20"
+                aria-label="Previous photo"
+              >
+                <span className="material-symbols-outlined">chevron_left</span>
+              </button>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setLightboxIndex((lightboxIndex + 1) % venue.images.length);
+                }}
+                className="absolute right-5 size-12 rounded-full bg-white/10 text-white hover:bg-white/20"
+                aria-label="Next photo"
+              >
+                <span className="material-symbols-outlined">chevron_right</span>
+              </button>
+            </>
+          )}
+          <img
+            src={venue.images[lightboxIndex]}
+            alt={`${venue.name} - Photo ${lightboxIndex + 1}`}
+            className="max-h-[90vh] max-w-[92vw] object-contain"
+            onClick={(event) => event.stopPropagation()}
+          />
+          <span className="absolute bottom-5 text-xs font-bold text-white/70">
+            {lightboxIndex + 1} / {venue.images.length}
+          </span>
+        </div>
       )}
 
     </div>

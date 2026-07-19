@@ -3,7 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { useUsers } from '../hooks/useUsers';
 import { useVenues } from '../hooks/useVenues';
 import { usersCollection, logActivity } from '../services/firebase';
-import { createUserAccount, sendLoginInvite, sendPasswordSetupEmail } from '../services/userAccountService';
+import {
+  approveVendorVenue,
+  createUserAccount,
+  sendLoginInvite,
+  sendPasswordSetupEmail,
+} from '../services/userAccountService';
 import { User } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
@@ -41,6 +46,8 @@ const Users: React.FC = () => {
     onConfirm: () => Promise<void>;
   } | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
+  const [approvalCandidate, setApprovalCandidate] = useState<User | null>(null);
+  const [approvalVenueIds, setApprovalVenueIds] = useState<string[]>([]);
 
   // Filter users based on status and role filters (venue filtering is done in useUsers hook)
   const filteredUsers = useMemo(() => {
@@ -352,16 +359,32 @@ const Users: React.FC = () => {
   };
 
   const handleApproveUser = (userId: string) => {
-    setConfirmDialog({
-      title: 'Approve Vendor',
-      message: 'Approve this vendor? They will gain access to the platform.',
-      confirmLabel: 'Approve',
-      variant: 'default',
-      onConfirm: async () => {
-        await handleStatusChange(userId, 'Active');
-        showSuccess('Vendor approved successfully.');
-      },
-    });
+    const candidate = users.find((user) => user.id === userId);
+    if (!candidate) return;
+    setApprovalCandidate(candidate);
+    setApprovalVenueIds(candidate.managedVenues?.filter(Boolean) ?? []);
+  };
+
+  const confirmVendorApproval = async () => {
+    if (!approvalCandidate) return;
+    if (approvalVenueIds.length === 0) {
+      showError('Assign at least one venue before approving this vendor.');
+      return;
+    }
+
+    try {
+      setProcessing(approvalCandidate.id);
+      await approveVendorVenue(approvalCandidate.id, approvalVenueIds);
+      setLocalStatusOverrides((prev) => ({ ...prev, [approvalCandidate.id]: 'Active' }));
+      showSuccess(`Vendor approved with ${approvalVenueIds.length} assigned venue(s).`);
+      setApprovalCandidate(null);
+      setApprovalVenueIds([]);
+    } catch (err: any) {
+      console.error('Error approving vendor:', err);
+      showError(`Failed to approve vendor: ${getFirebaseErrorMessage(err)}`);
+    } finally {
+      setProcessing(null);
+    }
   };
 
   const handleRejectUser = (userId: string) => {
@@ -758,6 +781,85 @@ const Users: React.FC = () => {
           }}
           onSave={handleSaveUser}
         />
+      )}
+
+      {approvalCandidate && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="approve-vendor-title"
+        >
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-700">
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800">
+              <h2 id="approve-vendor-title" className="text-xl font-black text-slate-900 dark:text-white">
+                Approve {approvalCandidate.name}
+              </h2>
+              <p className="mt-2 text-sm text-slate-500">
+                Assign at least one venue. This grants access and links each selected venue to the vendor.
+              </p>
+              {approvalCandidate.venueName && (
+                <p className="mt-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+                  Signup request: {approvalCandidate.venueName}
+                  {approvalCandidate.address ? ` — ${approvalCandidate.address}` : ''}
+                </p>
+              )}
+            </div>
+            <div className="max-h-72 overflow-y-auto p-6 space-y-2">
+              {venues.length === 0 ? (
+                <p className="text-sm text-slate-500">
+                  No venues exist yet. Create the requested venue from the Venues page before approval.
+                </p>
+              ) : (
+                venues.map((venue) => (
+                  <label key={venue.id} className="flex items-center gap-3 rounded-xl border border-slate-200 dark:border-slate-700 p-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={approvalVenueIds.includes(venue.id)}
+                      onChange={(event) =>
+                        setApprovalVenueIds((current) =>
+                          event.target.checked
+                            ? Array.from(new Set([...current, venue.id]))
+                            : current.filter((id) => id !== venue.id)
+                        )
+                      }
+                      className="rounded border-slate-300 text-primary focus:ring-primary"
+                    />
+                    <span>
+                      <span className="block text-sm font-bold text-slate-900 dark:text-white">{venue.name}</span>
+                      <span className="block text-xs text-slate-500">{venue.address}</span>
+                      {venue.managerId && venue.managerId !== approvalCandidate.id && (
+                        <span className="block text-[10px] font-bold text-amber-600">
+                          Reassigns this venue from its current manager
+                        </span>
+                      )}
+                    </span>
+                  </label>
+                ))
+              )}
+            </div>
+            <div className="flex gap-3 p-6 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setApprovalCandidate(null);
+                  setApprovalVenueIds([]);
+                }}
+                className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3 text-sm font-bold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmVendorApproval}
+                disabled={approvalVenueIds.length === 0 || processing === approvalCandidate.id}
+                className="flex-1 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-black text-white disabled:opacity-50"
+              >
+                {processing === approvalCandidate.id ? 'Approving…' : 'Approve & Assign'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Confirm Dialog */}

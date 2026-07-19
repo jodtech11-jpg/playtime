@@ -89,6 +89,354 @@ async function requireAdmin(req, res) {
   };
 }
 
+/** Verify a Firebase ID token without requiring an admin role. */
+async function requireAuthenticated(req, res) {
+  const authHeader = req.get('authorization') || req.get('Authorization') || '';
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    res.status(401).json({error: 'Missing or invalid Authorization header'});
+    return null;
+  }
+  try {
+    const decoded = await admin.auth().verifyIdToken(match[1]);
+    return {uid: decoded.uid, token: decoded};
+  } catch (err) {
+    console.warn('verifyIdToken failed:', err.message);
+    res.status(401).json({error: 'Invalid ID token'});
+    return null;
+  }
+}
+
+/** Apply the common CORS/method/auth checks for an authenticated POST. */
+async function requireAuthenticatedPost(req, res) {
+  applyCors(req, res);
+  if (req.method === 'OPTIONS') {
+    res.status(204).send('');
+    return null;
+  }
+  if (req.method !== 'POST') {
+    res.status(405).json({error: 'Method not allowed. Use POST.'});
+    return null;
+  }
+  return requireAuthenticated(req, res);
+}
+
+function asDate(value) {
+  if (!value) return null;
+  if (typeof value.toDate === 'function') return value.toDate();
+  const result = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(result.getTime()) ? null : result;
+}
+
+function cleanString(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+// ---------------------------------------------------------------------------
+// Secure player mutations
+// ---------------------------------------------------------------------------
+
+/**
+ * Join or leave a quick match without allowing clients to rewrite playerIds.
+ * POST body: {matchId, action: "join"|"leave"}
+ */
+exports.updateQuickMatchParticipation = functions.https.onRequest(async (req, res) => {
+  const auth = await requireAuthenticatedPost(req, res);
+  if (!auth) return;
+
+  const matchId = cleanString(req.body && req.body.matchId);
+  const action = req.body && req.body.action;
+  if (!matchId || !['join', 'leave'].includes(action)) {
+    res.status(400).json({error: 'Required: matchId and action (join or leave)'});
+    return;
+  }
+
+  try {
+    const result = await admin.firestore().runTransaction(async (transaction) => {
+      const ref = admin.firestore().collection('quickMatches').doc(matchId);
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists) throw Object.assign(new Error('Quick match not found'), {status: 404});
+
+      const match = snapshot.data();
+      const playerIds = Array.isArray(match.playerIds) ? [...new Set(match.playerIds)] : [];
+      const alreadyJoined = playerIds.includes(auth.uid);
+      const maxPlayers = Number(match.maxPlayers);
+
+      if (action === 'join') {
+        if (!['Open', 'Full'].includes(match.status)) {
+          throw Object.assign(new Error('Quick match is not open'), {status: 409});
+        }
+        if (alreadyJoined) return {joined: true, currentPlayers: playerIds.length, unchanged: true};
+        if (!Number.isFinite(maxPlayers) || maxPlayers <= 0 || playerIds.length >= maxPlayers) {
+          throw Object.assign(new Error('Quick match is full'), {status: 409});
+        }
+        playerIds.push(auth.uid);
+      } else {
+        if (!alreadyJoined) return {joined: false, currentPlayers: playerIds.length, unchanged: true};
+        playerIds.splice(playerIds.indexOf(auth.uid), 1);
+      }
+
+      const currentPlayers = playerIds.length;
+      const status = currentPlayers >= maxPlayers ? 'Full' : 'Open';
+      transaction.update(ref, {
+        playerIds,
+        currentPlayers,
+        status,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return {joined: action === 'join', currentPlayers, status};
+    });
+    res.json({matchId, ...result});
+  } catch (error) {
+    console.error('updateQuickMatchParticipation error:', error);
+    res.status(error.status || 500).json({error: error.message || 'Participation update failed'});
+  }
+});
+
+/**
+ * Cast one immutable vote per authenticated user.
+ * POST body: {pollId, optionId}
+ */
+exports.voteInPoll = functions.https.onRequest(async (req, res) => {
+  const auth = await requireAuthenticatedPost(req, res);
+  if (!auth) return;
+
+  const pollId = cleanString(req.body && req.body.pollId);
+  const optionId = cleanString(req.body && req.body.optionId);
+  if (!pollId || !optionId) {
+    res.status(400).json({error: 'Required: pollId and optionId'});
+    return;
+  }
+
+  try {
+    const result = await admin.firestore().runTransaction(async (transaction) => {
+      const ref = admin.firestore().collection('polls').doc(pollId);
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists) throw Object.assign(new Error('Poll not found'), {status: 404});
+
+      const poll = snapshot.data();
+      if (poll.status !== 'Active') throw Object.assign(new Error('Poll is not active'), {status: 409});
+      const deadline = asDate(poll.endDate);
+      if (deadline && deadline.getTime() < Date.now()) {
+        throw Object.assign(new Error('Poll has ended'), {status: 409});
+      }
+
+      const votedUserIds = Array.isArray(poll.votedUserIds) ? poll.votedUserIds : [];
+      if (votedUserIds.includes(auth.uid)) {
+        throw Object.assign(new Error('User has already voted'), {status: 409});
+      }
+      const options = Array.isArray(poll.options) ? poll.options.map((option) => ({...option})) : [];
+      const option = options.find((candidate) => String(candidate.id) === optionId);
+      if (!option) throw Object.assign(new Error('Poll option not found'), {status: 404});
+
+      option.votes = Number(option.votes || 0) + 1;
+      const totalVotes = Number(poll.totalVotes || 0) + 1;
+      transaction.update(ref, {
+        options,
+        totalVotes,
+        votedUserIds: [...votedUserIds, auth.uid],
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return {optionId, totalVotes};
+    });
+    res.json({pollId, ...result});
+  } catch (error) {
+    console.error('voteInPoll error:', error);
+    res.status(error.status || 500).json({error: error.message || 'Vote failed'});
+  }
+});
+
+/**
+ * Register the caller as a tournament player, enforcing deadline, capacity,
+ * and one registration per UID.
+ * POST body: {tournamentId, teamId?, displayName?, phone?}
+ */
+exports.registerTournamentPlayer = functions.https.onRequest(async (req, res) => {
+  const auth = await requireAuthenticatedPost(req, res);
+  if (!auth) return;
+
+  const tournamentId = cleanString(req.body && req.body.tournamentId);
+  const teamId = cleanString(req.body && req.body.teamId);
+  if (!tournamentId) {
+    res.status(400).json({error: 'Required: tournamentId'});
+    return;
+  }
+
+  try {
+    const result = await admin.firestore().runTransaction(async (transaction) => {
+      const tournamentRef = admin.firestore().collection('tournaments').doc(tournamentId);
+      const registrationId = teamId ? `team_${teamId}` : auth.uid;
+      const registrationRef = tournamentRef.collection('registrations').doc(registrationId);
+      const teamRef = teamId ? admin.firestore().collection('teams').doc(teamId) : null;
+      const [tournamentSnapshot, registrationSnapshot, teamSnapshot] = await Promise.all([
+        transaction.get(tournamentRef),
+        transaction.get(registrationRef),
+        teamRef ? transaction.get(teamRef) : Promise.resolve(null),
+      ]);
+      if (!tournamentSnapshot.exists) {
+        throw Object.assign(new Error('Tournament not found'), {status: 404});
+      }
+      if (registrationSnapshot.exists) {
+        throw Object.assign(
+          new Error(teamId ? 'This team is already registered' : 'User is already registered'),
+          {status: 409},
+        );
+      }
+      if (teamId) {
+        if (!teamSnapshot || !teamSnapshot.exists) {
+          throw Object.assign(new Error('Team not found'), {status: 404});
+        }
+        const team = teamSnapshot.data();
+        const members = Array.isArray(team.members) ? team.members : [];
+        if (team.createdBy !== auth.uid && team.captainId !== auth.uid && !members.includes(auth.uid)) {
+          throw Object.assign(new Error('You are not authorized to register this team'), {status: 403});
+        }
+      }
+
+      const tournament = tournamentSnapshot.data();
+      if (tournament.status !== 'Open') {
+        throw Object.assign(new Error('Tournament registration is not open'), {status: 409});
+      }
+      const starts = asDate(tournament.registrationStartDate);
+      const deadline = asDate(tournament.registrationEndDate);
+      const now = Date.now();
+      if (starts && starts.getTime() > now) {
+        throw Object.assign(new Error('Tournament registration has not started'), {status: 409});
+      }
+      if (deadline && deadline.getTime() < now) {
+        throw Object.assign(new Error('Tournament registration deadline has passed'), {status: 409});
+      }
+
+      const registrationCount = Number(tournament.registrationCount || 0);
+      const capacity = Number(tournament.maxPlayers || tournament.maxTeams);
+      if (Number.isFinite(capacity) && capacity > 0 && registrationCount >= capacity) {
+        throw Object.assign(new Error('Tournament is full'), {status: 409});
+      }
+
+      transaction.create(registrationRef, {
+        tournamentId,
+        userId: auth.uid,
+        teamId: teamId || null,
+        displayName: cleanString(req.body && req.body.displayName),
+        phone: cleanString(req.body && req.body.phone),
+        status: 'Registered',
+        registeredAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      transaction.update(tournamentRef, {
+        registrationCount: registrationCount + 1,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return {registrationId, teamId: teamId || null, registrationCount: registrationCount + 1};
+    });
+    res.status(201).json({tournamentId, status: 'Registered', ...result});
+  } catch (error) {
+    console.error('registerTournamentPlayer error:', error);
+    res.status(error.status || 500).json({error: error.message || 'Registration failed'});
+  }
+});
+
+/**
+ * Approve a vendor and atomically assign managed venues.
+ * Super-admin only. POST body: {userId, venueId? | venueIds?, activateVenues?}
+ */
+exports.approveVendorVenue = functions.https.onRequest(async (req, res) => {
+  applyCors(req, res);
+  if (req.method === 'OPTIONS') {
+    res.status(204).send('');
+    return;
+  }
+  if (req.method !== 'POST') {
+    res.status(405).json({error: 'Method not allowed. Use POST.'});
+    return;
+  }
+
+  const auth = await requireAdmin(req, res);
+  if (!auth) return;
+  if (!auth.isSuperAdmin) {
+    res.status(403).json({error: 'Only super admins can approve and assign vendors'});
+    return;
+  }
+
+  const userId = cleanString(req.body && req.body.userId);
+  const requested = Array.isArray(req.body && req.body.venueIds) ?
+    req.body.venueIds : [req.body && req.body.venueId];
+  const venueIds = [...new Set(requested.map(cleanString).filter(Boolean))];
+  if (!userId || venueIds.length === 0) {
+    res.status(400).json({error: 'Required: userId and at least one venueId'});
+    return;
+  }
+
+  try {
+    const result = await admin.firestore().runTransaction(async (transaction) => {
+      const userRef = admin.firestore().collection('users').doc(userId);
+      const venueRefs = venueIds.map((venueId) =>
+        admin.firestore().collection('venues').doc(venueId));
+      const userSnapshot = await transaction.get(userRef);
+      const venueSnapshots = await Promise.all(venueRefs.map((ref) => transaction.get(ref)));
+
+      if (!userSnapshot.exists) throw Object.assign(new Error('Vendor not found'), {status: 404});
+      const user = userSnapshot.data();
+      if (user.role !== 'venue_manager') {
+        throw Object.assign(new Error('User is not a venue manager'), {status: 409});
+      }
+      const missingVenue = venueSnapshots.findIndex((snapshot) => !snapshot.exists);
+      if (missingVenue !== -1) {
+        throw Object.assign(new Error(`Venue not found: ${venueIds[missingVenue]}`), {status: 404});
+      }
+
+      const previousManagerIds = [...new Set(
+        venueSnapshots
+          .map((snapshot) => cleanString(snapshot.data().managerId))
+          .filter((managerId) => managerId && managerId !== userId),
+      )];
+      const previousManagerRefs = previousManagerIds.map((managerId) =>
+        admin.firestore().collection('users').doc(managerId));
+      const previousManagerSnapshots = await Promise.all(
+        previousManagerRefs.map((ref) => transaction.get(ref)),
+      );
+
+      const managedVenues = venueIds;
+      transaction.update(userRef, {
+        status: 'Active',
+        managedVenues,
+        approvedBy: auth.uid,
+        approvedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      previousManagerSnapshots.forEach((snapshot, index) => {
+        if (!snapshot.exists) return;
+        const previousManaged = Array.isArray(snapshot.data().managedVenues) ?
+          snapshot.data().managedVenues : [];
+        const reassignedVenueIds = venueSnapshots
+          .filter((venueSnapshot) => venueSnapshot.data().managerId === snapshot.id)
+          .map((venueSnapshot) => venueSnapshot.id);
+        transaction.update(previousManagerRefs[index], {
+          managedVenues: previousManaged.filter(
+            (venueId) => !reassignedVenueIds.includes(venueId),
+          ),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      });
+
+      venueRefs.forEach((venueRef) => {
+        const venueUpdate = {
+          managerId: userId,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+        if (!req.body || req.body.activateVenues !== false) venueUpdate.status = 'Active';
+        transaction.update(venueRef, venueUpdate);
+      });
+      return {managedVenues};
+    });
+    res.json({userId, venueIds, status: 'Active', ...result});
+  } catch (error) {
+    console.error('approveVendorVenue error:', error);
+    res.status(error.status || 500).json({error: error.message || 'Vendor approval failed'});
+  }
+});
+
 // ---------------------------------------------------------------------------
 // FCM HTTPS endpoints (admin-only)
 // ---------------------------------------------------------------------------
@@ -216,6 +564,8 @@ exports.sendNotificationToUser = functions.https.onRequest(async (req, res) => {
       body: notification.body,
       type: (data && data.type) || 'general',
       data: data || {},
+      isRead: false,
+      // Legacy mobile builds still read `read`; new code should use `isRead`.
       read: false,
       createdBy: auth.uid,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -320,6 +670,115 @@ exports.sendNotificationToTopic = functions.https.onRequest(async (req, res) => 
 // Firestore triggers
 // ---------------------------------------------------------------------------
 
+function venueTopic(venueId) {
+  const normalized = String(venueId || '').replace(/[^a-zA-Z0-9\-_.~%]/g, '_');
+  return normalized ? `venue_${normalized}` : null;
+}
+
+async function sendVenueEventNotification(event, kind, documentId, before, after) {
+  const venueId = cleanString(after.venueId);
+  const topic = venueTopic(venueId);
+  if (!topic) {
+    console.log(`${kind} ${documentId} has no venueId; notification skipped`);
+    return null;
+  }
+
+  const isTournament = kind === 'tournament';
+  const title = isTournament ?
+    (before ? 'Tournament updated' : 'New tournament') :
+    (before ? 'Quick match updated' : 'New quick match');
+  const name = cleanString(after.name) || cleanString(after.sport) ||
+    (isTournament ? 'Tournament' : 'Quick match');
+  const body = `${name} at ${after.venueName || 'your venue'} is ${after.status || 'available'}.`;
+  const markerId = crypto.createHash('sha256')
+    .update(`${event.id}:${kind}:${documentId}`)
+    .digest('hex');
+  const markerRef = admin.firestore().collection('systemNotificationEvents').doc(markerId);
+  const notificationRef = admin.firestore().collection('notifications').doc(markerId);
+
+  const shouldSend = await admin.firestore().runTransaction(async (transaction) => {
+    const marker = await transaction.get(markerRef);
+    if (marker.exists) return false;
+    transaction.create(markerRef, {
+      eventId: event.id,
+      kind,
+      sourceId: documentId,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    transaction.set(notificationRef, {
+      title,
+      body,
+      type: kind,
+      targetAudience: 'Venue',
+      targetVenueId: venueId,
+      data: {[`${kind}Id`]: documentId, venueId},
+      isRead: false,
+      read: false,
+      source: 'system',
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return true;
+  });
+  if (!shouldSend) return null;
+
+  return admin.messaging().send({
+    notification: {title, body},
+    data: {
+      type: kind,
+      id: documentId,
+      [`${kind}Id`]: documentId,
+      venueId,
+      notificationId: markerId,
+    },
+    topic,
+    android: {
+      priority: 'high',
+      notification: {sound: 'default', channelId: 'high_importance_channel'},
+    },
+    apns: {payload: {aps: {sound: 'default', badge: 1}}},
+  });
+}
+
+function relevantEventUpdate(kind, before, after) {
+  const dateField = kind === 'tournament' ? 'startDate' : 'date';
+  const beforeDate = asDate(before[dateField]);
+  const afterDate = asDate(after[dateField]);
+  return before.status !== after.status ||
+    before.venueId !== after.venueId ||
+    before.name !== after.name ||
+    before.sport !== after.sport ||
+    (beforeDate ? beforeDate.getTime() : null) !==
+      (afterDate ? afterDate.getTime() : null);
+}
+
+exports.onQuickMatchCreated = onDocumentCreated('quickMatches/{matchId}', async (event) => {
+  const match = event.data.data();
+  if (!['Open', 'Full'].includes(match.status)) return null;
+  return sendVenueEventNotification(event, 'quickMatch', event.params.matchId, null, match);
+});
+
+exports.onQuickMatchUpdated = onDocumentUpdated('quickMatches/{matchId}', async (event) => {
+  const before = event.data.before.data();
+  const after = event.data.after.data();
+  if (!relevantEventUpdate('quickMatch', before, after)) return null;
+  return sendVenueEventNotification(event, 'quickMatch', event.params.matchId, before, after);
+});
+
+exports.onTournamentCreated = onDocumentCreated('tournaments/{tournamentId}', async (event) => {
+  const tournament = event.data.data();
+  if (tournament.status !== 'Open') return null;
+  return sendVenueEventNotification(
+    event, 'tournament', event.params.tournamentId, null, tournament);
+});
+
+exports.onTournamentUpdated = onDocumentUpdated('tournaments/{tournamentId}', async (event) => {
+  const before = event.data.before.data();
+  const after = event.data.after.data();
+  if (!relevantEventUpdate('tournament', before, after)) return null;
+  return sendVenueEventNotification(
+    event, 'tournament', event.params.tournamentId, before, after);
+});
+
 /** Send notification when a booking is created. */
 exports.onBookingCreated = onDocumentCreated(
   'bookings/{bookingId}',
@@ -356,6 +815,7 @@ exports.onBookingCreated = onDocumentCreated(
         body: `Your booking at ${booking.venueName || 'venue'} has been confirmed.`,
         type: 'booking',
         data: {bookingId: event.params.bookingId},
+        isRead: false,
         read: false,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
@@ -439,6 +899,7 @@ exports.onBookingStatusChanged = onDocumentUpdated(
         body,
         type,
         data: {bookingId: event.params.bookingId},
+        isRead: false,
         read: false,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
@@ -526,42 +987,153 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
   const event = payload && payload.event;
   const now = admin.firestore.FieldValue.serverTimestamp();
   try {
-    const entity = payload && payload.payload &&
-      payload.payload.payment &&
-      payload.payload.payment.entity;
-    const bookingId = entity && entity.notes && entity.notes.bookingId;
-    const membershipId = entity && entity.notes && entity.notes.membershipId;
-    const paymentId = entity && entity.id;
-    const amountPaise = (entity && entity.amount) || 0;
-    const amountRefundedPaise = (entity && entity.amount_refunded) || 0;
+    const razorpayPayload = payload && payload.payload || {};
+    const paymentEntity = razorpayPayload.payment && razorpayPayload.payment.entity;
+    const orderEntity = razorpayPayload.order && razorpayPayload.order.entity;
+    const refundEntity = razorpayPayload.refund && razorpayPayload.refund.entity;
+    const entity = paymentEntity || orderEntity || refundEntity || {};
+    const notes = {
+      ...((orderEntity && orderEntity.notes) || {}),
+      ...((paymentEntity && paymentEntity.notes) || {}),
+      ...((refundEntity && refundEntity.notes) || {}),
+    };
+    let bookingId = cleanString(notes.bookingId);
+    let membershipId = cleanString(notes.membershipId);
+    let settlementId = cleanString(notes.settlementId);
+    let marketplaceOrderId = cleanString(notes.orderId);
+    const paymentId = cleanString(paymentEntity && paymentEntity.id) ||
+      cleanString(refundEntity && refundEntity.payment_id);
+    const razorpayOrderId = cleanString(paymentEntity && paymentEntity.order_id) ||
+      cleanString(orderEntity && orderEntity.id);
+    const paymentDocumentId = paymentId ||
+      (razorpayOrderId && `razorpay_order_${razorpayOrderId}`) ||
+      (marketplaceOrderId && `order_${marketplaceOrderId}`);
+    let existingPayment = {};
+    if (paymentDocumentId && !bookingId && !membershipId && !settlementId) {
+      const existingSnapshot = await admin.firestore()
+        .collection('payments')
+        .doc(paymentDocumentId)
+        .get();
+      existingPayment = existingSnapshot.exists ? existingSnapshot.data() : {};
+      bookingId = cleanString(existingPayment.bookingId);
+      membershipId = cleanString(existingPayment.membershipId);
+      settlementId = cleanString(existingPayment.settlementId);
+      marketplaceOrderId = cleanString(existingPayment.orderId);
+    }
+    const amountPaise = Number(entity.amount || entity.amount_paid || 0);
+    const amountRefundedPaise = Number(
+      (refundEntity && refundEntity.amount) || (paymentEntity && paymentEntity.amount_refunded) || 0);
+
+    const notedSourceType = cleanString(notes.sourceType);
+    const existingSourceType = cleanString(existingPayment.sourceType);
+    let sourceType = ['Booking', 'Membership', 'Settlement', 'Order'].includes(notedSourceType) ?
+      notedSourceType :
+      (['Booking', 'Membership', 'Settlement', 'Order'].includes(existingSourceType) ?
+        existingSourceType : null);
+    let sourceId = cleanString(notes.sourceId) || cleanString(existingPayment.sourceId);
+    let sourceData = {};
+    let sourceCollection = null;
+    if (bookingId) {
+      sourceType = 'Booking';
+      sourceId = bookingId;
+      sourceCollection = 'bookings';
+    } else if (membershipId) {
+      sourceType = 'Membership';
+      sourceId = membershipId;
+      sourceCollection = 'memberships';
+    } else if (settlementId) {
+      sourceType = 'Settlement';
+      sourceId = settlementId;
+      sourceCollection = 'settlements';
+    } else if (marketplaceOrderId) {
+      sourceType = 'Order';
+      sourceId = marketplaceOrderId;
+      sourceCollection = 'orders';
+    } else if (sourceType && sourceId) {
+      sourceCollection = {
+        Booking: 'bookings',
+        Membership: 'memberships',
+        Settlement: 'settlements',
+        Order: 'orders',
+      }[sourceType] || null;
+    }
+    if (!bookingId && sourceType === 'Booking') bookingId = sourceId;
+    if (!membershipId && sourceType === 'Membership') membershipId = sourceId;
+    if (!settlementId && sourceType === 'Settlement') settlementId = sourceId;
+    if (!marketplaceOrderId && sourceType === 'Order') marketplaceOrderId = sourceId;
+    if (sourceCollection && sourceId) {
+      const sourceSnapshot = await admin.firestore()
+        .collection(sourceCollection)
+        .doc(sourceId)
+        .get();
+      sourceData = sourceSnapshot.exists ? sourceSnapshot.data() : {};
+    }
+    const userId = cleanString(notes.userId) || cleanString(sourceData.userId) ||
+      cleanString(existingPayment.userId);
+    const venueId = cleanString(notes.venueId) || cleanString(sourceData.venueId) ||
+      cleanString(existingPayment.venueId);
+    const transactionId = paymentId || cleanString(entity.id);
+    const canWritePayment = paymentDocumentId && sourceType && sourceId && venueId;
+    if (paymentDocumentId && !canWritePayment) {
+      console.warn('Razorpay event lacks Payment schema source/venue metadata', {
+        event,
+        paymentDocumentId,
+        razorpayOrderId,
+        marketplaceOrderId,
+      });
+    }
 
     if (event === 'payment.captured' || event === 'order.paid') {
-      if (bookingId && paymentId) {
+      if (bookingId) {
         await admin.firestore().collection('bookings').doc(bookingId).set({
           paymentStatus: 'Paid',
-          paymentTransactionId: paymentId,
+          paymentTransactionId: transactionId,
+          razorpayOrderId,
           webhookVerifiedAt: now,
           updatedAt: now,
         }, {merge: true});
       }
-      if (membershipId && paymentId) {
+      if (membershipId) {
         await admin.firestore().collection('memberships').doc(membershipId).set({
           paymentStatus: 'Paid',
-          paymentTransactionId: paymentId,
+          paymentTransactionId: transactionId,
+          razorpayOrderId,
           webhookVerifiedAt: now,
           updatedAt: now,
         }, {merge: true});
       }
-      // Record the payment (idempotent using paymentId as doc id).
-      if (paymentId) {
-        await admin.firestore().collection('payments').doc(paymentId).set({
-          paymentId,
-          bookingId: bookingId || null,
-          membershipId: membershipId || null,
+      if (marketplaceOrderId) {
+        await admin.firestore().collection('orders').doc(marketplaceOrderId).set({
+          paymentStatus: 'Paid',
+          paymentTransactionId: transactionId,
+          razorpayOrderId,
+          status: 'Processing',
+          webhookVerifiedAt: now,
+          updatedAt: now,
+        }, {merge: true});
+      }
+      // Record a Payment-schema document. The Razorpay payment ID is the
+      // idempotency key; order-only events use a stable order-prefixed key.
+      if (canWritePayment) {
+        await admin.firestore().collection('payments').doc(paymentDocumentId).set({
+          type: 'Online',
+          direction: 'UserToVenue',
+          sourceType,
+          sourceId,
+          userId,
+          venueId,
           amount: amountPaise / 100,
           currency: (entity && entity.currency) || 'INR',
-          provider: 'Razorpay',
-          status: 'Paid',
+          paymentMethod: 'Razorpay',
+          paymentGateway: 'Razorpay',
+          transactionId,
+          orderId: marketplaceOrderId,
+          razorpayOrderId,
+          bookingId,
+          membershipId,
+          settlementId,
+          status: 'Completed',
+          paymentDate: now,
           rawEvent: event,
           createdAt: now,
           updatedAt: now,
@@ -580,6 +1152,33 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
           updatedAt: now,
         }, {merge: true});
       }
+      if (marketplaceOrderId) {
+        await admin.firestore().collection('orders').doc(marketplaceOrderId).set({
+          paymentStatus: 'Pending',
+          updatedAt: now,
+        }, {merge: true});
+      }
+      if (canWritePayment) {
+        await admin.firestore().collection('payments').doc(paymentDocumentId).set({
+          type: 'Online',
+          direction: 'UserToVenue',
+          sourceType,
+          sourceId,
+          userId,
+          venueId,
+          amount: amountPaise / 100,
+          currency: entity.currency || 'INR',
+          paymentMethod: 'Razorpay',
+          paymentGateway: 'Razorpay',
+          transactionId,
+          orderId: marketplaceOrderId,
+          razorpayOrderId,
+          status: 'Failed',
+          rawEvent: event,
+          createdAt: now,
+          updatedAt: now,
+        }, {merge: true});
+      }
     } else if (event === 'refund.created' || event === 'refund.processed') {
       if (bookingId) {
         await admin.firestore().collection('bookings').doc(bookingId).set({
@@ -593,11 +1192,29 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
           updatedAt: now,
         }, {merge: true});
       }
-      if (paymentId) {
-        await admin.firestore().collection('payments').doc(paymentId).set({
-          paymentId,
-          bookingId: bookingId || null,
-          membershipId: membershipId || null,
+      if (marketplaceOrderId) {
+        await admin.firestore().collection('orders').doc(marketplaceOrderId).set({
+          paymentStatus: 'Refunded',
+          status: 'Refunded',
+          updatedAt: now,
+        }, {merge: true});
+      }
+      if (canWritePayment) {
+        await admin.firestore().collection('payments').doc(paymentDocumentId).set({
+          type: 'Online',
+          direction: 'UserToVenue',
+          sourceType,
+          sourceId,
+          userId,
+          venueId,
+          paymentMethod: 'Razorpay',
+          paymentGateway: 'Razorpay',
+          transactionId,
+          orderId: marketplaceOrderId,
+          razorpayOrderId,
+          bookingId,
+          membershipId,
+          settlementId,
           amountRefunded: amountRefundedPaise / 100,
           status: 'Refunded',
           rawEvent: event,

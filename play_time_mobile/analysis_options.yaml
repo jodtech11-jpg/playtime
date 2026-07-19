@@ -1,0 +1,25 @@
+# This file configures the analyzer, which statically analyzes Dart code to
+# check for errors, warnings, and lints.
+#
+# The issues identified by the analyzer are surfaced in the UI of Dart-enabled
+# IDEs (https://dart.dev/tools#ides-and-editors). The analyzer can also be
+# invoked from the command line by running `flutter analyze`.
+
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  # NOTE: `strict-casts`/`strict-raw-types` would flag many existing dynamic
+  # casts from `data['field']`. Enable them in a follow-up refactor PR.
+  errors:
+    # Treat bug-class lints as errors so CI blocks them.
+    avoid_print: error
+    unawaited_futures: error
+
+linter:
+  rules:
+    # Forbid bare `print` — use `debugPrint` (stripped in release) or a logger.
+    avoid_print: true
+    # Flag forgotten `await` on Futures (causes silent race conditions).
+    unawaited_futures: true
+    prefer_final_locals: true
+    always_declare_return_types: true

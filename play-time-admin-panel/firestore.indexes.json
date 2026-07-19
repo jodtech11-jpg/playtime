@@ -9,11 +9,11 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "startTime",
+          "fieldPath": "status",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "status",
+          "fieldPath": "startTime",
           "order": "ASCENDING"
         }
       ]
@@ -69,6 +69,20 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
+          "fieldPath": "sport",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startTime",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
           "fieldPath": "status",
           "order": "ASCENDING"
         },
@@ -76,6 +90,76 @@
           "fieldPath": "startTime",
           "order": "ASCENDING"
         }
+      ]
+    },
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startTime",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "sport", "order": "ASCENDING"},
+        {"fieldPath": "startTime", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "sport", "order": "ASCENDING"},
+        {"fieldPath": "startTime", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "venueId", "order": "ASCENDING"},
+        {"fieldPath": "sport", "order": "ASCENDING"},
+        {"fieldPath": "startTime", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "venueId", "order": "ASCENDING"},
+        {"fieldPath": "sport", "order": "ASCENDING"},
+        {"fieldPath": "startTime", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "venueId", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "sport", "order": "ASCENDING"},
+        {"fieldPath": "startTime", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "venueId", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "sport", "order": "ASCENDING"},
+        {"fieldPath": "startTime", "order": "DESCENDING"}
       ]
     },
     {
@@ -988,24 +1072,6 @@
         {
           "fieldPath": "status",
           "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "bookings",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "venueId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "courtId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
         },
         {
           "fieldPath": "startTime",
@@ -1024,28 +1090,6 @@
         {
           "fieldPath": "courtId",
           "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "startTime",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "bookings",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "venueId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "courtId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "arrayConfig": "CONTAINS"
         },
         {
           "fieldPath": "startTime",
@@ -1094,7 +1138,7 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "scheduledTime",
+          "fieldPath": "date",
           "order": "ASCENDING"
         }
       ]
@@ -1140,7 +1184,7 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "endDate",
+          "fieldPath": "endTime",
           "order": "ASCENDING"
         }
       ]
@@ -1184,28 +1228,6 @@
         {
           "fieldPath": "rating",
           "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "bookings",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "venueId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "courtId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "startTime",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "arrayConfig": "CONTAINS"
         }
       ]
     },
@@ -1256,25 +1278,29 @@
       ]
     },
     {
-      "collectionGroup": "products",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "category",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "arrayConfig": "CONTAINS"
-        }
-      ]
-    },
-    {
       "collectionGroup": "posts",
       "queryScope": "COLLECTION",
       "fields": [
         {
           "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isRead",
           "order": "ASCENDING"
         },
         {

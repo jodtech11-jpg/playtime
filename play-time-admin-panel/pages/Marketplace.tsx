@@ -16,9 +16,11 @@ import CategoryManagementModal from '../components/modals/CategoryManagementModa
 import { useToast } from '../contexts/ToastContext';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import { getFirebaseErrorMessage } from '../utils/errorUtils';
+import { useAuth } from '../contexts/AuthContext';
 
 const Marketplace: React.FC = () => {
   const { showError } = useToast();
+  const { isSuperAdmin } = useAuth();
   const { openConfirm, confirmDialog } = useConfirmDialog();
   const { setNewEntryHandler, unsetNewEntryHandler } = useHeaderActions();
   
@@ -440,14 +442,16 @@ const Marketplace: React.FC = () => {
                   </option>
                 ))}
               </select>
-              <button
-                onClick={() => setShowCategoryModal(true)}
-                className="px-3 py-2 text-primary hover:bg-primary/10 rounded-xl text-sm font-black transition-all flex items-center gap-2"
-                title="Manage Categories"
-              >
-                <span className="material-symbols-outlined text-lg">settings</span>
-                Manage
-              </button>
+              {isSuperAdmin && (
+                <button
+                  onClick={() => setShowCategoryModal(true)}
+                  className="px-3 py-2 text-primary hover:bg-primary/10 rounded-xl text-sm font-black transition-all flex items-center gap-2"
+                  title="Manage Categories"
+                >
+                  <span className="material-symbols-outlined text-lg">settings</span>
+                  Manage
+                </button>
+              )}
               <select
                 value={productStatusFilter}
                 onChange={(e) => setProductStatusFilter(e.target.value)}
@@ -806,14 +810,16 @@ const Marketplace: React.FC = () => {
       />
 
       {/* Category Management Modal */}
-      <CategoryManagementModal
-        isOpen={showCategoryModal}
-        onClose={() => setShowCategoryModal(false)}
-        categories={categories}
-        onUpdate={() => {
-          // Categories will update automatically via realtime subscription
-        }}
-      />
+      {isSuperAdmin && (
+        <CategoryManagementModal
+          isOpen={showCategoryModal}
+          onClose={() => setShowCategoryModal(false)}
+          categories={categories}
+          onUpdate={() => {
+            // Categories will update automatically via realtime subscription
+          }}
+        />
+      )}
       {confirmDialog}
     </div>
   );

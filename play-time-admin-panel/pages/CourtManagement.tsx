@@ -86,7 +86,7 @@ const CourtManagement: React.FC = () => {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(court =>
         court.name.toLowerCase().includes(query) ||
-        court.sport?.toLowerCase().includes(query) ||
+        resolveSportName(court.sportId || court.sport, sportsCatalog).toLowerCase().includes(query) ||
         court.type?.toLowerCase().includes(query)
       );
     }
@@ -99,7 +99,7 @@ const CourtManagement: React.FC = () => {
     // Sport filter
     if (sportFilter !== 'All') {
       filtered = filtered.filter(
-        (court) => resolveSportName(court.sport, sportsCatalog) === sportFilter
+        (court) => resolveSportName(court.sportId || court.sport, sportsCatalog) === sportFilter
       );
     }
 
@@ -178,7 +178,9 @@ const CourtManagement: React.FC = () => {
       setSelectedCourt(null);
     } catch (error: any) {
       console.error('Error saving court:', error);
-      throw error;
+      const message = getFirebaseErrorMessage(error, 'Failed to save court');
+      showError(message);
+      throw new Error(message);
     } finally {
       setProcessing(null);
     }

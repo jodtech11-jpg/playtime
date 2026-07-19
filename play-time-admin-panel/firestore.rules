@@ -27,6 +27,7 @@ service cloud.firestore {
       return isAuthenticated() &&
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
              getUserData() != null &&
+             getUserData().status == 'Active' &&
              (getUserData().role == 'venue_manager' ||
               ('role' in getUserData() &&
                getUserData().role is string &&
@@ -91,25 +92,30 @@ service cloud.firestore {
       );
       // - Unauthenticated vendor signup: status=Pending, role=venue_manager, self-id.
       // - Authenticated self-signup: role=player or null.
-      // - Super admins can create any user; venue managers can create users
-      //   but can never mint a super_admin.
+      // - Super admins can create any user. Other admin account creation is
+      //   server-only so venue assignments can be scope-checked.
       allow create: if (
         (request.auth == null &&
          request.resource.data.status == 'Pending' &&
          request.resource.data.role == 'venue_manager' &&
-         userId == request.resource.data.id) ||
-        (isAuthenticated() && userId == request.auth.uid &&
-         (request.resource.data.role == 'player' || request.resource.data.role == null)) ||
-        (isAuthenticated() && isSuperAdmin()) ||
-        (isAuthenticated() && isVenueManager() &&
-         request.resource.data.role != 'super_admin' &&
+         userId == request.resource.data.id &&
+         (!('managedVenues' in request.resource.data) ||
+          request.resource.data.managedVenues.size() == 0) &&
          (!('customPermissions' in request.resource.data) ||
-          request.resource.data.customPermissions.size() == 0))
+          request.resource.data.customPermissions.size() == 0)) ||
+        (isAuthenticated() && userId == request.auth.uid &&
+         (request.resource.data.role == 'player' || request.resource.data.role == null) &&
+         (!('managedVenues' in request.resource.data) ||
+          request.resource.data.managedVenues.size() == 0) &&
+         (!('customPermissions' in request.resource.data) ||
+          request.resource.data.customPermissions.size() == 0)) ||
+        (isAuthenticated() && isSuperAdmin())
       );
       // - Self-updates may not change role/status/managedVenues/customPermissions
       //   (no self-escalation).
-      // - Venue managers may not touch super_admin accounts, grant super_admin,
-      //   or hand out custom permission grants (super admin only).
+      // Role, approval status, venue assignments, and permission grants are
+      // server-controlled. The admin HTTP functions use the Admin SDK after
+      // checking the caller's role and venue scope.
       allow update: if isAuthenticated() && (
         isSuperAdmin() ||
         (userId == request.auth.uid &&
@@ -119,7 +125,7 @@ service cloud.firestore {
          resource.data.role != 'super_admin' &&
          request.resource.data.role != 'super_admin' &&
          !request.resource.data.diff(resource.data).affectedKeys()
-           .hasAny(['customPermissions']))
+           .hasAny(['role', 'status', 'managedVenues', 'customPermissions']))
       );
       allow delete: if isAuthenticated() &&
                      exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
@@ -149,7 +155,12 @@ service cloud.firestore {
     // ---------- Venues ----------
     match /venues/{venueId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
+      allow create: if isAuthenticated() && (
+        isSuperAdmin() ||
+        (isVenueManager() &&
+         request.resource.data.managerId == request.auth.uid &&
+         request.resource.data.status == 'Pending')
+      );
       allow update: if ownsVenue(venueId);
       allow delete: if isSuperAdmin();
     }
@@ -388,11 +399,7 @@ service cloud.firestore {
       );
       allow update: if isAuthenticated() && (
         isSuperAdmin() ||
-        (ownsVendorResource() && vendorManagesVenueOnResource()) ||
-        // Players may join/leave (playerIds / currentPlayers only)
-        (resource.data.status in ['Open', 'Full'] &&
-         request.resource.data.diff(resource.data).affectedKeys()
-           .hasOnly(['playerIds', 'currentPlayers', 'status', 'updatedAt']))
+        (ownsVendorResource() && vendorManagesVenueOnResource())
       );
       allow delete: if isAuthenticated() && (
         isSuperAdmin() ||
@@ -432,11 +439,7 @@ service cloud.firestore {
       );
       allow update: if isAuthenticated() && (
         isSuperAdmin() ||
-        (ownsVendorResource() && vendorManagesVenueOnResource()) ||
-        // Players may vote on active polls
-        (resource.data.status == 'Active' &&
-         request.resource.data.diff(resource.data).affectedKeys()
-           .hasOnly(['options', 'totalVotes', 'votedUserIds', 'updatedAt']))
+        (ownsVendorResource() && vendorManagesVenueOnResource())
       );
       allow delete: if isAuthenticated() && (
         isSuperAdmin() ||
@@ -498,6 +501,20 @@ service cloud.firestore {
          resource.data.venueId != null &&
          ownsVenue(resource.data.venueId))
       );
+
+      // Player registrations are created/deleted only by the transactional
+      // registerTournamentPlayer HTTP endpoint. Clients can read their own
+      // registration; venue admins can read registrations for managed events.
+      match /registrations/{registrationId} {
+        allow read: if isAuthenticated() && (
+          resource.data.userId == request.auth.uid ||
+          isSuperAdmin() ||
+          ownsVenue(
+            get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.venueId
+          )
+        );
+        allow create, update, delete: if false;
+      }
     }
 
     // ---------- Reports (moderation) ----------
@@ -512,12 +529,11 @@ service cloud.firestore {
     }
 
     // ---------- Marketing Campaigns ----------
-    // Live campaigns are visible to all authenticated users (admin + players).
+    // Campaign drafts (including Global drafts) are never player-readable.
     match /marketingCampaigns/{campaignId} {
       allow read: if isAuthenticated() && (
         isSuperAdmin() ||
         resource.data.status == 'Live' ||
-        resource.data.type == 'Global' ||
         (resource.data.venueId != null && ownsVenue(resource.data.venueId))
       );
       allow create, update, delete: if isAuthenticated() && isSuperAdmin();
@@ -583,11 +599,13 @@ service cloud.firestore {
       );
       allow create: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
       allow update: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid ||
         isSuperAdmin() ||
         (isVenueManager() &&
          resource.data.createdBy != null &&
-         resource.data.createdBy == request.auth.uid)
+         resource.data.createdBy == request.auth.uid) ||
+        (resource.data.userId == request.auth.uid &&
+         request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['isRead', 'read', 'readAt', 'updatedAt']))
       );
       allow delete: if isAuthenticated() && (
         resource.data.userId == request.auth.uid ||
@@ -605,8 +623,10 @@ service cloud.firestore {
       );
       allow create: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
       allow update: if isAuthenticated() && (
-        userId == request.auth.uid ||
-        isSuperAdmin()
+        isSuperAdmin() ||
+        (userId == request.auth.uid &&
+         request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['isRead', 'read', 'readAt', 'updatedAt']))
       );
       allow delete: if isAuthenticated() && (
         userId == request.auth.uid ||

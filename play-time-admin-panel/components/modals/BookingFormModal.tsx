@@ -9,6 +9,7 @@ import { getSportsForVenue, findSport, cleanSportOptions } from '../../utils/spo
 import SportOptionsFields from '../shared/SportOptionsFields';
 import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 import { useAuth } from '../../contexts/AuthContext';
+import { useUsers } from '../../hooks/useUsers';
 
 interface BookingFormModalProps {
   isOpen: boolean;
@@ -42,6 +43,7 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
   const { firebaseUser } = useAuth();
   const { venues } = useVenues({ realtime: true, status: 'Active' });
   const { sports: sportsCatalog } = useSports({ activeOnly: true, realtime: false });
+  const { users } = useUsers({ limit: 100, usePagination: false });
   const [courts, setCourts] = useState<Court[]>([]);
   const [courtsLoading, setCourtsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -52,6 +54,7 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
   const [formData, setFormData] = useState({
     venueId: '',
     courtId: '',
+    customerId: '',
     user: '',
     userPhone: '',
     date: toLocalDateInputValue(new Date()),
@@ -68,6 +71,7 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
     setFormData({
       venueId: venues.length > 0 ? venues[0].id : '',
       courtId: '',
+      customerId: '',
       user: '',
       userPhone: '',
       date: toLocalDateInputValue(new Date()),
@@ -90,7 +94,9 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
   );
 
   const filteredCourts = sportFilter
-    ? courts.filter((c) => resolveSportName(c.sport, sportsCatalog) === sportFilter)
+    ? courts.filter(
+        (c) => resolveSportName(c.sportId || c.sport, sportsCatalog) === sportFilter
+      )
     : courts;
 
   useEffect(() => {
@@ -129,7 +135,9 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     const selectable = sportFilter
-      ? courts.filter((c) => resolveSportName(c.sport, sportsCatalog) === sportFilter)
+      ? courts.filter(
+          (c) => resolveSportName(c.sportId || c.sport, sportsCatalog) === sportFilter
+        )
       : courts;
     setFormData((prev) => {
       if (prev.courtId && selectable.some((c) => c.id === prev.courtId)) return prev;
@@ -220,16 +228,30 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
         return;
       }
 
+      const normalizedPhone = formData.userPhone.replace(/\D/g, '');
+      const phoneMatches = normalizedPhone
+        ? users.filter(
+            (candidate) =>
+              candidate.role === 'player' &&
+              (candidate.phone || '').replace(/\D/g, '') === normalizedPhone
+          )
+        : [];
+      const matchedCustomer =
+        users.find((candidate) => candidate.id === formData.customerId) ||
+        (phoneMatches.length === 1 ? phoneMatches[0] : undefined);
+
       await onSave({
         venueId: formData.venueId,
         courtId: formData.courtId,
         court: court.name,
-        sport: resolveSportName(court.sport, sportsCatalog) || court.sport,
+        sport: resolveSportName(court.sportId || court.sport, sportsCatalog) || court.sport,
         sportId: court.sportId || findSport(court.sport, sportsCatalog)?.id,
         sportOptions: cleanSportOptions(sportOptions),
         user: formData.user.trim(),
-        userId: actorUid,
+        userId: matchedCustomer?.id || actorUid,
         userPhone: formData.userPhone.trim() || undefined,
+        createdBy: actorUid,
+        bookingSource: matchedCustomer ? 'customer' : 'walk_in',
         date: formData.date,
         time: formData.startTime,
         startTime: Timestamp.fromDate(startDate),
@@ -282,6 +304,36 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-black text-gray-700 dark:text-gray-300 mb-2">
+                Existing Customer Account
+              </label>
+              <select
+                value={formData.customerId}
+                onChange={(event) => {
+                  const customer = users.find((candidate) => candidate.id === event.target.value);
+                  setFormData((prev) => ({
+                    ...prev,
+                    customerId: event.target.value,
+                    user: customer?.name || prev.user,
+                    userPhone: customer?.phone || prev.userPhone,
+                  }));
+                }}
+                className="w-full px-4 py-2 border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-primary"
+              >
+                <option value="">Walk-in / no linked account</option>
+                {users
+                  .filter((candidate) => candidate.role === 'player')
+                  .map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.name} — {candidate.phone || candidate.email}
+                    </option>
+                  ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                A unique phone match is linked automatically; otherwise this remains a walk-in booking.
+              </p>
+            </div>
             <div>
               <label className="block text-sm font-black text-gray-700 dark:text-gray-300 mb-2">
                 Venue *
