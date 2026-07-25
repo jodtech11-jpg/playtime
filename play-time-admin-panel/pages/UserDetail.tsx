@@ -140,6 +140,19 @@ const UserDetail: React.FC = () => {
 
       await usersCollection.update(user.id, updateData);
 
+      const nextManaged =
+        userData.role === 'player' || userData.role === 'super_admin'
+          ? []
+          : (userData.managedVenues ?? user.managedVenues ?? []);
+      if (
+        userData.managedVenues !== undefined ||
+        userData.role === 'player' ||
+        userData.role === 'super_admin'
+      ) {
+        const { syncVenueManagersForUser } = await import('../utils/venueManagerSync');
+        await syncVenueManagersForUser(user.id, nextManaged, user.managedVenues ?? []);
+      }
+
       const updatedUser = { ...user, ...updateData } as User;
       setUser(updatedUser);
       setIsModalOpen(false);

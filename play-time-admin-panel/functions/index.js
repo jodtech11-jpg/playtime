@@ -1418,6 +1418,18 @@ exports.createUserAccount = functions.https.onRequest(async (req, res) => {
     await writeUserProfile(uid, {...profile, createdAt});
     const migratedCount = await deleteDuplicateUserDocs(normalizedEmail, uid);
 
+    // Mirror managedVenues onto venues.managerId so staff/ownership filters work.
+    if (isScopedAdminRole && allowedVenues.length > 0) {
+      const batch = admin.firestore().batch();
+      allowedVenues.forEach((venueId) => {
+        batch.update(admin.firestore().collection('venues').doc(venueId), {
+          managerId: uid,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      });
+      await batch.commit();
+    }
+
     res.json({
       uid,
       email: normalizedEmail,

@@ -158,6 +158,25 @@ const Users: React.FC = () => {
         }
 
         await usersCollection.update(selectedUser.id, updateData);
+
+        // Keep venues.managerId aligned with managedVenues for venue-scoped roles
+        const nextManaged =
+          userData.role === 'player' || userData.role === 'super_admin'
+            ? []
+            : (userData.managedVenues ?? selectedUser.managedVenues ?? []);
+        if (
+          userData.managedVenues !== undefined ||
+          userData.role === 'player' ||
+          userData.role === 'super_admin'
+        ) {
+          const { syncVenueManagersForUser } = await import('../utils/venueManagerSync');
+          await syncVenueManagersForUser(
+            selectedUser.id,
+            nextManaged,
+            selectedUser.managedVenues ?? []
+          );
+        }
+
         const actorId = firebaseUser?.uid ?? currentUser?.id;
         if (actorId && userData.role && userData.role !== selectedUser.role) {
           await logActivity({
@@ -188,6 +207,15 @@ const Users: React.FC = () => {
           managedVenues: userData.managedVenues,
           customPermissions: userData.customPermissions,
         });
+
+        if (
+          userData.managedVenues?.length &&
+          userData.role !== 'player' &&
+          userData.role !== 'super_admin'
+        ) {
+          const { syncVenueManagersForUser } = await import('../utils/venueManagerSync');
+          await syncVenueManagersForUser(result.uid, userData.managedVenues, []);
+        }
 
         const actorId = firebaseUser?.uid ?? currentUser?.id;
         if (actorId) {

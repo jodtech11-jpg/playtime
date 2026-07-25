@@ -1375,6 +1375,7 @@ class FirestoreService {
           .get();
       return snapshot.docs
           .map((doc) => MarketingCampaignItem.fromFirestore(doc.id, doc.data()))
+          .where((campaign) => campaign.isCurrentlyLive)
           .toList();
     } catch (e) {
       debugPrint('Error fetching marketing campaigns: $e');

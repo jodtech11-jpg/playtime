@@ -126,6 +126,8 @@ class MarketingCampaignItem {
   final String imageUrl;
   final String status;
   final String target;
+  final DateTime? startDate;
+  final DateTime? endDate;
 
   MarketingCampaignItem({
     required this.id,
@@ -136,12 +138,32 @@ class MarketingCampaignItem {
     required this.imageUrl,
     required this.status,
     required this.target,
+    this.startDate,
+    this.endDate,
   });
+
+  bool get isCurrentlyLive {
+    if (status != 'Live') return false;
+    final now = DateTime.now();
+    if (startDate != null && now.isBefore(startDate!)) return false;
+    // Inclusive of the end calendar day
+    if (endDate != null &&
+        now.isAfter(endDate!.add(const Duration(days: 1)))) {
+      return false;
+    }
+    return true;
+  }
 
   factory MarketingCampaignItem.fromFirestore(
     String id,
     Map<String, dynamic> data,
   ) {
+    DateTime? parseDate(dynamic raw) {
+      if (raw is Timestamp) return raw.toDate();
+      if (raw is DateTime) return raw;
+      return null;
+    }
+
     return MarketingCampaignItem(
       id: id,
       title: data['title'] as String? ?? 'Offer',
@@ -151,6 +173,8 @@ class MarketingCampaignItem {
       imageUrl: data['imageUrl'] as String? ?? '',
       status: data['status'] as String? ?? 'Draft',
       target: data['target'] as String? ?? '',
+      startDate: parseDate(data['startDate']),
+      endDate: parseDate(data['endDate']),
     );
   }
 }

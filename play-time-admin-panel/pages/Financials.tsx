@@ -585,9 +585,9 @@ const Financials: React.FC = () => {
               </div>
 
               <div className="pt-6 border-t border-slate-100 dark:border-slate-800 space-y-2">
-                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest leading-none">Net Platform Earnings</p>
+                <p className="text-[9px] font-black text-black dark:text-slate-300 uppercase tracking-widest leading-none">Net Platform Earnings</p>
                 <div className="flex items-baseline justify-between gap-4">
-                  <p className="text-3xl font-black text-slate-900 dark:text-white tracking-tighter">{formatCurrency(settlement.settledToPlatform)}</p>
+                  <p className="text-3xl font-black text-black dark:text-white tracking-tighter">{formatCurrency(settlement.settledToPlatform)}</p>
                   <span className="text-[8px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">Ready</span>
                 </div>
               </div>

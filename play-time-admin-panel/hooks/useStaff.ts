@@ -3,7 +3,6 @@ import { staffCollection } from '../services/firebase';
 import { Staff } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { getFirebaseErrorMessage } from '../utils/errorUtils';
-import { useVenues } from './useVenues';
 
 interface UseStaffOptions {
   venueId?: string;
@@ -13,7 +12,6 @@ interface UseStaffOptions {
 
 export const useStaff = (options: UseStaffOptions = {}) => {
   const { user, isVenueManager, isSuperAdmin } = useAuth();
-  const { venues } = useVenues({ realtime: true });
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -85,14 +83,14 @@ export const useStaff = (options: UseStaffOptions = {}) => {
 
         const applyOwnershipScope = (rows: Staff[]) => {
           if (isSuperAdmin) {
-            const vendorVenueIds = new Set(
-              venues.filter((venue) => Boolean(venue.managerId)).map((venue) => venue.id)
-            );
-            return rows.filter(
-              (member) =>
-                member.ownerScope === 'platform' ||
-                (!member.ownerScope && !member.ownerId && !vendorVenueIds.has(member.venueId))
-            );
+            // Super Admin sees platform staff only — never vendor/venue staff.
+            return rows.filter((member) => {
+              if (member.ownerScope === 'platform') return true;
+              if (member.ownerScope === 'vendor') return false;
+              // Legacy rows without ownerScope: venue-assigned = vendor staff.
+              if (member.venueId) return false;
+              return true;
+            });
           }
           if (isVenueManager) {
             // Venue staff remain with the venue when management is reassigned.
@@ -144,7 +142,7 @@ export const useStaff = (options: UseStaffOptions = {}) => {
       mounted = false;
       if (unsubscribe) unsubscribe();
     };
-  }, [user, options.venueId, options.status, options.realtime, isVenueManager, isSuperAdmin, venues]);
+  }, [user, options.venueId, options.status, options.realtime, isVenueManager, isSuperAdmin]);
 
   return { staff, loading, error };
 };
