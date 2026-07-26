@@ -1746,13 +1746,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               const SizedBox(height: 16),
                               _buildSettingsItem(
                                 icon: Icons.notifications_outlined,
-                                title: languageProvider.translate(
-                                  'notifications',
-                                ),
+                                title: 'Notification preferences',
                                 subtitle: languageProvider.translate(
                                   'manage_notifications',
                                 ),
                                 onTap: () => _showNotificationSettings(context),
+                              ),
+                              const SizedBox(height: 12),
+                              _buildSettingsItem(
+                                icon: Icons.inbox_outlined,
+                                title: 'Notification activity',
+                                subtitle: 'View updates and booking alerts',
+                                onTap: () => context.push('/notifications'),
+                              ),
+                              const SizedBox(height: 12),
+                              _buildSettingsItem(
+                                icon: Icons.workspace_premium_outlined,
+                                title: 'Play Time membership',
+                                subtitle: isProMember
+                                    ? 'View your active plan'
+                                    : 'Explore member benefits',
+                                onTap: () => context.push('/membership'),
+                              ),
+                              const SizedBox(height: 12),
+                              _buildSettingsItem(
+                                icon: Icons.groups_outlined,
+                                title: 'Team preferences',
+                                subtitle: 'Sports, matching, and availability',
+                                onTap: () =>
+                                    context.push('/team-preferences'),
                               ),
                               const SizedBox(height: 12),
                               _buildSettingsItem(
