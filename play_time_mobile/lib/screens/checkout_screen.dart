@@ -258,6 +258,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final cartItems = cartProvider.items;
     final (:subtotal, :discount, :shippingCost, :tax, :total) =
         _calculateOrderTotals(cartProvider);
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
@@ -703,7 +704,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: Container(
+      bottomNavigationBar: keyboardOpen
+          ? null
+          : Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: AppColors.backgroundDark.withValues(alpha: 0.95),

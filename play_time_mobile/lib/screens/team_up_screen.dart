@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../theme/app_colors.dart';
@@ -443,15 +444,27 @@ class _TeamUpScreenState extends State<TeamUpScreen> {
             ),
             child: Stack(
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(32),
-                  child: Image.network(
-                    'https://lh3.googleusercontent.com/aida-public/AB6AXuCnP1yseuwjdOUtakehlGsirvb_FITfqwxDqpBTNR2G-6ITmlRv-m0JGw6ep6uYE6xalsXfbPcyEhuXE20KVNepa6-kCeC6EIE5Z70ykleTthu0cqbX5SYgSnW-VRR9bG-vu5WTbonAhrPVED5_l3lapSTn9TuJseFURAkoJWushIwxUVSnFmbVosoaOTzdcRDJaauu_T9oYZcm5IqiAZsk2EdePQ_onF7MH0lhZHzwpYG9-Mh8tNLTaoudZFkBd6qDl5P31rH7x81j',
-                    width: double.infinity,
-                    height: double.infinity,
-                    fit: BoxFit.cover,
-                    color: Colors.black.withValues(alpha: 0.6),
-                    colorBlendMode: BlendMode.darken,
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(32),
+                      gradient: LinearGradient(
+                        colors: [
+                          AppColors.primary.withValues(alpha: 0.22),
+                          AppColors.surfaceDark,
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    ),
+                    child: Align(
+                      alignment: const Alignment(0.7, -0.35),
+                      child: Icon(
+                        Icons.location_on_rounded,
+                        size: 82,
+                        color: AppColors.primary.withValues(alpha: 0.12),
+                      ),
+                    ),
                   ),
                 ),
                 Positioned(
@@ -1421,10 +1434,14 @@ class _TeamUpScreenState extends State<TeamUpScreen> {
                     ),
                   ),
                   ElevatedButton.icon(
-                    onPressed: () {
+                    onPressed: () async {
+                      final inviteUrl =
+                          'https://playtime.jodtech.in/#/team-up?teamId=${Uri.encodeComponent(team.id)}';
+                      await Clipboard.setData(ClipboardData(text: inviteUrl));
+                      if (!sheetContext.mounted) return;
                       ScaffoldMessenger.of(sheetContext).showSnackBar(
                         const SnackBar(
-                          content: Text('Invitation link copied!'),
+                          content: Text('Team invitation link copied.'),
                         ),
                       );
                     },
@@ -1548,56 +1565,6 @@ class _TeamUpScreenState extends State<TeamUpScreen> {
                         },
                       ),
                     ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () {},
-                  icon: const Icon(Icons.schedule),
-                  label: const Text(
-                    'TEAM TRAINING SCHEDULE',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.25,
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.05),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () {
-                    Navigator.pop(sheetContext);
-                  },
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Colors.red),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: const Text(
-                    'LEAVE SQUAD',
-                    style: TextStyle(
-                      color: Colors.red,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.25,
-                    ),
                   ),
                 ),
               ),

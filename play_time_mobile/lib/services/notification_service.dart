@@ -1,4 +1,5 @@
-﻿import 'dart:async';
+import 'dart:async';
+import 'dart:convert';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,6 +8,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
+import '../firebase_options.dart';
 
 class NotificationService {
   static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
@@ -15,13 +17,24 @@ class NotificationService {
       FlutterLocalNotificationsPlugin();
   static GoRouter? _router;
   static bool _isSavingToken = false;
+  static bool _initialized = false;
   static String? _venueTopic;
+  static Map<String, dynamic>? _pendingNavigation;
+  static DateTime? _navigationReadyAt;
+  static StreamSubscription<String>? _tokenRefreshSubscription;
+  static StreamSubscription<User?>? _authSubscription;
+  static StreamSubscription<RemoteMessage>? _foregroundSubscription;
+  static StreamSubscription<RemoteMessage>? _openedAppSubscription;
 
   /// Initialize FCM and request permissions
   static Future<void> initialize({GoRouter? router}) async {
-    try {
-      _router = router;
+    _router = router ?? _router;
+    if (_initialized) {
+      await _flushPendingNavigation();
+      return;
+    }
 
+    try {
       // Initialize local notifications
       await _initializeLocalNotifications();
 
@@ -33,6 +46,9 @@ class NotificationService {
         provisional: false,
       );
 
+      final permissionGranted =
+          settings.authorizationStatus == AuthorizationStatus.authorized ||
+          settings.authorizationStatus == AuthorizationStatus.provisional;
       if (settings.authorizationStatus == AuthorizationStatus.authorized) {
         debugPrint('User granted notification permission');
       } else if (settings.authorizationStatus ==
@@ -40,55 +56,64 @@ class NotificationService {
         debugPrint('User granted provisional notification permission');
       } else {
         debugPrint('User declined or has not accepted notification permission');
-        return;
       }
 
-      // Get FCM token but don't save yet - wait for authentication
-      final token = await _messaging.getToken();
-      if (token != null) {
-        // Only save if user is already authenticated
-        final user = FirebaseAuth.instance.currentUser;
-        if (user != null) {
-          await _saveTokenToFirestore(token);
+      if (permissionGranted) {
+        await _tokenRefreshSubscription?.cancel();
+        _tokenRefreshSubscription = _messaging.onTokenRefresh.listen((
+          newToken,
+        ) {
+          final user = FirebaseAuth.instance.currentUser;
+          if (user != null) {
+            unawaited(_saveTokenToFirestore(newToken));
+          }
+        });
+        try {
+          // Token retrieval can temporarily fail on iOS before APNs finishes
+          // registering. Message handlers must still be installed.
+          final token = await _messaging.getToken();
+          if (token != null) {
+            final user = FirebaseAuth.instance.currentUser;
+            if (user != null) {
+              await _saveTokenToFirestore(token);
+            }
+          }
+        } catch (error) {
+          debugPrint('FCM token is not ready yet: $error');
         }
       }
-      await Future.wait([
-        subscribeToTopic('quick_matches'),
-        subscribeToTopic('tournaments'),
-      ]);
-
-      // Listen for token refresh
-      _messaging.onTokenRefresh.listen((newToken) {
-        // Only save if user is authenticated
-        final user = FirebaseAuth.instance.currentUser;
-        if (user != null) {
-          unawaited(_saveTokenToFirestore(newToken));
-        }
-      });
 
       // Listen to auth state changes to save token when user logs in
       // Use a flag to prevent duplicate saves
-      FirebaseAuth.instance.authStateChanges().listen((User? user) async {
+      await _authSubscription?.cancel();
+      _authSubscription = FirebaseAuth.instance.authStateChanges().listen((
+        User? user,
+      ) async {
         if (user != null && !_isSavingToken) {
           _isSavingToken = true;
           // Wait a bit to ensure auth is fully propagated
           await Future.delayed(const Duration(milliseconds: 500));
           try {
-            // User logged in, save FCM token
-            final token = await _messaging.getToken();
-            if (token != null) {
-              await _saveTokenToFirestore(token);
+            if (permissionGranted) {
+              final token = await _messaging.getToken();
+              if (token != null) {
+                await _saveTokenToFirestore(token);
+              }
             }
           } catch (e) {
             debugPrint('Error saving FCM token in auth listener: $e');
           } finally {
             _isSavingToken = false;
+            await _flushPendingNavigation();
           }
         }
       });
 
       // Handle foreground messages
-      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      await _foregroundSubscription?.cancel();
+      _foregroundSubscription = FirebaseMessaging.onMessage.listen((
+        RemoteMessage message,
+      ) {
         debugPrint('Got a message whilst in the foreground!');
         debugPrint('Message data: ${message.data}');
 
@@ -102,19 +127,35 @@ class NotificationService {
       });
 
       // Handle background messages (when app is in background)
-      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      await _openedAppSubscription?.cancel();
+      _openedAppSubscription = FirebaseMessaging.onMessageOpenedApp.listen((
+        RemoteMessage message,
+      ) {
         debugPrint('A new onMessageOpenedApp event was published!');
         debugPrint('Message data: ${message.data}');
         // Handle navigation based on notification data
-        _handleNotificationNavigation(message);
+        unawaited(_handleNotificationNavigation(message));
       });
 
       // Check if app was opened from a notification
       final initialMessage = await _messaging.getInitialMessage();
       if (initialMessage != null) {
-        _handleNotificationNavigation(initialMessage);
+        // Splash performs its own delayed redirect. Queue cold-start
+        // navigation until that redirect has completed so it is not overwritten.
+        _pendingNavigation = Map<String, dynamic>.from(initialMessage.data);
+        _navigationReadyAt = DateTime.now().add(
+          const Duration(milliseconds: 2500),
+        );
+        unawaited(
+          Future<void>.delayed(
+            const Duration(milliseconds: 2500),
+            _flushPendingNavigation,
+          ),
+        );
       }
+      _initialized = true;
     } catch (e) {
+      _initialized = false;
       debugPrint('Error initializing FCM: $e');
     }
   }
@@ -138,14 +179,26 @@ class NotificationService {
     await _localNotifications.initialize(
       initSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
-        // Handle notification tap
-        if (response.payload != null) {
-          final data = response.payload!.split('|');
-          if (data.length >= 2) {
-            final type = data[0];
-            final id = data[1];
-            _navigateFromNotification(type, id);
+        final payload = response.payload;
+        if (payload == null || payload.isEmpty) return;
+        try {
+          final decoded = jsonDecode(payload);
+          if (decoded is Map) {
+            unawaited(
+              _handleNotificationData(
+                decoded.map((key, value) => MapEntry('$key', '$value')),
+              ),
+            );
+            return;
           }
+        } catch (_) {
+          // Fall through for notifications created by older app versions.
+        }
+        final legacy = payload.split('|');
+        if (legacy.length >= 2) {
+          unawaited(
+            _handleNotificationData({'type': legacy[0], 'id': legacy[1]}),
+          );
         }
       },
     );
@@ -163,6 +216,11 @@ class NotificationService {
           AndroidFlutterLocalNotificationsPlugin
         >()
         ?.createNotificationChannel(androidChannel);
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.requestNotificationsPermission();
   }
 
   /// Show local notification for foreground messages
@@ -193,7 +251,7 @@ class NotificationService {
     );
 
     // Create payload for navigation
-    final payload = '${data['type'] ?? 'general'}|${data['id'] ?? ''}';
+    final payload = jsonEncode(data);
 
     await _localNotifications.show(
       notification.hashCode,
@@ -221,6 +279,11 @@ class NotificationService {
   }
 
   /// Save FCM token to Firestore fcmTokens collection
+  static String _tokenDocumentId(String userId, String token) {
+    final encoded = base64Url.encode(utf8.encode(token)).replaceAll('=', '');
+    return '${userId}_$encoded';
+  }
+
   static Future<void> _saveTokenToFirestore(String token) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -232,46 +295,20 @@ class NotificationService {
       // Wait a moment to ensure auth token is ready
       await Future.delayed(const Duration(milliseconds: 300));
 
-      // Save to fcmTokens collection (as per Firestore rules)
-      // Use set with merge to avoid read permission issues
-      final tokenDoc = _firestore.collection('fcmTokens').doc(user.uid);
-
-      // Use set() with merge instead of get() + update/set to avoid permission issues
-      // This way we don't need to read first, which requires the document to exist
-      // Check if document exists first (but handle permission errors gracefully)
-      try {
-        final tokenData = await tokenDoc.get();
-        if (tokenData.exists) {
-          // Update existing token
-          await tokenDoc.update({
-            'token': token,
-            'userId': user.uid,
-            'isActive': true,
-            'updatedAt': FieldValue.serverTimestamp(),
-            'platform': 'mobile',
-          });
-        } else {
-          // Create new token document
-          await tokenDoc.set({
-            'token': token,
-            'userId': user.uid,
-            'isActive': true,
-            'createdAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-            'platform': 'mobile',
-          });
-        }
-      } catch (readError) {
-        // If read fails due to permissions, try to create/update using set with merge
-        // This will work if we have create/update permissions even without read
-        await tokenDoc.set({
-          'token': token,
-          'userId': user.uid,
-          'isActive': true,
-          'updatedAt': FieldValue.serverTimestamp(),
-          'platform': 'mobile',
-        }, SetOptions(merge: true));
-      }
+      // One document per device token. Using user.uid as the document ID caused
+      // each new phone/browser login to overwrite the previous device.
+      final tokenDoc = _firestore
+          .collection('fcmTokens')
+          .doc(_tokenDocumentId(user.uid, token));
+      await tokenDoc.set({
+        'token': token,
+        'userId': user.uid,
+        'isActive': true,
+        'deviceType': 'mobile',
+        'platform': defaultTargetPlatform.name,
+        'lastUsedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
 
       // Also update user document for backward compatibility (only if we can)
       try {
@@ -296,26 +333,55 @@ class NotificationService {
   }
 
   /// Handle navigation when notification is tapped
-  static void _handleNotificationNavigation(RemoteMessage message) {
-    final data = message.data;
-    final type = data['type'] ?? 'general';
-    final id = data['id'] ?? data['bookingId'] ?? data['notificationId'] ?? '';
-
-    _navigateFromNotification(type, id);
+  static Future<void> _handleNotificationNavigation(
+    RemoteMessage message,
+  ) async {
+    await _handleNotificationData(message.data);
   }
 
-  /// Navigate based on notification type
-  static void _navigateFromNotification(String type, String id) {
-    if (_router == null) {
-      debugPrint('Router not initialized. Cannot navigate.');
+  static Future<void> _handleNotificationData(Map<String, dynamic> data) async {
+    if (_router == null || FirebaseAuth.instance.currentUser == null) {
+      _pendingNavigation = Map<String, dynamic>.from(data);
+      debugPrint('Notification navigation queued until app authentication.');
       return;
     }
 
+    final notificationId = data['notificationId']?.toString();
+    if (notificationId?.isNotEmpty == true) {
+      try {
+        await _firestore
+            .collection('notifications')
+            .doc(notificationId)
+            .update({
+              'read': true,
+              'isRead': true,
+              'readAt': FieldValue.serverTimestamp(),
+              'updatedAt': FieldValue.serverTimestamp(),
+            });
+      } catch (error) {
+        debugPrint('Could not mark opened notification as read: $error');
+      }
+    }
+
+    final actionUrl = data['actionUrl']?.toString().trim() ?? '';
+    if (actionUrl.startsWith('/') && !actionUrl.startsWith('//')) {
+      _router!.go(actionUrl);
+      return;
+    }
+
+    final type = (data['type']?.toString() ?? 'general').toLowerCase();
     switch (type) {
       case 'booking':
       case 'booking_confirmed':
       case 'booking_cancelled':
-        _router!.go('/bookings');
+      case 'booking_completed':
+        final bookingId =
+            data['bookingId']?.toString() ?? data['id']?.toString() ?? '';
+        _router!.go(
+          bookingId.isNotEmpty
+              ? '/booking/${Uri.encodeComponent(bookingId)}'
+              : '/bookings',
+        );
         break;
       case 'notification':
       case 'general':
@@ -344,11 +410,30 @@ class NotificationService {
       case 'flash_deal':
       case 'campaign':
       case 'marketing':
+      case 'announcement':
+      case 'promotion':
+      case 'offer':
         _router!.go('/home');
         break;
       default:
         _router!.go('/notifications');
     }
+  }
+
+  static Future<void> _flushPendingNavigation() async {
+    final pending = _pendingNavigation;
+    if (pending == null ||
+        _router == null ||
+        FirebaseAuth.instance.currentUser == null) {
+      return;
+    }
+    final readyAt = _navigationReadyAt;
+    if (readyAt != null && DateTime.now().isBefore(readyAt)) {
+      return;
+    }
+    _pendingNavigation = null;
+    _navigationReadyAt = null;
+    await _handleNotificationData(pending);
   }
 
   /// Subscribe to topic
@@ -387,11 +472,24 @@ class NotificationService {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        // Delete from fcmTokens collection
-        await _firestore.collection('fcmTokens').doc(user.uid).update({
-          'isActive': false,
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
+        final token = await _messaging.getToken();
+        if (token != null) {
+          final matchingTokens = await _firestore
+              .collection('fcmTokens')
+              .where('userId', isEqualTo: user.uid)
+              .where('token', isEqualTo: token)
+              .get();
+          final batch = _firestore.batch();
+          for (final document in matchingTokens.docs) {
+            batch.update(document.reference, {
+              'isActive': false,
+              'updatedAt': FieldValue.serverTimestamp(),
+            });
+          }
+          if (matchingTokens.docs.isNotEmpty) {
+            await batch.commit();
+          }
+        }
 
         // Also remove from user document
         await _firestore.collection('users').doc(user.uid).update({
@@ -412,7 +510,7 @@ class NotificationService {
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // Initialize Firebase in background isolate
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   debugPrint('Handling a background message: ${message.messageId}');
   debugPrint('Message data: ${message.data}');

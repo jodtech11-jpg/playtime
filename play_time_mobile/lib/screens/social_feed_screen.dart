@@ -69,18 +69,19 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
 
   void _ensureLikeSubscription(String postId, String userId) {
     if (_likeSubscriptions.containsKey(postId)) return;
-    _likeSubscriptions[postId] = SocialService.getPostLikesStream(postId).listen(
-      (userIds) {
-        if (!mounted) return;
-        setState(() {
-          _postLikes[postId] = userIds.length;
-          _likedPosts[postId] = userIds.contains(userId);
-        });
-      },
-      onError: (Object error) {
-        debugPrint('Error loading likes for post $postId: $error');
-      },
-    );
+    _likeSubscriptions[postId] = SocialService.getPostLikesStream(postId)
+        .listen(
+          (userIds) {
+            if (!mounted) return;
+            setState(() {
+              _postLikes[postId] = userIds.length;
+              _likedPosts[postId] = userIds.contains(userId);
+            });
+          },
+          onError: (Object error) {
+            debugPrint('Error loading likes for post $postId: $error');
+          },
+        );
   }
 
   Future<void> _loadLikeStatuses() async {
@@ -969,7 +970,7 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
                         }
                         return _buildFeedItem(
                           filteredItems[index],
-                          upcomingBookings,
+                          index == 0 ? upcomingBookings : const <Booking>[],
                           bookingProvider,
                         );
                       },
@@ -1971,15 +1972,27 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
       ),
       child: Stack(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: Image.network(
-              'https://lh3.googleusercontent.com/aida-public/AB6AXuDt4QbaMgaB9tKIIRII3R86jshjF3qCn3thaI2JJJz6rBaJPL-9vDNwL3WkFPn0AA7fhRCBTXH-sEN3uPkHmj69_FHqn4OQKHlb6HMjpvUP8IJ7O3IKsbN4vLaVsUUC_9v0rPbNyd8lgUjEG98XFbTRpj-bmveKl7fLoyT6EzbrvFubwQuYd-5YZrZuFcyx9D8xcaDj7OoFv8hcNS_0o66WxVS34jYJdWI-IlmaQ0ab-C9zXB2nq_1SayDWNc0SE6CjysLsMTQQL9_r',
-              width: double.infinity,
-              height: double.infinity,
-              fit: BoxFit.cover,
-              color: Colors.black.withValues(alpha: 0.7),
-              colorBlendMode: BlendMode.darken,
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                gradient: LinearGradient(
+                  colors: [
+                    AppColors.primary.withValues(alpha: 0.16),
+                    AppColors.surfaceDark,
+                    AppColors.info.withValues(alpha: 0.12),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: Center(
+                child: Icon(
+                  Icons.sports_score_rounded,
+                  size: 104,
+                  color: Colors.white.withValues(alpha: 0.04),
+                ),
+              ),
             ),
           ),
           Center(
@@ -2279,7 +2292,7 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
                         ),
                       ),
                       onPressed: () {
-                        context.push('/venue-detail?id=${booking.id}');
+                        context.push('/booking/${booking.id}');
                       },
                     ),
                   ],

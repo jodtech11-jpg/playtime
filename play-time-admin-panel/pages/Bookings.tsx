@@ -8,7 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { bookingsCollection, logActivity, notifyVenueManagersOfBookingEvent, usersCollection } from '../services/firebase';
 import { Booking, User } from '../types';
 import { formatDate, formatTime, getWeekStart, getWeekEnd, getToday } from '../utils/dateUtils';
-import { formatCurrency, formatBookingReference, getStatusColor, resolveSportName, resolveBookingUserName } from '../utils/formatUtils';
+import { formatCurrency, formatBookingReference, resolveSportName, resolveBookingUserName } from '../utils/formatUtils';
 import { exportBookingsToCSV, exportBookingsToPDF } from '../utils/exportUtils';
 import BookingDetailsModal from '../components/modals/BookingDetailsModal';
 import BookingFormModal from '../components/modals/BookingFormModal';
@@ -18,6 +18,7 @@ import { buildSportStylesMap, getSportStyle } from '../utils/sportUtils';
 import { getFirebaseErrorMessage } from '../utils/errorUtils';
 import DatePicker from '../components/shared/DatePicker';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
+import BookingCalendar from '../components/bookings/BookingCalendar';
 import { serverTimestamp } from 'firebase/firestore';
 
 const VIEW_MODES = ['day', 'week', 'month'] as const;
@@ -51,6 +52,7 @@ const Bookings: React.FC = () => {
   const [showSportModal, setShowSportModal] = useState(false);
   const { sports: sportsCatalog } = useSports({ activeOnly: false, realtime: true });
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
   const [processing, setProcessing] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkProcessing, setBulkProcessing] = useState(false);
@@ -186,20 +188,6 @@ const Bookings: React.FC = () => {
     return days;
   }, [selectedDate, viewMode]);
 
-  // Generate time slots (8 AM to 10 PM)
-  const timeSlots = useMemo(() => {
-    const slots = [];
-    for (let hour = 8; hour <= 22; hour++) {
-      const time = new Date();
-      time.setHours(hour, 0, 0, 0);
-      slots.push({
-        hour,
-        label: time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
-      });
-    }
-    return slots;
-  }, []);
-
   // Dynamic sport colors from catalog
   const sportStyles = useMemo(() => buildSportStylesMap(sportsCatalog), [sportsCatalog]);
 
@@ -216,42 +204,6 @@ const Bookings: React.FC = () => {
     });
     return Array.from(fromBookings).sort();
   }, [bookings, sportsCatalog]);
-
-  // Calculate booking position on calendar
-  const getBookingPosition = (booking: Booking) => {
-    if (!booking.startTime) return null;
-
-    const startDate = booking.startTime.toDate ? booking.startTime.toDate() : new Date(booking.startTime);
-    const endDate = booking.endTime.toDate ? booking.endTime.toDate() : new Date(booking.endTime);
-
-    // Find day index
-    const dayIndex = weekDays.findIndex(day =>
-      day.fullDate.toDateString() === startDate.toDateString()
-    );
-    if (dayIndex === -1) return null;
-
-    // Find time slot index (fractional, so sub-hour starts like 09:30 render offset within the slot)
-    const startHour = startDate.getHours();
-    let timeIndex = timeSlots.findIndex(slot => slot.hour === startHour);
-    if (timeIndex === -1) {
-      // Off-grid hours: clamp to the first/last slot instead of hiding the booking
-      timeIndex = startHour < timeSlots[0].hour ? 0 : timeSlots.length - 1;
-    } else {
-      timeIndex += startDate.getMinutes() / 60;
-    }
-
-    // Calculate duration in hours
-    const durationMs = endDate.getTime() - startDate.getTime();
-    const durationHours = durationMs / (1000 * 60 * 60);
-
-    return {
-      dayIndex,
-      timeIndex,
-      duration: durationHours,
-      startDate,
-      endDate
-    };
-  };
 
   // Resolve booking (from list or modal) for venueId
   const getBookingVenueId = (bookingId: string): string | undefined => {
@@ -721,8 +673,10 @@ const Bookings: React.FC = () => {
       )}
       {/* Header Controls */}
       <div className="flex-shrink-0 flex flex-col xl:flex-row xl:items-center justify-between gap-4 xl:gap-6">
-        <div className="flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-1 shadow-sm h-12 w-fit">
+        <div role="tablist" aria-label="Calendar view" className="flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-1 shadow-sm h-12 w-fit">
           <button
+            role="tab"
+            aria-selected={viewMode === 'day'}
             onClick={() => setViewMode('day')}
             className={`px-6 h-full rounded-lg text-xs font-black uppercase tracking-widest transition-all duration-200 ${viewMode === 'day' ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-md' : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white'
               }`}
@@ -730,6 +684,8 @@ const Bookings: React.FC = () => {
             Daily
           </button>
           <button
+            role="tab"
+            aria-selected={viewMode === 'week'}
             onClick={() => setViewMode('week')}
             className={`px-6 h-full rounded-lg text-xs font-black uppercase tracking-widest transition-all duration-200 ${viewMode === 'week' ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-md' : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white'
               }`}
@@ -737,6 +693,8 @@ const Bookings: React.FC = () => {
             Weekly
           </button>
           <button
+            role="tab"
+            aria-selected={viewMode === 'month'}
             onClick={() => setViewMode('month')}
             className={`px-6 h-full rounded-lg text-xs font-black uppercase tracking-widest transition-all duration-200 ${viewMode === 'month' ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-md' : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white'
               }`}
@@ -787,6 +745,13 @@ const Bookings: React.FC = () => {
               <span className="material-symbols-outlined text-slate-600 dark:text-slate-300">chevron_right</span>
             </button>
           </div>
+          <button
+            type="button"
+            onClick={handleToday}
+            className="h-12 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black uppercase tracking-widest text-slate-600 shadow-sm hover:border-primary hover:text-primary focus-visible:ring-2 focus-visible:ring-primary dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+          >
+            Today
+          </button>
 
           <div className="flex flex-wrap items-center gap-3">
             <select
@@ -875,133 +840,40 @@ const Bookings: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 sm:gap-6 xl:gap-8 flex-1 min-h-0 overflow-hidden">
-        {/* Calendar View */}
-        <div className="xl:col-span-8 ui-card flex flex-col min-h-0 min-w-0 overflow-hidden bg-white dark:bg-slate-800">
-          {/* Header Row */}
-          <div className="grid grid-cols-8 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 min-w-[720px]">
-            <div className="p-4 border-r border-slate-100 dark:border-slate-700 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center">
-              TIMELINE
-            </div>
-            {weekDays.map((day, idx) => (
-              <div
-                key={idx}
-                className={`p-4 border-r border-slate-100 dark:border-slate-700 text-center transition-colors ${day.isToday ? 'bg-primary/5 dark:bg-primary/10' : ''
-                  }`}
-              >
-                <p className={`text-[10px] uppercase font-black tracking-widest ${day.isToday ? 'text-primary' : 'text-slate-400'}`}>
-                  {day.name}
-                </p>
-                <p className={`text-2xl font-black mt-1 ${day.isToday ? 'text-primary' : 'text-slate-900 dark:text-white'}`}>
-                  {day.date}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          {/* Calendar Grid */}
-          <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto scrollbar-visible relative bg-white dark:bg-slate-900">
-            <div className="grid grid-cols-8 min-h-full min-w-[720px]">
-              {/* Time Column */}
-              <div className="col-span-1 border-r border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-                {timeSlots.map((slot, idx) => (
-                  <div
-                    key={idx}
-                    className="h-28 border-b border-slate-100 dark:border-slate-800 flex items-start pt-4 justify-center text-[10px] font-black text-slate-400 uppercase tracking-tighter"
-                  >
-                    {slot.label}
-                  </div>
-                ))}
-              </div>
-
-              {/* Calendar Grid Area */}
-              <div className="col-span-7 relative">
-                {/* Grid Lines */}
-                <div className="absolute inset-0 grid grid-cols-7 pointer-events-none">
-                  {[...Array(7)].map((_, i) => (
-                    <div key={i} className="border-r border-slate-50/50 dark:border-slate-800/50 last:border-r-0 h-full"></div>
-                  ))}
-                </div>
-                <div className="absolute inset-0 pointer-events-none">
-                  {timeSlots.map((_, i) => (
-                    <div key={i} className="h-28 border-b border-slate-50/50 dark:border-slate-800/50 last:border-b-0 w-full"></div>
-                  ))}
-                </div>
-
-                {/* Empty state overlay */}
-                {bookings.length === 0 && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 dark:bg-slate-900/80 z-10">
-                    <div className="size-16 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-300 mb-3">
-                      <span className="material-symbols-outlined text-3xl">event_busy</span>
-                    </div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No bookings</p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      {selectedStatus !== 'All' || selectedVenueId || selectedSport !== 'All Sports'
-                        ? 'Try adjusting your filters'
-                        : 'No bookings for this period'}
-                    </p>
-                  </div>
-                )}
-
-                {/* Bookings */}
-                {bookings.map((booking) => {
-                  const position = getBookingPosition(booking);
-                  if (!position) return null;
-
-                  const sportName = resolveSportName(booking.sport, sportsCatalog);
-                  const style = sportStyles[sportName] || getSportStyle(sportName, sportsCatalog);
-                  const statusColors = getStatusColor(booking.status);
-
-                  return (
-                    <div
-                      key={booking.id}
-                      onClick={() => handleBookingClick(booking)}
-                      className="absolute rounded-2xl p-3 shadow-lg shadow-gray-200/50 border-l-4 transition-all hover:scale-[1.02] cursor-pointer group z-20"
-                      style={{
-                        top: `${position.timeIndex * 112 + 8}px`,
-                        left: `${(position.dayIndex * 14.28) + 0.5}%`,
-                        width: '13.28%',
-                        height: `${Math.max(position.duration * 112 - 16, 60)}px`,
-                        backgroundColor: style.backgroundColor,
-                        borderLeftColor: style.borderColor,
-                      }}
-                    >
-                      <div className="flex flex-col h-full justify-between">
-                        <div>
-                          <div className="flex justify-between items-start gap-1">
-                            <p className="text-xs font-black truncate" style={{ color: style.color }}>{getBookingUserName(booking)}</p>
-                            <span className="material-symbols-outlined text-xs opacity-30 group-hover:opacity-100 transition-opacity">
-                              open_in_new
-                            </span>
-                          </div>
-                          <p className="text-[9px] font-bold opacity-60 uppercase tracking-widest mt-1" style={{ color: style.color }}>
-                            {sportName} • {booking.court}
-                          </p>
-                        </div>
-                        <div className="flex items-center justify-between mt-2">
-                          <span className={`px-2 py-0.5 rounded-[6px] text-[8px] font-black uppercase tracking-widest ${booking.status === 'Confirmed'
-                              ? 'bg-white/60 text-emerald-700'
-                              : booking.status === 'Pending'
-                                ? 'bg-amber-100 text-amber-700'
-                                : 'bg-red-100 text-red-700'
-                            }`}>
-                            {booking.status}
-                          </span>
-                          <span className="text-[8px] font-bold opacity-40 uppercase" style={{ color: style.color }}>
-                            {booking.duration}hr
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 sm:gap-6 xl:gap-8 flex-1 min-h-0">
+        {/* Responsive day/week/month calendar */}
+        <div className="xl:col-span-8 min-h-0 min-w-0">
+          <BookingCalendar
+            bookings={bookings}
+            venues={venues}
+            sports={sportsCatalog}
+            selectedDate={selectedDate}
+            viewMode={viewMode}
+            selectedVenueId={selectedVenueId}
+            getUserName={getBookingUserName}
+            onBookingClick={handleBookingClick}
+            onDateClick={(date) => {
+              setSelectedDate(date);
+              setViewMode('day');
+            }}
+          />
         </div>
 
-        {/* Sidebar - Redesigned for full visibility */}
-        <div className="xl:col-span-4 flex flex-col min-h-0 overflow-hidden" style={{ minHeight: 0 }}>
+        <button
+          type="button"
+          onClick={() => setQueueOpen((open) => !open)}
+          aria-expanded={queueOpen}
+          className="xl:hidden flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+        >
+          Pending bookings
+          <span className="flex items-center gap-2">
+            <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs text-white">{pendingBookings.length}</span>
+            <span className="material-symbols-outlined">{queueOpen ? 'expand_less' : 'expand_more'}</span>
+          </span>
+        </button>
+
+        {/* Sidebar - collapsible below desktop width */}
+        <div className={`xl:col-span-4 ${queueOpen ? 'flex' : 'hidden'} xl:flex flex-col min-h-0 overflow-hidden`} style={{ minHeight: 0 }}>
           {/* Sport Legend - inline bar at top */}
           <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl mb-4">
             <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Legend:</span>

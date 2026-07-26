@@ -9,12 +9,18 @@ class NotificationProvider with ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   StreamSubscription<List<Map<String, dynamic>>>? _notificationsSubscription;
+  StreamSubscription<User?>? _authSubscription;
 
   List<Map<String, dynamic>> get notifications => _notifications;
   bool get isLoading => _isLoading;
   String? get error => _error;
 
-  int get unreadCount => _notifications.where((n) => n['read'] != true).length;
+  int get unreadCount => _notifications
+      .where(
+        (notification) =>
+            notification['read'] != true && notification['isRead'] != true,
+      )
+      .length;
 
   NotificationProvider() {
     final user = FirebaseAuth.instance.currentUser;
@@ -23,11 +29,15 @@ class NotificationProvider with ChangeNotifier {
     }
 
     // Listen to auth state changes
-    FirebaseAuth.instance.authStateChanges().listen((user) {
+    _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
       if (user != null) {
         _loadNotifications(user.uid);
       } else {
+        _notificationsSubscription?.cancel();
+        _notificationsSubscription = null;
         _notifications = [];
+        _isLoading = false;
+        _error = null;
         notifyListeners();
       }
     });
@@ -42,7 +52,16 @@ class NotificationProvider with ChangeNotifier {
     _notificationsSubscription =
         FirestoreService.getUserNotificationsStream(userId).listen(
           (notifications) {
-            _notifications = notifications;
+            _notifications = notifications
+                .map(
+                  (notification) => {
+                    ...notification,
+                    'read':
+                        notification['read'] == true ||
+                        notification['isRead'] == true,
+                  },
+                )
+                .toList();
             _isLoading = false;
             notifyListeners();
           },
@@ -57,7 +76,17 @@ class NotificationProvider with ChangeNotifier {
   Future<void> markAsRead(String notificationId) async {
     try {
       await FirestoreService.markNotificationAsRead(notificationId);
-      await refreshNotifications();
+      final index = _notifications.indexWhere(
+        (notification) => notification['id'] == notificationId,
+      );
+      if (index != -1) {
+        _notifications[index] = {
+          ..._notifications[index],
+          'read': true,
+          'isRead': true,
+        };
+        notifyListeners();
+      }
     } catch (e) {
       _error = 'Failed to mark notification as read: $e';
       notifyListeners();
@@ -66,7 +95,9 @@ class NotificationProvider with ChangeNotifier {
 
   Future<void> markAllAsRead() async {
     try {
-      final unread = _notifications.where((n) => n['read'] != true).toList();
+      final unread = _notifications
+          .where((n) => n['read'] != true && n['isRead'] != true)
+          .toList();
       if (unread.isEmpty) return;
 
       // Batch update instead of N+1 individual writes
@@ -79,11 +110,18 @@ class NotificationProvider with ChangeNotifier {
             .doc(id);
         batch.update(ref, {
           'read': true,
+          'isRead': true,
+          'readAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });
       }
       await batch.commit();
-      await refreshNotifications();
+      _notifications = _notifications
+          .map(
+            (notification) => {...notification, 'read': true, 'isRead': true},
+          )
+          .toList();
+      notifyListeners();
     } catch (e) {
       _error = 'Failed to mark all as read: $e';
       notifyListeners();
@@ -118,6 +156,7 @@ class NotificationProvider with ChangeNotifier {
   @override
   void dispose() {
     _notificationsSubscription?.cancel();
+    _authSubscription?.cancel();
     super.dispose();
   }
 }

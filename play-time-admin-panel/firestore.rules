@@ -78,6 +78,13 @@ service cloud.firestore {
       return resource.data.status == 'Pending' || resource.data.status == 'Confirmed';
     }
 
+    function hasValidPlayerBookingWindow() {
+      return request.resource.data.startTime is timestamp &&
+             request.resource.data.endTime is timestamp &&
+             request.resource.data.startTime >= request.time + duration.value(15, 'm') &&
+             request.resource.data.endTime > request.resource.data.startTime;
+    }
+
     // ---------- Users ----------
     // Venue managers may read user docs by ID (needed for customer lookup from
     // bookings/memberships). Client hooks only fetch users linked to managed venues.
@@ -194,7 +201,10 @@ service cloud.firestore {
         isActiveBooking()
       );
       allow create: if isAuthenticated() && (
-        createdByCaller() ||
+        (createdByCaller() &&
+         hasValidPlayerBookingWindow() &&
+         request.resource.data.status == 'Pending' &&
+         request.resource.data.paymentStatus == 'Pending') ||
         isSuperAdmin() ||
         (isVenueManager() &&
          request.resource.data.venueId != null &&
@@ -203,7 +213,13 @@ service cloud.firestore {
       allow update: if isAuthenticated() && (
         isSuperAdmin() ||
         (resource != null && resource.data.venueId != null && ownsVenue(resource.data.venueId)) ||
-        (resource != null && resource.data.userId == request.auth.uid)
+        (resource != null &&
+         resource.data.userId == request.auth.uid &&
+         !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+           'userId', 'user', 'venueId', 'venue', 'courtId', 'court',
+           'sport', 'startTime', 'endTime', 'duration', 'date', 'time',
+           'amount', 'isFirstTimeBooking', 'createdAt'
+         ]))
       );
       allow delete: if isAuthenticated() && (
         isSuperAdmin() ||
@@ -217,7 +233,9 @@ service cloud.firestore {
     // The lock must be owned by the caller; only the owner (or admin) may delete/update.
     match /booking_slot_locks/{lockId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && createdByCaller();
+      allow create: if isAuthenticated() &&
+                    createdByCaller() &&
+                    hasValidPlayerBookingWindow();
       allow update: if isAuthenticated() && (
         isSuperAdmin() ||
         (resource != null && resource.data.userId == request.auth.uid)

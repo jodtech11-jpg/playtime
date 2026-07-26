@@ -11,6 +11,7 @@
 
 const functions = require('firebase-functions');
 const {onDocumentCreated, onDocumentUpdated} = require('firebase-functions/v2/firestore');
+const {onSchedule} = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
 
@@ -441,6 +442,36 @@ exports.approveVendorVenue = functions.https.onRequest(async (req, res) => {
 // FCM HTTPS endpoints (admin-only)
 // ---------------------------------------------------------------------------
 
+const invalidFcmTokenCodes = new Set([
+  'messaging/invalid-registration-token',
+  'messaging/registration-token-not-registered',
+  'messaging/invalid-argument',
+]);
+
+async function deactivateInvalidFcmTokens(tokens, responses) {
+  const invalidTokens = responses
+    .map((response, index) =>
+      !response.success && invalidFcmTokenCodes.has(response.error?.code) ?
+        tokens[index] :
+        null)
+    .filter(Boolean);
+  for (let index = 0; index < invalidTokens.length; index += 30) {
+    const snapshot = await admin.firestore()
+      .collection('fcmTokens')
+      .where('token', 'in', invalidTokens.slice(index, index + 30))
+      .get();
+    if (snapshot.empty) continue;
+    const batch = admin.firestore().batch();
+    snapshot.docs.forEach((document) => {
+      batch.update(document.ref, {
+        isActive: false,
+        invalidatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+    await batch.commit();
+  }
+}
+
 /**
  * Send push notification to multiple FCM tokens.
  * Requires `Authorization: Bearer <idToken>` (super_admin or venue_manager).
@@ -491,7 +522,7 @@ exports.sendNotification = functions.https.onRequest(async (req, res) => {
       tokens,
       android: {
         priority: 'high',
-        notification: {sound: 'default', channelId: 'default'},
+        notification: {sound: 'default', channelId: 'high_importance_channel'},
       },
       apns: {
         payload: {aps: {sound: 'default', badge: 1}},
@@ -499,6 +530,7 @@ exports.sendNotification = functions.https.onRequest(async (req, res) => {
     };
 
     const response = await admin.messaging().sendEachForMulticast(message);
+    await deactivateInvalidFcmTokens(tokens, response.responses);
 
     // Do NOT echo tokens back; use index-based references only.
     res.json({
@@ -594,6 +626,7 @@ exports.sendNotificationToUser = functions.https.onRequest(async (req, res) => {
     };
 
     const response = await admin.messaging().sendEachForMulticast(message);
+    await deactivateInvalidFcmTokens(tokens, response.responses);
 
     res.json({
       success: response.successCount,
@@ -665,6 +698,169 @@ exports.sendNotificationToTopic = functions.https.onRequest(async (req, res) => 
     res.status(500).json({error: error.message || 'Internal server error'});
   }
 });
+
+async function resolveNotificationAudience(notification) {
+  const audience = notification.targetAudience;
+  if (audience === 'Specific Users') {
+    return [...new Set(notification.targetUserIds || [])].filter(Boolean);
+  }
+  if (audience === 'Venue Managers') {
+    const managers = await admin.firestore().collection('users')
+      .where('role', '==', 'venue_manager').get();
+    return managers.docs.map((document) => document.id);
+  }
+  if (audience === 'Venue Users' && notification.targetVenueId) {
+    const venueId = notification.targetVenueId;
+    const [bookings, venueUsers, venueManagers] = await Promise.all([
+      admin.firestore().collection('bookings')
+        .where('venueId', '==', venueId).get(),
+      admin.firestore().collection('users')
+        .where('venueIds', 'array-contains', venueId).get(),
+      admin.firestore().collection('users')
+        .where('managedVenues', 'array-contains', venueId).get(),
+    ]);
+    return [...new Set([
+      ...bookings.docs.map((document) => document.data().userId),
+      ...venueUsers.docs.map((document) => document.id),
+      ...venueManagers.docs.map((document) => document.id),
+    ])].filter(Boolean);
+  }
+  if (audience === 'All Users') {
+    const users = await admin.firestore().collection('users').get();
+    return users.docs.map((document) => document.id);
+  }
+  return [];
+}
+
+async function dispatchStoredNotification(notificationDocument) {
+  const notification = notificationDocument.data();
+  const creator = notification.createdBy ?
+    await admin.firestore().collection('users').doc(notification.createdBy).get() :
+    null;
+  const creatorData = creator?.data() || {};
+  if (creatorData.role !== 'super_admin' &&
+      ['All Users', 'Venue Managers'].includes(notification.targetAudience)) {
+    throw new Error('Only super admins can send to this audience');
+  }
+  if (creatorData.role !== 'super_admin' &&
+      notification.targetAudience === 'Venue Users' &&
+      !(creatorData.managedVenues || []).includes(notification.targetVenueId)) {
+    throw new Error('Notification venue is outside the sender scope');
+  }
+
+  const userIds = await resolveNotificationAudience(notification);
+  const writer = admin.firestore().bulkWriter();
+  userIds.forEach((userId) => {
+    const recipientRef = admin.firestore().collection('notifications')
+      .doc(`${notificationDocument.id}_${userId}`);
+    writer.set(recipientRef, {
+      userId,
+      title: notification.title,
+      body: notification.body,
+      type: notification.type || 'general',
+      read: false,
+      isRead: false,
+      actionUrl: notification.actionUrl || null,
+      actionText: notification.actionText || null,
+      imageUrl: notification.imageUrl || null,
+      sourceNotificationId: notificationDocument.id,
+      createdBy: notification.createdBy || null,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, {merge: true});
+  });
+  await writer.close();
+
+  const tokenDocuments = [];
+  for (let index = 0; index < userIds.length; index += 30) {
+    const tokenSnapshot = await admin.firestore().collection('fcmTokens')
+      .where('userId', 'in', userIds.slice(index, index + 30))
+      .where('isActive', '==', true)
+      .get();
+    tokenDocuments.push(...tokenSnapshot.docs);
+  }
+  const uniqueTokens = [...new Set(
+    tokenDocuments.map((document) => document.data().token).filter(Boolean),
+  )];
+  let successCount = 0;
+  let failureCount = 0;
+  for (let index = 0; index < uniqueTokens.length; index += 500) {
+    const tokens = uniqueTokens.slice(index, index + 500);
+    const response = await admin.messaging().sendEachForMulticast({
+      notification: {
+        title: notification.title,
+        body: notification.body,
+        ...(notification.imageUrl && {imageUrl: notification.imageUrl}),
+      },
+      data: {
+        type: String(notification.type || 'general'),
+        actionUrl: String(notification.actionUrl || ''),
+        actionText: String(notification.actionText || ''),
+        notificationId: notificationDocument.id,
+      },
+      tokens,
+      android: {
+        priority: 'high',
+        notification: {
+          sound: 'default',
+          channelId: 'high_importance_channel',
+        },
+      },
+      apns: {payload: {aps: {sound: 'default', badge: 1}}},
+    });
+    successCount += response.successCount;
+    failureCount += response.failureCount;
+    await deactivateInvalidFcmTokens(tokens, response.responses);
+  }
+
+  await notificationDocument.ref.update({
+    status: userIds.length > 0 ? 'Sent' : 'Failed',
+    sentAt: admin.firestore.FieldValue.serverTimestamp(),
+    sentCount: Math.max(successCount, userIds.length),
+    pushSentCount: successCount,
+    failedCount: failureCount,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+}
+
+exports.processScheduledNotifications = onSchedule(
+  {schedule: 'every 1 minutes', timeZone: 'Asia/Kolkata'},
+  async () => {
+    const due = await admin.firestore().collection('notifications')
+      .where('status', '==', 'Scheduled')
+      .where('scheduledFor', '<=', admin.firestore.Timestamp.now())
+      .orderBy('scheduledFor')
+      .limit(100)
+      .get();
+    for (const notificationDocument of due.docs) {
+      try {
+        const claimed = await admin.firestore().runTransaction(async (transaction) => {
+          const current = await transaction.get(notificationDocument.ref);
+          if (!current.exists || current.data().status !== 'Scheduled') {
+            return false;
+          }
+          transaction.update(notificationDocument.ref, {
+            status: 'Sending',
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          return true;
+        });
+        if (!claimed) continue;
+        await dispatchStoredNotification(notificationDocument);
+      } catch (error) {
+        console.error(
+          'Scheduled notification failed:',
+          notificationDocument.id,
+          error,
+        );
+        await notificationDocument.ref.update({
+          status: 'Failed',
+          error: String(error.message || error).slice(0, 500),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Firestore triggers
@@ -779,6 +975,18 @@ exports.onTournamentUpdated = onDocumentUpdated('tournaments/{tournamentId}', as
     event, 'tournament', event.params.tournamentId, before, after);
 });
 
+async function bookingNotificationAllowed(userId) {
+  const [settingsDocument, userDocument] = await Promise.all([
+    admin.firestore().collection('appSettings').doc('platform').get(),
+    admin.firestore().collection('users').doc(userId).get(),
+  ]);
+  if (settingsDocument.exists &&
+      settingsDocument.data().enableBookingNotifications === false) {
+    return false;
+  }
+  return userDocument.data()?.notificationSettings?.booking !== false;
+}
+
 /** Send notification when a booking is created. */
 exports.onBookingCreated = onDocumentCreated(
   'bookings/{bookingId}',
@@ -794,6 +1002,19 @@ exports.onBookingCreated = onDocumentCreated(
         console.log('Booking created with status', booking.status, '- skipping confirmation notification');
         return null;
       }
+      if (!await bookingNotificationAllowed(userId)) return null;
+
+      // Persist the inbox notification even when the user has no push token.
+      const notificationDoc = await admin.firestore().collection('notifications').add({
+        userId,
+        title: 'Booking Confirmed!',
+        body: `Your booking at ${booking.venueName || 'venue'} has been confirmed.`,
+        type: 'booking',
+        data: {bookingId: event.params.bookingId},
+        isRead: false,
+        read: false,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
 
       const tokensSnapshot = await admin.firestore()
         .collection('fcmTokens')
@@ -808,17 +1029,6 @@ exports.onBookingCreated = onDocumentCreated(
 
       const tokens = tokensSnapshot.docs.map((d) => d.data().token).filter(Boolean);
       if (tokens.length === 0) return null;
-
-      const notificationDoc = await admin.firestore().collection('notifications').add({
-        userId,
-        title: 'Booking Confirmed!',
-        body: `Your booking at ${booking.venueName || 'venue'} has been confirmed.`,
-        type: 'booking',
-        data: {bookingId: event.params.bookingId},
-        isRead: false,
-        read: false,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
 
       const message = {
         notification: {
@@ -836,7 +1046,8 @@ exports.onBookingCreated = onDocumentCreated(
         apns: {payload: {aps: {sound: 'default', badge: 1}}},
       };
 
-      await admin.messaging().sendEachForMulticast(message);
+      const response = await admin.messaging().sendEachForMulticast(message);
+      await deactivateInvalidFcmTokens(tokens, response.responses);
       console.log('Notification sent for booking:', event.params.bookingId);
     } catch (error) {
       console.error('Error in onBookingCreated:', error);
@@ -856,20 +1067,6 @@ exports.onBookingStatusChanged = onDocumentUpdated(
       const after = event.data.after.data();
       const userId = after.userId;
       if (!userId || before.status === after.status) return null;
-
-      const tokensSnapshot = await admin.firestore()
-        .collection('fcmTokens')
-        .where('userId', '==', userId)
-        .where('isActive', '==', true)
-        .get();
-
-      if (tokensSnapshot.empty) {
-        console.log('No active FCM tokens for user:', userId);
-        return null;
-      }
-
-      const tokens = tokensSnapshot.docs.map((d) => d.data().token).filter(Boolean);
-      if (tokens.length === 0) return null;
 
       let title = '';
       let body = '';
@@ -892,6 +1089,7 @@ exports.onBookingStatusChanged = onDocumentUpdated(
         default:
           return null;
       }
+      if (!await bookingNotificationAllowed(userId)) return null;
 
       const notificationDoc = await admin.firestore().collection('notifications').add({
         userId,
@@ -903,6 +1101,20 @@ exports.onBookingStatusChanged = onDocumentUpdated(
         read: false,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
+
+      const tokensSnapshot = await admin.firestore()
+        .collection('fcmTokens')
+        .where('userId', '==', userId)
+        .where('isActive', '==', true)
+        .get();
+
+      if (tokensSnapshot.empty) {
+        console.log('No active FCM tokens for user:', userId);
+        return null;
+      }
+
+      const tokens = tokensSnapshot.docs.map((d) => d.data().token).filter(Boolean);
+      if (tokens.length === 0) return null;
 
       const message = {
         notification: {title, body},
@@ -917,7 +1129,8 @@ exports.onBookingStatusChanged = onDocumentUpdated(
         apns: {payload: {aps: {sound: 'default', badge: 1}}},
       };
 
-      await admin.messaging().sendEachForMulticast(message);
+      const response = await admin.messaging().sendEachForMulticast(message);
+      await deactivateInvalidFcmTokens(tokens, response.responses);
       console.log('Notification sent for booking status change:', event.params.bookingId);
     } catch (error) {
       console.error('Error in onBookingStatusChanged:', error);

@@ -10,6 +10,7 @@ import { useHeaderActions } from '../contexts/HeaderActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import { getFirebaseErrorMessage } from '../utils/errorUtils';
+import { auth } from '../services/firebase';
 
 const Notifications: React.FC = () => {
   const { user, isSuperAdmin } = useAuth();
@@ -48,8 +49,7 @@ const Notifications: React.FC = () => {
   // Check if FCM is configured - MUST be before any early returns (Rules of Hooks)
   const isFCMConfigured = useMemo(() => {
     const cloudFunctionUrl = import.meta.env.VITE_FCM_CLOUD_FUNCTION_URL;
-    const serverKey = import.meta.env.VITE_FCM_SERVER_KEY;
-    return !!(cloudFunctionUrl || serverKey);
+    return !!(cloudFunctionUrl || auth.app.options.projectId);
   }, []);
 
   // Form state
@@ -123,6 +123,10 @@ const Notifications: React.FC = () => {
       showWarning('Please select at least one delivery channel');
       return;
     }
+    if (formData.scheduledFor && formData.channels.includes('whatsapp')) {
+      showWarning('Scheduled notifications currently support the push channel only.');
+      return;
+    }
 
     if (formData.targetAudience === 'Specific Users' && formData.targetUserIds.length === 0) {
       showWarning('Please select at least one user');
@@ -153,6 +157,7 @@ const Notifications: React.FC = () => {
         imageUrl: formData.imageUrl || undefined,
         actionUrl: formData.actionUrl || undefined,
         actionText: formData.actionText || undefined,
+        channels: formData.channels,
         scheduledFor: formData.scheduledFor ? new Date(formData.scheduledFor) : undefined,
         status: formData.scheduledFor ? 'Scheduled' : 'Draft',
         createdBy: user?.id || '',
@@ -167,8 +172,14 @@ const Notifications: React.FC = () => {
       // If not scheduled, send immediately
       if (!formData.scheduledFor) {
         setSending(notificationId);
-        await sendNotification(notificationId, { channels: formData.channels });
-        showSuccess('Notification sent successfully!');
+        const result = await sendNotification(notificationId, { channels: formData.channels });
+        if (result.failed > 0) {
+          showWarning(
+            `Notification delivered to ${result.success} recipients; ${result.failed} push deliveries failed.`
+          );
+        } else {
+          showSuccess('Notification sent successfully!');
+        }
       } else {
         showSuccess('Notification scheduled successfully!');
       }
@@ -265,7 +276,7 @@ const Notifications: React.FC = () => {
       scheduledFor: notification.scheduledFor 
         ? (notification.scheduledFor.toDate ? notification.scheduledFor.toDate().toISOString().slice(0, 16) : new Date(notification.scheduledFor).toISOString().slice(0, 16))
         : '',
-      channels: ['push'], // Default
+      channels: notification.channels || ['push'],
     });
     setShowEditModal(true);
   };
@@ -307,6 +318,7 @@ const Notifications: React.FC = () => {
         imageUrl: formData.imageUrl || undefined,
         actionUrl: formData.actionUrl || undefined,
         actionText: formData.actionText || undefined,
+        channels: formData.channels,
         scheduledFor: formData.scheduledFor ? new Date(formData.scheduledFor) : undefined,
         status: formData.scheduledFor ? 'Scheduled' : (selectedNotification.status === 'Sent' ? 'Sent' : 'Draft'),
       };

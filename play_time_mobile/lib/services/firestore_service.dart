@@ -14,6 +14,7 @@ import '../models/quick_match.dart';
 import '../models/tournament_summary.dart';
 import '../models/engagement.dart';
 import 'quick_match_participation_service.dart';
+import '../utils/booking_time_policy.dart';
 
 class FirestoreService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -178,6 +179,11 @@ class FirestoreService {
 
   static Future<String> createBooking(Map<String, dynamic> bookingData) async {
     try {
+      final start = bookingData['startTime'];
+      if (start is! Timestamp ||
+          !BookingTimePolicy.isBookable(start.toDate())) {
+        throw Exception(BookingTimePolicy.errorMessage);
+      }
       final docRef = await _firestore.collection('bookings').add({
         ...bookingData,
         'createdAt': FieldValue.serverTimestamp(),
@@ -284,6 +290,8 @@ class FirestoreService {
     Court? courtOverride,
   }) async {
     try {
+      if (!BookingTimePolicy.isBookable(startTime)) return false;
+
       final snapshot = await courtBookingsForAvailability(
         venueId: venueId,
         courtId: courtId,
@@ -464,7 +472,9 @@ class FirestoreService {
             );
 
         final available =
-            withinCourtHours && !slotOverlapsBooking(slotStart, slotEnd);
+            BookingTimePolicy.isBookable(slotStart) &&
+            withinCourtHours &&
+            !slotOverlapsBooking(slotStart, slotEnd);
         final time24 =
             '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
 
@@ -501,6 +511,12 @@ class FirestoreService {
       final courtId = bookingData['courtId'] as String;
       final startTime = (bookingData['startTime'] as Timestamp).toDate();
       final endTime = (bookingData['endTime'] as Timestamp).toDate();
+      if (!BookingTimePolicy.isBookable(startTime)) {
+        throw Exception(BookingTimePolicy.errorMessage);
+      }
+      if (!endTime.isAfter(startTime)) {
+        throw Exception('Booking end time must be after its start time.');
+      }
 
       // Conflict check outside transaction (collection queries cannot run inside one)
       final snapshot = await courtBookingsForAvailability(
@@ -1106,6 +1122,7 @@ class FirestoreService {
       });
     } catch (e) {
       debugPrint('Error marking notification as read: $e');
+      rethrow;
     }
   }
 

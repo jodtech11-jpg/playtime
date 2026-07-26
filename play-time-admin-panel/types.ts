@@ -966,6 +966,7 @@ export interface CmsPage {
 
 export interface Notification {
   id: string;
+  userId?: string; // Present on recipient inbox documents
   title: string;
   body: string;
   type: 'Announcement' | 'Booking' | 'Membership' | 'Tournament' | 'Promotion' | 'System' | 'Other';
@@ -975,11 +976,17 @@ export interface Notification {
   imageUrl?: string;
   actionUrl?: string; // Deep link or URL to navigate to
   actionText?: string; // e.g., 'View Booking', 'Open App'
+  channels?: ('push' | 'whatsapp')[];
   scheduledFor?: any; // Optional: schedule notification for future
   sentAt?: any; // When notification was actually sent
   status: 'Draft' | 'Scheduled' | 'Sending' | 'Sent' | 'Failed';
   sentCount?: number; // Number of users who received the notification
   failedCount?: number; // Number of failed deliveries
+  read?: boolean;
+  isRead?: boolean;
+  readAt?: any;
+  bookingId?: string;
+  data?: Record<string, any>;
   createdBy: string; // Admin user ID who created the notification
   createdAt?: any;
   updatedAt?: any;

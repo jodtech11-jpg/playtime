@@ -39,17 +39,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic>? _userProfileData;
   int _totalBookings = 0;
   int _totalTeams = 0;
-  int _totalOrders = 0;
   int _winRate = 0;
   bool _isLoadingStats = true;
   int _totalMatches = 0;
   int _matchesWon = 0;
   int _totalSpent = 0;
-  int _favoriteSport = 0;
-  String? _favoriteSportName;
   int _currentStreak = 0;
   int _longestStreak = 0;
-  int _totalXP = 0;
   List<Map<String, dynamic>> _achievements = [];
   Map<String, int> _sportStats = {};
 
@@ -76,7 +72,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final profile = await FirestoreService.getUserProfile(user.uid);
         final bookings = await FirestoreService.getUserBookings(user.uid);
         final teams = await FirestoreService.getUserTeams(user.uid);
-        final orders = await FirestoreService.getUserOrders(user.uid);
 
         // Calculate detailed statistics
         final completedBookings = bookings
@@ -99,22 +94,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (label.isEmpty) continue;
           sportCounts[label] = (sportCounts[label] ?? 0) + 1;
         }
-        String? favoriteSport;
-        int favoriteSportCount = 0;
-        sportCounts.forEach((sport, count) {
-          if (count > favoriteSportCount) {
-            favoriteSportCount = count;
-            favoriteSport = sport;
-          }
-        });
-
         // Calculate total spent
         final totalSpent = bookings.fold<double>(0, (sum, b) => sum + b.amount);
 
         // Get additional stats from profile
         final streak = profile?['streak'] ?? 0;
         final longestStreak = profile?['longestStreak'] ?? 0;
-        final totalXP = profile?['totalXP'] ?? 0;
         final achievements = profile?['achievements'] as List<dynamic>? ?? [];
 
         setState(() {
@@ -125,7 +110,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _phoneController.text = profile?['phone'] ?? user.phoneNumber ?? '';
           _totalBookings = bookings.length;
           _totalTeams = teams.length;
-          _totalOrders = orders.length;
           _winRate = completionRate;
           _totalMatches = completedBookings.length;
           final rawMatchesWon = profile?['matchesWon'];
@@ -133,17 +117,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ? rawMatchesWon
               : (rawMatchesWon is num ? rawMatchesWon.toInt() : 0);
           _totalSpent = totalSpent.toInt();
-          _favoriteSportName = favoriteSport;
-          _favoriteSport = favoriteSportCount;
           _currentStreak = streak is int
               ? streak
               : (streak is num ? streak.toInt() : 0);
           _longestStreak = longestStreak is int
               ? longestStreak
               : (longestStreak is num ? longestStreak.toInt() : 0);
-          _totalXP = totalXP is int
-              ? totalXP
-              : (totalXP is num ? totalXP.toInt() : 0);
           _sportStats = sportCounts;
           _achievements = achievements
               .map(
@@ -926,6 +905,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _confirmSignOut(AuthProvider authProvider) async {
+    final shouldSignOut = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.surfaceDark,
+        title: const Text('Log out?'),
+        content: const Text(
+          'You will need to sign in again to manage bookings and teams.',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Log out'),
+          ),
+        ],
+      ),
+    );
+    if (shouldSignOut != true || !mounted) return;
+    await authProvider.signOut();
+    if (!mounted) return;
+    context.go('/login');
+  }
+
   @override
   Widget build(BuildContext context) {
     final bookingProvider = Provider.of<BookingProvider>(context);
@@ -954,7 +965,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             children: [
               // Header
               Container(
-                padding: const EdgeInsets.all(16),
+                height: 64,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
                 decoration: BoxDecoration(
                   color: AppColors.backgroundDark.withValues(alpha: 0.95),
                   border: Border(
@@ -966,20 +978,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Row(
                   children: [
                     IconButton(
-                      icon: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceDark,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.05),
-                          ),
-                        ),
-                        child: const Icon(
-                          Icons.arrow_back,
-                          color: Colors.white,
-                        ),
-                      ),
+                      tooltip: 'Back',
+                      icon: const Icon(Icons.arrow_back_rounded),
                       onPressed: () {
                         if (Navigator.canPop(context)) {
                           Navigator.pop(context);
@@ -988,23 +988,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         }
                       },
                     ),
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        '', // Title handled by builder below to avoid const issues with dynamic text
-                        textAlign: TextAlign.center,
-                        style: TextStyle(height: 0),
+                        languageProvider.translate('profile_title'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.3,
+                        ),
                       ),
                     ),
-                    Text(
-                      languageProvider.translate('profile_title'),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const Spacer(),
                     TextButton(
                       onPressed: () {
                         if (_isEditMode) {
@@ -1021,9 +1017,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             : languageProvider.translate('edit'),
                         style: const TextStyle(
                           color: AppColors.primary,
-                          fontSize: 12,
+                          fontSize: 13,
                           fontWeight: FontWeight.w900,
-                          letterSpacing: 0.25,
                         ),
                       ),
                     ),
@@ -1039,13 +1034,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     physics: const AlwaysScrollableScrollPhysics(),
                     child: Column(
                       children: [
-                        const SizedBox(height: 32),
+                        const SizedBox(height: 24),
                         // Profile Image
                         Stack(
                           children: [
                             Container(
-                              width: 144,
-                              height: 144,
+                              width: 112,
+                              height: 112,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 gradient: LinearGradient(
@@ -1098,8 +1093,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               child: GestureDetector(
                                 onTap: _pickImage,
                                 child: Container(
-                                  width: 48,
-                                  height: 48,
+                                  width: 40,
+                                  height: 40,
                                   decoration: BoxDecoration(
                                     color: AppColors.primary,
                                     shape: BoxShape.circle,
@@ -1111,7 +1106,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   child: const Icon(
                                     Icons.photo_camera,
                                     color: AppColors.backgroundDark,
-                                    size: 20,
+                                    size: 18,
                                   ),
                                 ),
                               ),
@@ -1261,7 +1256,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     displayName,
                                     style: const TextStyle(
                                       color: Colors.white,
-                                      fontSize: 24,
+                                      fontSize: 22,
                                       fontWeight: FontWeight.w900,
                                     ),
                                   );
@@ -1290,18 +1285,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 size: 18,
                               ),
                               const SizedBox(width: 4),
-                              Consumer<LocationProvider>(
-                                builder: (context, locationProvider, child) {
-                                  return Text(
-                                    locationProvider.displayLocation,
-                                    style: TextStyle(
-                                      color: AppColors.textSecondary,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: 0.2,
-                                    ),
-                                  );
-                                },
+                              Flexible(
+                                child: Consumer<LocationProvider>(
+                                  builder: (context, locationProvider, child) {
+                                    return Text(
+                                      locationProvider.displayLocation,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: AppColors.textSecondary,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.2,
+                                      ),
+                                    );
+                                  },
+                                ),
                               ),
                               const SizedBox(width: 4),
                               Icon(
@@ -1337,168 +1336,184 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                           ),
                         ],
-                        const SizedBox(height: 32),
-                        // Enhanced Stats Grid
+                        const SizedBox(height: 28),
+                        if (latestUpcoming != null) ...[
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const _ProfileSectionTitle(
+                                  title: 'Coming up next',
+                                  icon: Icons.bolt_rounded,
+                                ),
+                                const SizedBox(height: 12),
+                                _buildNextActiveMatchCard(latestUpcoming),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 28),
+                        ],
                         Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: _isLoadingStats
-                              ? const Center(
-                                  child: CircularProgressIndicator(
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      AppColors.primary,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const _ProfileSectionTitle(
+                                title: 'Your activity',
+                                icon: Icons.insights_rounded,
+                              ),
+                              const SizedBox(height: 12),
+                              Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () => _showWalletTopUpDialog(context),
+                                  borderRadius: BorderRadius.circular(20),
+                                  child: Ink(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          AppColors.primary.withValues(
+                                            alpha: 0.18,
+                                          ),
+                                          AppColors.surfaceDark,
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(
+                                        color: AppColors.primary.withValues(
+                                          alpha: 0.24,
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                )
-                              : Column(
-                                  children: [
-                                    Row(
+                                    child: Row(
                                       children: [
-                                        Expanded(
-                                          child: _buildStatCard(
-                                            value: '$_totalBookings',
-                                            label: languageProvider.translate(
-                                              'bookings',
+                                        Container(
+                                          width: 44,
+                                          height: 44,
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primary.withValues(
+                                              alpha: 0.14,
                                             ),
-                                            icon: Icons.calendar_today,
+                                            borderRadius: BorderRadius.circular(
+                                              14,
+                                            ),
+                                          ),
+                                          child: const Icon(
+                                            Icons
+                                                .account_balance_wallet_rounded,
                                             color: AppColors.primary,
                                           ),
                                         ),
-                                        const SizedBox(width: 12),
+                                        const SizedBox(width: 14),
                                         Expanded(
-                                          child: GestureDetector(
-                                            onTap: () =>
-                                                _showWalletTopUpDialog(context),
-                                            child: _buildStatCard(
-                                              value:
-                                                  '₹${_walletBalance.toInt()}',
-                                              label: languageProvider.translate(
-                                                'wallet',
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                languageProvider.translate(
+                                                  'wallet',
+                                                ),
+                                                style: const TextStyle(
+                                                  color:
+                                                      AppColors.textSecondary,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
                                               ),
-                                              icon:
-                                                  Icons.account_balance_wallet,
-                                              color: Colors.green,
-                                              subtitle: languageProvider
-                                                  .translate('tap_to_add'),
-                                            ),
+                                              const SizedBox(height: 3),
+                                              Text(
+                                                '₹${_walletBalance.toInt()}',
+                                                style: const TextStyle(
+                                                  color: AppColors.textPrimary,
+                                                  fontSize: 20,
+                                                  fontWeight: FontWeight.w900,
+                                                ),
+                                              ),
+                                            ],
                                           ),
+                                        ),
+                                        const Text(
+                                          'Add money',
+                                          style: TextStyle(
+                                            color: AppColors.primary,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        const Icon(
+                                          Icons.arrow_forward_rounded,
+                                          color: AppColors.primary,
+                                          size: 18,
                                         ),
                                       ],
                                     ),
-                                    const SizedBox(height: 12),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: _buildStatCard(
-                                            value: '$_totalTeams',
-                                            label: languageProvider.translate(
-                                              'teams',
-                                            ),
-                                            icon: Icons.group,
-                                            color: Colors.blue,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: _buildStatCard(
-                                            value: '$_winRate%',
-                                            label: languageProvider.translate(
-                                              'win_rate',
-                                            ),
-                                            icon: Icons.emoji_events,
-                                            color: Colors.amber,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: _buildStatCard(
-                                            value: '$_totalOrders',
-                                            label: languageProvider.translate(
-                                              'orders',
-                                            ),
-                                            icon: Icons.shopping_bag,
-                                            color: Colors.orange,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: _buildStatCard(
-                                            value:
-                                                '${_userProfileData?['level'] ?? 1}',
-                                            label: languageProvider.translate(
-                                              'level',
-                                            ),
-                                            icon: Icons.star,
-                                            color: Colors.purple,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    // Additional Stats Row
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: _buildStatCard(
-                                            value: '$_totalMatches',
-                                            label: languageProvider.translate(
-                                              'matches',
-                                            ),
-                                            icon: Icons.sports_soccer,
-                                            color: Colors.red,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: _buildStatCard(
-                                            value: '$_currentStreak',
-                                            label: languageProvider.translate(
-                                              'streak',
-                                            ),
-                                            icon: Icons.local_fire_department,
-                                            color: Colors.orange,
-                                            subtitle: languageProvider
-                                                .translate('days'),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    // XP and Favorite Sport
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: _buildStatCard(
-                                            value: '$_totalXP',
-                                            label: languageProvider.translate(
-                                              'total_xp',
-                                            ),
-                                            icon: Icons.stars,
-                                            color: Colors.yellow,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: _buildStatCard(
-                                            value: '$_favoriteSport',
-                                            label: languageProvider.translate(
-                                              'favorite',
-                                            ),
-                                            icon: Icons.favorite,
-                                            color: Colors.pink,
-                                            subtitle: _favoriteSportSubtitle(
-                                              _favoriteSportName,
-                                              languageProvider,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
+                                  ),
                                 ),
+                              ),
+                              const SizedBox(height: 12),
+                              if (_isLoadingStats)
+                                const SizedBox(
+                                  height: 120,
+                                  child: Center(
+                                    child: CircularProgressIndicator(
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                                )
+                              else
+                                SizedBox(
+                                  height: 126,
+                                  child: ListView(
+                                    clipBehavior: Clip.none,
+                                    scrollDirection: Axis.horizontal,
+                                    children: [
+                                      _profileMetric(
+                                        value: '$_totalBookings',
+                                        label: languageProvider.translate(
+                                          'bookings',
+                                        ),
+                                        icon: Icons.calendar_month_rounded,
+                                        color: AppColors.primary,
+                                      ),
+                                      _profileMetric(
+                                        value: '$_totalMatches',
+                                        label: languageProvider.translate(
+                                          'matches',
+                                        ),
+                                        icon: Icons.sports_rounded,
+                                        color: AppColors.cyan,
+                                      ),
+                                      _profileMetric(
+                                        value: '$_totalTeams',
+                                        label: languageProvider.translate(
+                                          'teams',
+                                        ),
+                                        icon: Icons.groups_rounded,
+                                        color: AppColors.info,
+                                      ),
+                                      _profileMetric(
+                                        value: '$_currentStreak',
+                                        label: languageProvider.translate(
+                                          'streak',
+                                        ),
+                                        icon: Icons.local_fire_department,
+                                        color: AppColors.orange,
+                                      ),
+                                      _profileMetric(
+                                        value: '$_winRate%',
+                                        label: 'Completion',
+                                        icon: Icons.emoji_events_rounded,
+                                        color: AppColors.warning,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 32),
                         // Achievements Section
@@ -1621,9 +1636,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       height: 24,
                                     ),
                                     _buildStatRow(
-                                      languageProvider.translate(
-                                        'stat_win_rate',
-                                      ),
+                                      'Booking completion',
                                       '$_winRate%',
                                     ),
                                     const Divider(
@@ -1866,13 +1879,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       letterSpacing: 0.35,
                                     ),
                                   ),
-                                  Text(
-                                    '${bookings.length} ${languageProvider.translate('total')}',
-                                    style: TextStyle(
-                                      color: Colors.grey[600],
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: 0.25,
+                                  TextButton(
+                                    onPressed: () => context.push('/bookings'),
+                                    child: Text(
+                                      'View all (${bookings.length})',
+                                      style: const TextStyle(
+                                        color: AppColors.primary,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -1892,51 +1907,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   ),
                                 )
                               else
-                                ...bookings.map(
-                                  (booking) => _buildBookingCard(
-                                    booking,
-                                    bookingProvider,
-                                  ),
-                                ),
+                                ...bookings
+                                    .take(3)
+                                    .map(
+                                      (booking) => _buildBookingCard(
+                                        booking,
+                                        bookingProvider,
+                                      ),
+                                    ),
                             ],
                           ),
                         ),
-                        // Next Active Match
-                        if (latestUpcoming != null) ...[
-                          const SizedBox(height: 40),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 24),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      width: 8,
-                                      height: 8,
-                                      decoration: const BoxDecoration(
-                                        color: AppColors.primary,
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    const Text(
-                                      'UPCOMING',
-                                      style: TextStyle(
-                                        color: AppColors.primary,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: 0.25,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 16),
-                                _buildNextActiveMatchCard(latestUpcoming),
-                              ],
-                            ),
-                          ),
-                        ],
                         const SizedBox(height: 40),
                         // Logout Button
                         Padding(
@@ -1944,11 +1925,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: SizedBox(
                             width: double.infinity,
                             child: OutlinedButton(
-                              onPressed: () async {
-                                await authProvider.signOut();
-                                if (!context.mounted) return;
-                                context.go('/login');
-                              },
+                              onPressed: () => _confirmSignOut(authProvider),
                               style: OutlinedButton.styleFrom(
                                 side: const BorderSide(
                                   color: Colors.red,
@@ -2434,69 +2411,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
         .join(' ');
   }
 
-  String? _favoriteSportSubtitle(
-    String? sportName,
-    LanguageProvider languageProvider,
-  ) {
-    if (sportName == null || sportName.trim().isEmpty) {
-      return languageProvider.translate('no_sport_yet');
-    }
-    return sportName;
-  }
-
-  Widget _buildStatCard({
+  Widget _profileMetric({
     required String value,
     required String label,
     required IconData icon,
     required Color color,
-    String? subtitle,
   }) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      width: 122,
+      margin: const EdgeInsets.only(right: 10),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.surfaceDark,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.borderMedium),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(height: 8),
+          Icon(icon, color: color, size: 20),
+          const Spacer(),
           Text(
             value,
-            maxLines: 2,
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
             style: const TextStyle(
-              color: Colors.white,
-              fontSize: 22,
+              color: AppColors.textPrimary,
+              fontSize: 20,
               fontWeight: FontWeight.w900,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 3),
           Text(
             label,
-            style: TextStyle(
-              color: Colors.grey[500],
-              fontSize: 9,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.25,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
             ),
           ),
-          if (subtitle != null && subtitle.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: color.withValues(alpha: 0.95),
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -2532,54 +2487,97 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String subtitle,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceDark,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: AppColors.primary, size: 20),
+    return Semantics(
+      button: true,
+      label: '$title. $subtitle',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Ink(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceDark,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: AppColors.borderMedium),
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(13),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      color: Colors.grey[500],
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  child: Icon(icon, color: AppColors.primary, size: 20),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.textTertiary,
+                  size: 22,
+                ),
+              ],
             ),
-            Icon(Icons.chevron_right, color: Colors.grey[600], size: 20),
-          ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+class _ProfileSectionTitle extends StatelessWidget {
+  final String title;
+  final IconData icon;
+
+  const _ProfileSectionTitle({required this.title, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, color: AppColors.primary, size: 18),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: const TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 17,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.2,
+          ),
+        ),
+      ],
     );
   }
 }

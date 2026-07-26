@@ -57,7 +57,20 @@ export const useNotifications = (realtime: boolean = false) => {
                 setLoading(false);
               }
             },
-            filters.length > 0 ? filters : undefined
+            filters.length > 0 ? filters : undefined,
+            undefined,
+            undefined,
+            (subscriptionError: unknown) => {
+              if (mounted) {
+                setError(
+                  getFirebaseErrorMessage(
+                    subscriptionError,
+                    'Failed to subscribe to notifications'
+                  )
+                );
+                setLoading(false);
+              }
+            }
           );
         } else {
           const data = await notificationsCollection.getAll(
@@ -134,13 +147,7 @@ export const useNotifications = (realtime: boolean = false) => {
       const channels = options?.channels || ['push'];
       result = await sendNotificationToAudience(notification as Notification, channels);
 
-      const totalAttempted = result.success + result.failed;
-      const status =
-        totalAttempted > 0 && result.success > 0
-          ? 'Sent'
-          : totalAttempted > 0 && result.success === 0
-            ? 'Failed'
-            : 'Sent';
+      const status = result.success > 0 ? 'Sent' : 'Failed';
 
       await updateNotification(notificationId, {
         status,

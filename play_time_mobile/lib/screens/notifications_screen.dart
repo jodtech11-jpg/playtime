@@ -41,6 +41,12 @@ class NotificationsScreen extends StatelessWidget {
         final earlierNotifications = notifications
             .where((n) => !todayNotifications.contains(n))
             .toList();
+        final notificationRows = <Object>[
+          if (todayNotifications.isNotEmpty) 'TODAY',
+          ...todayNotifications,
+          if (earlierNotifications.isNotEmpty) 'EARLIER',
+          ...earlierNotifications,
+        ];
 
         return PopScope(
           canPop: false,
@@ -60,7 +66,8 @@ class NotificationsScreen extends StatelessWidget {
                 children: [
                   // Header
                   Container(
-                    padding: const EdgeInsets.all(16),
+                    height: 64,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
                     decoration: BoxDecoration(
                       color: AppColors.backgroundDark.withValues(alpha: 0.95),
                       border: Border(
@@ -72,20 +79,8 @@ class NotificationsScreen extends StatelessWidget {
                     child: Row(
                       children: [
                         IconButton(
-                          icon: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: AppColors.surfaceDark,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.05),
-                              ),
-                            ),
-                            child: const Icon(
-                              Icons.arrow_back,
-                              color: Colors.white,
-                            ),
-                          ),
+                          tooltip: 'Back',
+                          icon: const Icon(Icons.arrow_back_rounded),
                           onPressed: () {
                             if (Navigator.canPop(context)) {
                               context.pop();
@@ -105,16 +100,14 @@ class NotificationsScreen extends StatelessWidget {
                           ),
                         ),
                         TextButton(
-                          onPressed: () {
-                            notificationProvider.markAllAsRead();
-                          },
+                          onPressed: notificationProvider.unreadCount > 0
+                              ? notificationProvider.markAllAsRead
+                              : null,
                           child: const Text(
-                            'MARK ALL READ',
+                            'Mark all read',
                             style: TextStyle(
-                              color: AppColors.primary,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.25,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
                         ),
@@ -155,54 +148,34 @@ class NotificationsScreen extends StatelessWidget {
                               ],
                             ),
                           )
-                        : SingleChildScrollView(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Today Section
-                                if (todayNotifications.isNotEmpty) ...[
-                                  Text(
-                                    'TODAY',
-                                    style: TextStyle(
-                                      color: Colors.grey[500],
+                        : ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                            itemCount: notificationRows.length,
+                            itemBuilder: (context, index) {
+                              final row = notificationRows[index];
+                              if (row is String) {
+                                return Padding(
+                                  padding: EdgeInsets.only(
+                                    top: index == 0 ? 4 : 20,
+                                    bottom: 12,
+                                  ),
+                                  child: Text(
+                                    row,
+                                    style: const TextStyle(
+                                      color: AppColors.textTertiary,
                                       fontSize: 10,
                                       fontWeight: FontWeight.w900,
                                       letterSpacing: 0.35,
                                     ),
                                   ),
-                                  const SizedBox(height: 16),
-                                  ...todayNotifications.map(
-                                    (notif) => _buildNotificationCard(
-                                      context,
-                                      notif,
-                                      notificationProvider,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 32),
-                                ],
-                                // Earlier Section
-                                if (earlierNotifications.isNotEmpty) ...[
-                                  Text(
-                                    'EARLIER',
-                                    style: TextStyle(
-                                      color: Colors.grey[500],
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: 0.35,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  ...earlierNotifications.map(
-                                    (notif) => _buildNotificationCard(
-                                      context,
-                                      notif,
-                                      notificationProvider,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
+                                );
+                              }
+                              return _buildNotificationCard(
+                                context,
+                                row as Map<String, dynamic>,
+                                notificationProvider,
+                              );
+                            },
                           ),
                   ),
                 ],
@@ -220,7 +193,7 @@ class NotificationsScreen extends StatelessWidget {
     NotificationProvider provider,
   ) {
     final type = (notif['type'] as String? ?? 'System').toLowerCase();
-    final isRead = notif['read'] == true;
+    final isRead = notif['read'] == true || notif['isRead'] == true;
     final title = notif['title'] as String? ?? '';
     final body = notif['body'] as String? ?? '';
     final createdAt = notif['createdAt'];
@@ -234,7 +207,9 @@ class NotificationsScreen extends StatelessWidget {
           final created = timestamp.toDate();
           final diff = now.difference(created);
 
-          if (diff.inMinutes < 60) {
+          if (diff.isNegative || diff.inMinutes < 1) {
+            timeStr = 'Just now';
+          } else if (diff.inMinutes < 60) {
             timeStr = '${diff.inMinutes}m ago';
           } else if (diff.inHours < 24) {
             timeStr = '${diff.inHours}h ago';
@@ -259,6 +234,15 @@ class NotificationsScreen extends StatelessWidget {
         final actionUrl = notif['actionUrl'] as String?;
         if (actionUrl?.startsWith('/') == true) {
           context.push(actionUrl!);
+        } else if (type.startsWith('booking')) {
+          final data = notif['data'] as Map<String, dynamic>?;
+          final bookingId =
+              notif['bookingId'] as String? ?? data?['bookingId'] as String?;
+          context.push(
+            bookingId?.isNotEmpty == true
+                ? '/booking/${Uri.encodeComponent(bookingId!)}'
+                : '/bookings',
+          );
         } else if (type.contains('tournament') ||
             type.contains('quick_match') ||
             type == 'match') {
@@ -310,7 +294,20 @@ class NotificationsScreen extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (!isRead)
+                      if (timeStr.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: Text(
+                            timeStr,
+                            style: const TextStyle(
+                              color: AppColors.textTertiary,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      if (!isRead) ...[
+                        const SizedBox(width: 8),
                         Container(
                           width: 8,
                           height: 8,
@@ -318,16 +315,8 @@ class NotificationsScreen extends StatelessWidget {
                             color: AppColors.primary,
                             shape: BoxShape.circle,
                           ),
-                        )
-                      else if (timeStr.isNotEmpty)
-                        Text(
-                          timeStr,
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                          ),
                         ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 8),

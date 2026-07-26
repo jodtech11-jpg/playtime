@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/booking.dart';
 import '../models/court.dart';
+import '../utils/booking_time_policy.dart';
 import '../services/firestore_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -70,6 +71,9 @@ class BookingProvider with ChangeNotifier {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         throw Exception('User not authenticated');
+      }
+      if (!BookingTimePolicy.isBookable(startTime)) {
+        throw Exception(BookingTimePolicy.errorMessage);
       }
 
       // Check if this is the user's first booking for convenience fee calculation.

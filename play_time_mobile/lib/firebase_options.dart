@@ -67,18 +67,16 @@ class DefaultFirebaseOptions {
     storageBucket: 'playtime-d9b83.firebasestorage.app',
   );
 
-  // iOS and macOS Firebase options. `iosBundleId` should match the value of
-  // `PRODUCT_BUNDLE_IDENTIFIER` in `ios/Runner.xcodeproj/project.pbxproj`
-  // (currently `com.playtime.zekto` — matches Android). The `appId` below is a
-  // placeholder derived from the Android app id; re-run `flutterfire configure`
-  // to emit the real iOS appId from the Firebase console.
+  // iOS Firebase app registered for the com.playtime.zekto bundle.
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyA1-1pN_CgHsOqJN--ShyrH7BfwrTTSPzU',
-    appId: '1:721347779964:ios:0000000000000000000000',
+    apiKey: 'AIzaSyAqow6ib54m6I5V9EYx6prPOUlOXZnJ65U',
+    appId: '1:721347779964:ios:accc49cf31a8f7b1bed8f9',
     messagingSenderId: '721347779964',
     projectId: 'playtime-d9b83',
     storageBucket: 'playtime-d9b83.firebasestorage.app',
     iosBundleId: 'com.playtime.zekto',
+    iosClientId:
+        '721347779964-5scrjpjpr2kd8hbqr5t6rbevkhqonae1.apps.googleusercontent.com',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(

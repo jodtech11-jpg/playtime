@@ -11,6 +11,7 @@ import '../providers/location_provider.dart';
 import '../providers/sport_provider.dart';
 import '../providers/engagement_provider.dart';
 import '../providers/booking_provider.dart';
+import '../providers/notification_provider.dart';
 import '../widgets/loading_widget.dart';
 import '../widgets/error_widget.dart';
 import '../widgets/shimmer_box.dart';
@@ -18,6 +19,7 @@ import '../services/firestore_service.dart';
 import '../services/analytics_service.dart';
 import '../services/notification_service.dart';
 import '../app_route_observer.dart';
+import '../widgets/home/for_you_section.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -311,18 +313,20 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                             size: 20,
                           ),
                         ),
-                        Positioned(
-                          top: 6,
-                          right: 6,
-                          child: Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: AppColors.primary,
-                              shape: BoxShape.circle,
+                        if (context.watch<NotificationProvider>().unreadCount >
+                            0)
+                          Positioned(
+                            top: 6,
+                            right: 6,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: AppColors.primary,
+                                shape: BoxShape.circle,
+                              ),
                             ),
                           ),
-                        ),
                       ],
                     ),
                   ),
@@ -337,7 +341,11 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                     context,
                     listen: false,
                   );
-                  await venueProvider.loadVenues();
+                  await Future.wait([
+                    venueProvider.loadVenues(),
+                    context.read<EngagementProvider>().refresh(),
+                    context.read<BookingProvider>().pullToRefresh(),
+                  ]);
                 },
                 color: AppColors.primary,
                 child: SingleChildScrollView(
@@ -831,217 +839,105 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Consumer2<EngagementProvider, BookingProvider>(
                           builder: (context, engagement, bookings, _) {
-                            final matches = engagement.upcomingQuickMatches
-                                .take(3)
-                                .toList();
-                            final tournaments = engagement.openTournaments
-                                .take(3)
-                                .toList();
-                            final deals = engagement.flashDeals
-                                .take(3)
-                                .toList();
-                            final campaigns = engagement.campaigns
-                                .take(3)
-                                .toList();
                             final upcomingBookings = bookings
                                 .getUpcomingBookings()
-                                .take(3)
+                                .take(2)
                                 .toList();
-
-                            final hasContent = matches.isNotEmpty ||
-                                tournaments.isNotEmpty ||
-                                deals.isNotEmpty ||
-                                campaigns.isNotEmpty ||
-                                upcomingBookings.isNotEmpty;
-
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    const Text(
-                                      'For You',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                    ),
-                                    TextButton(
-                                      onPressed: () => context.push('/team-up'),
-                                      child: const Text(
-                                        'See all',
-                                        style: TextStyle(
-                                          color: AppColors.primary,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                            final items = <ForYouItem>[
+                              ...upcomingBookings.map(
+                                (booking) => ForYouItem(
+                                  category: 'Up next',
+                                  title: booking.courtName?.isNotEmpty == true
+                                      ? booking.courtName!
+                                      : (booking.sport.isNotEmpty
+                                            ? booking.sport
+                                            : 'Court booking'),
+                                  subtitle:
+                                      '${booking.venueName} • ${booking.date} ${booking.time}',
+                                  meta: 'View your booking',
+                                  icon: Icons.event_available_rounded,
+                                  accent: AppColors.primary,
+                                  onTap: () => context.push('/bookings'),
                                 ),
-                                if (!hasContent) ...[
-                                  const SizedBox(height: 8),
-                                  Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.surfaceDark,
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.06,
-                                        ),
+                              ),
+                              ...engagement.upcomingQuickMatches
+                                  .take(3)
+                                  .map(
+                                    (match) => ForYouItem(
+                                      category: 'Open match',
+                                      title: match.sport.isNotEmpty
+                                          ? match.sport
+                                          : 'Quick match',
+                                      subtitle:
+                                          '${match.venueName ?? 'Venue'} • ${match.time}',
+                                      meta:
+                                          '${match.currentPlayers}/${match.maxPlayers} players joined',
+                                      icon: Icons.groups_rounded,
+                                      accent: AppColors.cyan,
+                                      onTap: () => context.push('/team-up'),
+                                    ),
+                                  ),
+                              ...engagement.openTournaments
+                                  .take(2)
+                                  .map(
+                                    (tournament) => ForYouItem(
+                                      category: 'Tournament',
+                                      title: tournament.name,
+                                      subtitle:
+                                          '${tournament.sport} • ${tournament.venueName ?? 'Venue'}',
+                                      meta: tournament.entryFee > 0
+                                          ? 'Entry ₹${tournament.entryFee.toInt()}'
+                                          : 'Free registration',
+                                      icon: Icons.emoji_events_rounded,
+                                      accent: AppColors.warning,
+                                      onTap: () => context.push('/team-up'),
+                                    ),
+                                  ),
+                              ...engagement.flashDeals
+                                  .take(2)
+                                  .map(
+                                    (deal) => ForYouItem(
+                                      category: 'Limited offer',
+                                      title: deal.title,
+                                      subtitle:
+                                          deal.venueName ?? 'Play Time offer',
+                                      meta:
+                                          'Now ₹${deal.discountedPrice.toInt()}',
+                                      icon: Icons.local_offer_rounded,
+                                      accent: AppColors.orange,
+                                      onTap: () => context.push(
+                                        '/venue/${deal.venueId}',
                                       ),
                                     ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'No upcoming matches or offers yet',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          'Open Team Up to browse matches, tournaments, and polls — or book a court below.',
-                                          style: TextStyle(
-                                            color: Colors.grey[400],
-                                            fontSize: 12,
-                                            height: 1.4,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 12),
-                                        TextButton(
-                                          onPressed: () =>
-                                              context.push('/team-up'),
-                                          style: TextButton.styleFrom(
-                                            foregroundColor: AppColors.primary,
-                                            padding: EdgeInsets.zero,
-                                          ),
-                                          child: const Text(
-                                            'Browse Team Up',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.w800,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
                                   ),
-                                  const SizedBox(height: 16),
-                                ],
-                                if (upcomingBookings.isNotEmpty) ...[
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Your upcoming bookings',
-                                    style: TextStyle(
-                                      color: Colors.grey[400],
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  ...upcomingBookings.map(
-                                    (b) => _homeChip(
-                                      icon: Icons.event_available,
-                                      title:
-                                          (b.courtName != null &&
-                                              b.courtName!.isNotEmpty)
-                                          ? b.courtName!
-                                          : (b.sport.isNotEmpty
-                                                ? b.sport
-                                                : 'Booking'),
+                              ...engagement.campaigns
+                                  .take(1)
+                                  .map(
+                                    (campaign) => ForYouItem(
+                                      category: 'Discover',
+                                      title: campaign.title,
                                       subtitle:
-                                          '${b.venueName} • ${b.date} ${b.time}',
-                                      onTap: () => context.push('/bookings'),
-                                    ),
-                                  ),
-                                ],
-                                if (matches.isNotEmpty) ...[
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    'Open matches',
-                                    style: TextStyle(
-                                      color: Colors.grey[400],
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  ...matches.map(
-                                    (m) => _homeChip(
-                                      icon: Icons.sports,
-                                      title: m.sport,
-                                      subtitle:
-                                          '${m.venueName ?? 'Venue'} • ${m.currentPlayers}/${m.maxPlayers} players',
-                                      onTap: () => context.push('/team-up'),
-                                    ),
-                                  ),
-                                ],
-                                if (tournaments.isNotEmpty) ...[
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    'Tournaments',
-                                    style: TextStyle(
-                                      color: Colors.grey[400],
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  ...tournaments.map(
-                                    (t) => _homeChip(
-                                      icon: Icons.emoji_events,
-                                      title: t.name,
-                                      subtitle:
-                                          '${t.sport} • ${t.venueName ?? 'Venue'}',
-                                      onTap: () => context.push('/team-up'),
-                                    ),
-                                  ),
-                                ],
-                                if (deals.isNotEmpty ||
-                                    campaigns.isNotEmpty) ...[
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    'Offers',
-                                    style: TextStyle(
-                                      color: Colors.grey[400],
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  ...deals.map(
-                                    (d) => _homeChip(
-                                      icon: Icons.local_offer,
-                                      title: d.title,
-                                      subtitle:
-                                          '${d.venueName ?? 'Venue'} • ₹${d.discountedPrice.toInt()}',
-                                      onTap: () =>
-                                          context.push('/venue/${d.venueId}'),
-                                    ),
-                                  ),
-                                  ...campaigns.map(
-                                    (c) => _homeChip(
-                                      icon: Icons.campaign,
-                                      title: c.title,
-                                      subtitle: c.description ?? c.target,
+                                          campaign.description ??
+                                          campaign.target,
+                                      meta: 'Explore now',
+                                      icon: Icons.campaign_rounded,
+                                      accent: AppColors.purple,
                                       onTap: () => context.push('/marketplace'),
                                     ),
                                   ),
-                                ],
-                                const SizedBox(height: 16),
-                              ],
+                            ].take(8).toList();
+
+                            return ForYouSection(
+                              items: items,
+                              isLoading:
+                                  engagement.isLoading || bookings.isLoading,
+                              onSeeAll: () => context.push('/team-up'),
+                              onExploreVenues: () => context.push('/map-view'),
                             );
                           },
                         ),
                       ),
+                      const SizedBox(height: 24),
                       // Nearby Venues Section
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -2207,74 +2103,5 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
         _isFilterOpen = false;
       });
     });
-  }
-
-  Widget _homeChip({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceDark,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(icon, color: AppColors.primary, size: 20),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 13,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: Colors.grey[500], fontSize: 11),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(
-                  Icons.chevron_right,
-                  color: Colors.white38,
-                  size: 18,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }

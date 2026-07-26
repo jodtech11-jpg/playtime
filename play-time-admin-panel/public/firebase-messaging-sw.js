@@ -27,8 +27,7 @@ messaging.onBackgroundMessage((payload) => {
   const notificationTitle = payload.notification?.title || 'New Notification';
   const notificationOptions = {
     body: payload.notification?.body || '',
-    icon: payload.notification?.image || '/icon-192x192.png',
-    badge: '/badge-72x72.png',
+    image: payload.notification?.image || payload.data?.imageUrl,
     tag: payload.data?.notificationId || 'notification',
     data: payload.data,
     requireInteraction: false,
@@ -45,25 +44,24 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   // Get action URL from notification data
-  const actionUrl = event.notification.data?.actionUrl;
-  
-  if (actionUrl) {
-    // Open or focus the app
-    event.waitUntil(
-      clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-        // Check if there's already a window open
-        for (let i = 0; i < clientList.length; i++) {
-          const client = clientList[i];
-          if (client.url === actionUrl && 'focus' in client) {
-            return client.focus();
+  const actionUrl = event.notification.data?.actionUrl || '/notifications';
+  const targetUrl = actionUrl.startsWith('/')
+    ? new URL(`/#${actionUrl}`, self.location.origin).href
+    : new URL('/#/notifications', self.location.origin).href;
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clientList) => {
+      for (let i = 0; i < clientList.length; i++) {
+        const client = clientList[i];
+        if (new URL(client.url).origin === self.location.origin && 'focus' in client) {
+          if ('navigate' in client) {
+            await client.navigate(targetUrl);
           }
+          return client.focus();
         }
-        // If no window is open, open a new one
-        if (clients.openWindow) {
-          return clients.openWindow(actionUrl);
-        }
-      })
-    );
-  }
+      }
+      return clients.openWindow ? clients.openWindow(targetUrl) : undefined;
+    })
+  );
 });
 

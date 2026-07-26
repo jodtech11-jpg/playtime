@@ -278,9 +278,17 @@ export const getTargetPhoneNumbers = async (
       return [];
     }
 
-    const users = await usersCollection.getAll([
-      ['id', 'in', targetUserIds]
-    ]);
+    // User IDs are Firestore document IDs, not an `id` document field.
+    const users: User[] = [];
+    const uniqueUserIds = Array.from(new Set(targetUserIds));
+    for (let index = 0; index < uniqueUserIds.length; index += 100) {
+      const batch = await Promise.all(
+        uniqueUserIds
+          .slice(index, index + 100)
+          .map((userId) => usersCollection.get(userId))
+      );
+      users.push(...batch.filter((user): user is User => Boolean(user)));
+    }
 
     const phoneNumbers: string[] = [];
     

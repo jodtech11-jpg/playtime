@@ -498,7 +498,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                   vertical: 12,
                   horizontal: 16,
                 ),
-                height: 36,
+                height: 60,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   itemCount: 6,

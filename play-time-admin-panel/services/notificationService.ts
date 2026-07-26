@@ -1,4 +1,4 @@
-import { fcmTokensCollection, usersCollection, appSettingsCollection, notificationsCollection, auth } from './firebase';
+import { fcmTokensCollection, usersCollection, bookingsCollection, appSettingsCollection, notificationsCollection, auth } from './firebase';
 import { FCMToken, Notification, AppSettings } from '../types';
 import { serverTimestamp } from 'firebase/firestore';
 import { sendWhatsAppNotification, getTargetPhoneNumbers, WhatsAppConfig } from './whatsappService';
@@ -23,14 +23,13 @@ export const sendPushNotification = async (
     return { success: 0, failed: 0 };
   }
 
-  const cloudFunctionUrl = import.meta.env.VITE_FCM_CLOUD_FUNCTION_URL;
-  if (!cloudFunctionUrl) {
-    console.warn(
-      'VITE_FCM_CLOUD_FUNCTION_URL is not configured. Push notifications are disabled. ' +
-        'Deploy the sendNotification Cloud Function and set this env var.'
-    );
-    return { success: 0, failed: fcmTokens.length };
-  }
+  const projectId = auth.app.options.projectId;
+  const cloudFunctionUrl =
+    import.meta.env.VITE_FCM_CLOUD_FUNCTION_URL ||
+    (projectId
+      ? `https://us-central1-${projectId}.cloudfunctions.net/sendNotification`
+      : '');
+  if (!cloudFunctionUrl) return { success: 0, failed: fcmTokens.length };
 
   const currentUser = auth.currentUser;
   if (!currentUser) {
@@ -40,40 +39,43 @@ export const sendPushNotification = async (
   const idToken = await currentUser.getIdToken();
 
   try {
-    const response = await fetch(cloudFunctionUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${idToken}`,
-      },
-      body: JSON.stringify({
-        notification: {
-          title: notification.title,
-          body: notification.body,
-          imageUrl: notification.imageUrl,
+    let success = 0;
+    let failed = 0;
+    for (let index = 0; index < fcmTokens.length; index += 500) {
+      const tokens = fcmTokens.slice(index, index + 500);
+      const response = await fetch(cloudFunctionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
         },
-        data: {
-          type: notification.type,
-          actionUrl: notification.actionUrl || '',
-          actionText: notification.actionText || '',
-          notificationId: notification.id,
-        },
-        tokens: fcmTokens,
-      }),
-    });
+        body: JSON.stringify({
+          notification: {
+            title: notification.title,
+            body: notification.body,
+            imageUrl: notification.imageUrl,
+          },
+          data: {
+            type: notification.type,
+            actionUrl: notification.actionUrl || '',
+            actionText: notification.actionText || '',
+            notificationId: notification.id,
+          },
+          tokens,
+        }),
+      });
 
-    if (!response.ok) {
-      const errBody = await response.text();
-      throw new Error(
-        `Cloud Function returned ${response.status}: ${errBody.slice(0, 500)}`
-      );
+      if (!response.ok) {
+        const errBody = await response.text();
+        throw new Error(
+          `Cloud Function returned ${response.status}: ${errBody.slice(0, 500)}`
+        );
+      }
+      const result = await response.json();
+      success += result.success || 0;
+      failed += result.failed ?? tokens.length;
     }
-
-    const result = await response.json();
-    return {
-      success: result.success || 0,
-      failed: result.failed ?? fcmTokens.length,
-    };
+    return { success, failed };
   } catch (error: any) {
     console.error('Error sending notification via Cloud Function:', error);
     throw error;
@@ -89,45 +91,23 @@ export const getTargetFCMTokens = async (
   targetVenueId?: string
 ): Promise<string[]> => {
   const tokens: string[] = [];
-  const filters: any[] = [['isActive', '==', true]];
 
   try {
     if (targetAudience === 'All Users') {
-      const allTokens = await fcmTokensCollection.getAll(filters);
+      const allTokens = await fcmTokensCollection.getAll([['isActive', '==', true]]);
       tokens.push(...allTokens.map((token: FCMToken) => token.token));
-    } else if (targetAudience === 'Venue Managers') {
-      const managers = await usersCollection.getAll([['role', '==', 'venue_manager']]);
-      const managerIds = managers.map((user: any) => user.id);
-
-      if (managerIds.length > 0) {
-        const managerTokens = await fcmTokensCollection.getAll([
+    } else {
+      const userIds = await getTargetUserIds(
+        targetAudience,
+        targetUserIds,
+        targetVenueId
+      );
+      for (let index = 0; index < userIds.length; index += 30) {
+        const userTokens = await fcmTokensCollection.getAll([
           ['isActive', '==', true],
-          ['userId', 'in', managerIds],
+          ['userId', 'in', userIds.slice(index, index + 30)],
         ]);
-        tokens.push(...managerTokens.map((token: FCMToken) => token.token));
-      }
-    } else if (targetAudience === 'Specific Users' && targetUserIds && targetUserIds.length > 0) {
-      const userTokens = await fcmTokensCollection.getAll([
-        ['isActive', '==', true],
-        ['userId', 'in', targetUserIds],
-      ]);
-      tokens.push(...userTokens.map((token: FCMToken) => token.token));
-    } else if (targetAudience === 'Venue Users' && targetVenueId) {
-      const allUsers = await usersCollection.getAll();
-      const venueUserIds = allUsers
-        .filter(
-          (user: any) =>
-            user.venueIds?.includes(targetVenueId) ||
-            user.managedVenues?.includes(targetVenueId)
-        )
-        .map((user: any) => user.id);
-
-      if (venueUserIds.length > 0) {
-        const venueTokens = await fcmTokensCollection.getAll([
-          ['isActive', '==', true],
-          ['userId', 'in', venueUserIds],
-        ]);
-        tokens.push(...venueTokens.map((token: FCMToken) => token.token));
+        tokens.push(...userTokens.map((token: FCMToken) => token.token));
       }
     }
 
@@ -141,7 +121,7 @@ export const getTargetFCMTokens = async (
 const createUserNotificationDocuments = async (
   notification: Notification,
   userIds: string[]
-): Promise<void> => {
+): Promise<number> => {
   try {
     const BATCH_SIZE = 500;
     const batches: string[][] = [];
@@ -157,6 +137,7 @@ const createUserNotificationDocuments = async (
           body: notification.body,
           type: notification.type,
           read: false,
+          isRead: false,
           ...(notification.actionUrl ? { actionUrl: notification.actionUrl } : {}),
           ...(notification.actionText ? { actionText: notification.actionText } : {}),
           ...(notification.imageUrl ? { imageUrl: notification.imageUrl } : {}),
@@ -172,9 +153,10 @@ const createUserNotificationDocuments = async (
     }
 
     console.log(`Created ${userIds.length} user notification documents`);
+    return userIds.length;
   } catch (error: any) {
     console.error('Error creating user notification documents:', error);
-    // Do not throw — continue with the rest of the notification flow.
+    return 0;
   }
 };
 
@@ -196,16 +178,23 @@ const getTargetUserIds = async (
       userIds = targetUserIds;
     } else if (targetAudience === 'Venue Users' && targetVenueId) {
       const allUsers = await usersCollection.getAll();
-      userIds = allUsers
+      const profileUserIds = allUsers
         .filter(
           (user: any) =>
             user.venueIds?.includes(targetVenueId) ||
             user.managedVenues?.includes(targetVenueId)
         )
         .map((user: any) => user.id);
+      const venueBookings = await bookingsCollection.getAll([
+        ['venueId', '==', targetVenueId],
+      ]);
+      const customerIds = venueBookings
+        .map((booking: any) => booking.userId)
+        .filter((userId: unknown): userId is string => typeof userId === 'string' && userId.length > 0);
+      userIds = [...profileUserIds, ...customerIds];
     }
 
-    return userIds;
+    return Array.from(new Set(userIds));
   } catch (error: any) {
     console.error('Error getting target user IDs:', error);
     return [];
@@ -228,6 +217,11 @@ export const sendNotificationToAudience = async (
       notification.targetUserIds,
       notification.targetVenueId
     );
+    // The in-app inbox is a delivery channel of its own. Create these records
+    // even when a user denied push permission or has no active FCM token.
+    const inAppCreated = targetUserIds.length > 0
+      ? await createUserNotificationDocuments(notification, targetUserIds)
+      : 0;
 
     if (channels.includes('push')) {
       try {
@@ -239,15 +233,13 @@ export const sendNotificationToAudience = async (
 
         if (tokens.length > 0) {
           pushResult = await sendPushNotification(notification, tokens);
-          if (pushResult.success > 0 && targetUserIds.length > 0) {
-            await createUserNotificationDocuments(notification, targetUserIds);
-          }
         } else {
           console.warn('No FCM tokens found for target audience');
+          pushResult = { success: 0, failed: targetUserIds.length };
         }
       } catch (error: any) {
         console.error('Error sending push notification:', error);
-        pushResult = { success: 0, failed: 0 };
+        pushResult = { success: 0, failed: targetUserIds.length };
       }
     }
 
@@ -272,10 +264,6 @@ export const sendNotificationToAudience = async (
               const result = await sendWhatsAppNotification(whatsappMessage, phoneNumbers, config);
 
               whatsappResult = { success: result.success, failed: result.failed };
-
-              if (whatsappResult.success > 0 && targetUserIds.length > 0) {
-                await createUserNotificationDocuments(notification, targetUserIds);
-              }
             }
           }
         }
@@ -284,12 +272,8 @@ export const sendNotificationToAudience = async (
       }
     }
 
-    if (!channels.includes('push') && targetUserIds.length > 0) {
-      await createUserNotificationDocuments(notification, targetUserIds);
-    }
-
     return {
-      success: pushResult.success + whatsappResult.success,
+      success: Math.max(pushResult.success, whatsappResult.success, inAppCreated),
       failed: pushResult.failed + whatsappResult.failed,
       whatsappResult,
     };

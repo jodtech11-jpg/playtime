@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar } from 'recharts';
 import ChartContainer from '../components/shared/ChartContainer';
 import { useAuth } from '../contexts/AuthContext';
@@ -15,6 +16,7 @@ import { usersCollection } from '../services/firebase';
 import DateRangePicker from '../components/shared/DateRangePicker';
 
 const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
   const { user, isSuperAdmin } = useAuth();
   const [dateRangeType, setDateRangeType] = useState<'today' | 'week' | 'month' | 'custom'>('today');
   const [customDateRange, setCustomDateRange] = useState<{ start: Date; end: Date } | null>(null);
@@ -501,7 +503,11 @@ const Dashboard: React.FC = () => {
         <div className="lg:col-span-2 ui-card overflow-hidden">
           <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
             <h3 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-tight">Recent Activity</h3>
-            <button className="text-xs font-black text-primary hover:underline uppercase tracking-widest">
+            <button
+              type="button"
+              onClick={() => navigate('/bookings')}
+              className="text-xs font-black text-primary hover:underline uppercase tracking-widest"
+            >
               Review All
             </button>
           </div>

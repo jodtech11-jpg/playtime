@@ -53,6 +53,9 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="high_importance_channel" />
         <!-- Google Maps API Key — injected at build time from android/local.properties
              (MAPS_API_KEY=…) via Gradle manifest placeholder. Never commit a real key. -->
         <meta-data

@@ -270,9 +270,17 @@ class _BookingCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'PAID',
+                          booking.status == BookingStatus.pending
+                              ? 'PAYMENT PENDING'
+                              : booking.status == BookingStatus.cancelled
+                              ? 'CANCELLED'
+                              : 'PAID',
                           style: TextStyle(
-                            color: Colors.grey[600],
+                            color: booking.status == BookingStatus.pending
+                                ? AppColors.warning
+                                : booking.status == BookingStatus.cancelled
+                                ? AppColors.error
+                                : AppColors.textTertiary,
                             fontSize: 9,
                             fontWeight: FontWeight.w900,
                             letterSpacing: 0.25,

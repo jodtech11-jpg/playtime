@@ -254,15 +254,18 @@ class _MembershipScreenState extends State<MembershipScreen> {
 
                           final activeMemberships = membershipProvider
                               .memberships
-                              .where((m) => m.isActive && m.isPlatformMembership)
+                              .where(
+                                (m) => m.isActive && m.isPlatformMembership,
+                              )
                               .toList();
 
                           return Column(
                             children: plans.asMap().entries.map((entry) {
                               final index = entry.key;
                               final plan = entry.value;
-                              final recommendedIndex =
-                                  plans.length >= 3 ? 1 : 0;
+                              final recommendedIndex = plans.length >= 3
+                                  ? 1
+                                  : 0;
                               final isRecommended = index == recommendedIndex;
                               final isCurrentPlan = activeMemberships.any(
                                 (m) => m.planId == plan.id,
@@ -344,12 +347,28 @@ class _MembershipScreenState extends State<MembershipScreen> {
                         ),
                         child: Row(
                           children: [
-                            ClipOval(
-                              child: Image.network(
-                                'https://lh3.googleusercontent.com/aida-public/AB6AXuDeUnAzDOF4y7lGcN-GsZBNLDo-ejqlRRhr89KXOjjqC9w0S2uA1YLAKEvUfTCKidcIwTRFyKTYvEe1tlP-ZkeN4EtKzkM1A8go3iCJaGKHP4sMAISjobTZ5HQBLfFkSQfH6DomKur9aNYJxytwtTVH2qqpO4F0sDqofZGC2WlG85mrHeYwGoDmWlWCf0NlQTyKYuTwTXv4zLdroRbRdYEJ1or9ctqcVRNdDFhmDCZcUX2P5rzw9zEYCugmz6GwVRVZLUwWDWtLpeoM',
-                                width: 48,
-                                height: 48,
-                                fit: BoxFit.cover,
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(
+                                  alpha: 0.16,
+                                ),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: AppColors.primary.withValues(
+                                    alpha: 0.28,
+                                  ),
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: const Text(
+                                'V',
+                                style: TextStyle(
+                                  color: AppColors.primary,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                ),
                               ),
                             ),
                             const SizedBox(width: 16),
@@ -482,9 +501,9 @@ class _MembershipScreenState extends State<MembershipScreen> {
           }
         },
         onError: (error) async {
-          final chargedButNotRecorded = error
-              .toLowerCase()
-              .contains('payment successful');
+          final chargedButNotRecorded = error.toLowerCase().contains(
+            'payment successful',
+          );
           final pendingId = membershipId;
           if (!chargedButNotRecorded && pendingId != null) {
             await membershipProvider.cancelPendingMembership(pendingId);

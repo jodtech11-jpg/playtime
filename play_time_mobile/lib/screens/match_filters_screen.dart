@@ -22,6 +22,8 @@ class _MatchFiltersScreenState extends State<MatchFiltersScreen> {
   int _maxDistance = 15; // km
   double _minPrice = 0;
   double _maxPrice = 5000;
+  final _minPriceController = TextEditingController(text: '0');
+  final _maxPriceController = TextEditingController(text: '5000');
   bool _showOnlyAvailable = true;
 
   final List<String> _sports = [
@@ -51,6 +53,13 @@ class _MatchFiltersScreenState extends State<MatchFiltersScreen> {
     _loadFilters();
   }
 
+  @override
+  void dispose() {
+    _minPriceController.dispose();
+    _maxPriceController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadFilters() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -71,6 +80,8 @@ class _MatchFiltersScreenState extends State<MatchFiltersScreen> {
           _maxDistance = filters['maxDistance'] ?? 15;
           _minPrice = (filters['minPrice'] ?? 0).toDouble();
           _maxPrice = (filters['maxPrice'] ?? 5000).toDouble();
+          _minPriceController.text = _minPrice.toInt().toString();
+          _maxPriceController.text = _maxPrice.toInt().toString();
           _showOnlyAvailable = filters['showOnlyAvailable'] ?? true;
           _isLoading = false;
         });
@@ -93,6 +104,20 @@ class _MatchFiltersScreenState extends State<MatchFiltersScreen> {
   Future<void> _saveFilters() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+    if (_selectedSports.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select at least one sport.')),
+      );
+      return;
+    }
+    if (_minPrice > _maxPrice) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Minimum price cannot exceed maximum price.'),
+        ),
+      );
+      return;
+    }
 
     setState(() => _isSaving = true);
 
@@ -333,7 +358,7 @@ class _MatchFiltersScreenState extends State<MatchFiltersScreen> {
                       Expanded(
                         child: _buildPriceField(
                           'Min',
-                          _minPrice,
+                          _minPriceController,
                           (value) => setState(() => _minPrice = value),
                         ),
                       ),
@@ -341,7 +366,7 @@ class _MatchFiltersScreenState extends State<MatchFiltersScreen> {
                       Expanded(
                         child: _buildPriceField(
                           'Max',
-                          _maxPrice,
+                          _maxPriceController,
                           (value) => setState(() => _maxPrice = value),
                         ),
                       ),
@@ -458,7 +483,7 @@ class _MatchFiltersScreenState extends State<MatchFiltersScreen> {
 
   Widget _buildPriceField(
     String label,
-    double value,
+    TextEditingController controller,
     ValueChanged<double> onChanged,
   ) {
     return Container(
@@ -495,10 +520,7 @@ class _MatchFiltersScreenState extends State<MatchFiltersScreen> {
               hintText: '0',
               hintStyle: TextStyle(color: Colors.grey[600]),
             ),
-            controller: TextEditingController(text: value.toInt().toString())
-              ..selection = TextSelection.collapsed(
-                offset: value.toInt().toString().length,
-              ),
+            controller: controller,
             onChanged: (text) {
               final newValue = double.tryParse(text) ?? 0;
               onChanged(newValue);

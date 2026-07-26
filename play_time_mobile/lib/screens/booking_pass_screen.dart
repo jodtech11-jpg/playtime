@@ -136,6 +136,7 @@ class _BookingPassScreenState extends State<BookingPassScreen> {
     }
 
     final b = _booking!;
+    final canShowPass = b.status == BookingStatus.confirmed;
     final statusColor = b.status == BookingStatus.confirmed
         ? Colors.green
         : b.status == BookingStatus.pending
@@ -229,35 +230,89 @@ class _BookingPassScreenState extends State<BookingPassScreen> {
                   ),
                 ],
                 const SizedBox(height: 24),
-                QrImageView(
-                  data: b.id,
-                  version: QrVersions.auto,
-                  size: 180,
-                  backgroundColor: Colors.white,
-                  eyeStyle: const QrEyeStyle(
-                    eyeShape: QrEyeShape.square,
-                    color: Color(0xFF1a1a1a),
+                if (canShowPass) ...[
+                  Semantics(
+                    label: 'Booking entry QR code',
+                    image: true,
+                    child: QrImageView(
+                      data: b.id,
+                      version: QrVersions.auto,
+                      size: 180,
+                      backgroundColor: Colors.white,
+                      eyeStyle: const QrEyeStyle(
+                        eyeShape: QrEyeShape.square,
+                        color: Color(0xFF1a1a1a),
+                      ),
+                      dataModuleStyle: const QrDataModuleStyle(
+                        dataModuleShape: QrDataModuleShape.square,
+                        color: Color(0xFF1a1a1a),
+                      ),
+                    ),
                   ),
-                  dataModuleStyle: const QrDataModuleStyle(
-                    dataModuleShape: QrDataModuleShape.square,
-                    color: Color(0xFF1a1a1a),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Code: ${b.id.length >= 8 ? b.id.substring(0, 8).toUpperCase() : b.id.toUpperCase()}',
+                    style: const TextStyle(
+                      color: AppColors.textTertiary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.4,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Code: ${b.id.length >= 8 ? b.id.substring(0, 8).toUpperCase() : b.id.toUpperCase()}',
-                  style: TextStyle(
-                    color: Colors.grey[500],
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.4,
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Show this pass at the venue',
+                    style: TextStyle(
+                      color: AppColors.textTertiary,
+                      fontSize: 12,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Show this pass at the venue',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                ),
+                ] else
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: statusColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: statusColor.withValues(alpha: 0.25),
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(
+                          b.status == BookingStatus.pending
+                              ? Icons.schedule_rounded
+                              : Icons.block_rounded,
+                          color: statusColor,
+                          size: 30,
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          b.status == BookingStatus.pending
+                              ? 'Pass available after confirmation'
+                              : 'This booking pass is not active',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          b.status == BookingStatus.pending
+                              ? 'Payment or venue confirmation is still pending.'
+                              : 'Cancelled bookings cannot be used for entry.',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
               ],
             ),
           ),

@@ -23,6 +23,7 @@ import '../widgets/shimmer_box.dart';
 import '../providers/sport_provider.dart';
 import '../utils/sport_utils.dart';
 import '../utils/error_utils.dart';
+import '../utils/booking_time_policy.dart';
 
 class VenueDetailScreen extends StatefulWidget {
   final String venueId;
@@ -348,6 +349,16 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
       (s) => s['id'] == _selectedSlotId,
       orElse: () => _timeSlots.first,
     );
+    if (selectedSlot['available'] != true) {
+      setState(() => _isBooking = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This slot is no longer available. Please choose another.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
 
     // Get venue from provider, or fall back to venue loaded directly for this screen
     final venueProvider = Provider.of<VenueProvider>(context, listen: false);
@@ -386,6 +397,20 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
       hour,
       minute,
     );
+    if (!BookingTimePolicy.isBookable(startTime)) {
+      setState(() {
+        _isBooking = false;
+        _selectedSlotId = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(BookingTimePolicy.errorMessage),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      await _loadTimeSlots();
+      return;
+    }
     final endTime = startTime.add(Duration(minutes: _bookingDurationMinutes));
     final bookingAmount = _priceForDuration(selectedCourt);
 

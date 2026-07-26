@@ -6,6 +6,7 @@ import 'package:razorpay_flutter/razorpay_flutter.dart';
 import '../models/venue.dart';
 import '../models/booking.dart';
 import 'firestore_service.dart';
+import '../utils/booking_time_policy.dart';
 
 class PaymentService {
   static final Razorpay _razorpay = Razorpay();
@@ -24,6 +25,15 @@ class PaymentService {
         .get();
     if (!doc.exists) return null;
     return (doc.data()?['amount'] as num?)?.toDouble();
+  }
+
+  static Future<DateTime?> _bookingStartFromServer(String bookingId) async {
+    final doc = await FirebaseFirestore.instance
+        .collection('bookings')
+        .doc(bookingId)
+        .get();
+    final value = doc.data()?['startTime'];
+    return value is Timestamp ? value.toDate() : null;
   }
 
   static Future<double?> _membershipAmountFromServer(
@@ -228,16 +238,25 @@ class PaymentService {
         onError('Booking amount is out of date. Please refresh and try again.');
         return;
       }
+      final serverStartTime = await _bookingStartFromServer(booking.id);
+      if (serverStartTime == null ||
+          !BookingTimePolicy.isBookable(serverStartTime)) {
+        onError(BookingTimePolicy.errorMessage);
+        return;
+      }
 
       // Initialize Razorpay
       initialize(
         onSuccess: (paymentId) async {
           try {
             final verifiedAmount = await _bookingAmountFromServer(booking.id);
+            final verifiedStartTime = await _bookingStartFromServer(booking.id);
             if (verifiedAmount == null ||
-                !_amountsMatch(verifiedAmount, serverBookingAmount)) {
+                !_amountsMatch(verifiedAmount, serverBookingAmount) ||
+                verifiedStartTime == null ||
+                !verifiedStartTime.isAfter(DateTime.now())) {
               onError(
-                'Could not verify payment amount. If charged, contact support with your receipt.',
+                'Could not verify the booking slot. If charged, contact support with your receipt.',
               );
               return;
             }

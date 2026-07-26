@@ -16,6 +16,7 @@ import '../widgets/loading_widget.dart';
 import '../widgets/error_widget.dart';
 import '../utils/sport_utils.dart';
 import '../utils/error_utils.dart';
+import '../utils/booking_time_policy.dart';
 
 class SportSelectScreen extends StatefulWidget {
   const SportSelectScreen({super.key});
@@ -721,6 +722,11 @@ class _QuickBookModalState extends State<_QuickBookModal> {
       final selectedSlot = _timeSlots.firstWhere(
         (s) => s['id'] == _selectedSlotId,
       );
+      if (selectedSlot['available'] != true) {
+        throw Exception(
+          'This slot is no longer available. Please choose another.',
+        );
+      }
 
       final selectedCourt = _courts.firstWhere((c) => c.id == _selectedCourtId);
       final hour = selectedSlot['hour'] as int;
@@ -734,6 +740,11 @@ class _QuickBookModalState extends State<_QuickBookModal> {
         hour,
         minute,
       );
+      if (!BookingTimePolicy.isBookable(startTime)) {
+        setState(() => _selectedSlotId = null);
+        await _loadTimeSlots();
+        throw Exception(BookingTimePolicy.errorMessage);
+      }
       final endTime = startTime.add(const Duration(hours: 1));
 
       final bookingAmount = selectedCourt.pricePerHour;

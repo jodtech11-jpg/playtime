@@ -1112,7 +1112,11 @@ export const notifyVenueManagersOfBookingEvent = async (params: {
         bookingEventType: params.eventType,
         title: params.title,
         body: params.body ?? '',
+        type: 'Booking',
+        actionUrl: '/bookings',
         read: false,
+        isRead: false,
+        createdBy: auth.currentUser?.uid ?? null,
       });
     }
   } catch (err: any) {
@@ -1441,8 +1445,8 @@ export const notificationsCollection = {
   create: (data: any) => createDocument('notifications', data),
   update: (notificationId: string, data: any) => updateDocument('notifications', notificationId, data),
   delete: (notificationId: string) => deleteDocument('notifications', notificationId),
-  subscribeAll: (callback: any, filters?: any[], orderByField?: string, orderDirection?: 'asc' | 'desc') => 
-    subscribeToCollection('notifications', callback, filters, orderByField, orderDirection)
+  subscribeAll: (callback: any, filters?: any[], orderByField?: string, orderDirection?: 'asc' | 'desc', errorCallback?: (error: any) => void) =>
+    subscribeToCollection('notifications', callback, filters, orderByField, orderDirection, errorCallback)
 };
 
 // FCM Tokens Collection

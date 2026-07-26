@@ -100,7 +100,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -113,17 +115,29 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             children: [
               // Hero Section
-              Expanded(
+              if (!keyboardOpen)
+                Expanded(
                 flex: 4,
                 child: Stack(
                   children: [
                     Container(
                       decoration: BoxDecoration(
-                        image: DecorationImage(
-                          image: NetworkImage(
-                            'https://lh3.googleusercontent.com/aida-public/AB6AXuAgvpQQbvSUUHHJim7RCklWvzJ7KE4wUTvBdHlhuYfrEDaEZfSRcF_UmCXHvFHMMeOxWTr0zLOuy3-LhMKDQq7KuQ7VKMNDUelXTOVjCwDxNIgwF0zyp8trxyROaLGPGw91pMR74GGAl8V7qj9ZNUlP-x7_mqFPDjiI3zSl1731YK0OhYjIEBvGRrQyPF6JzPMvypwt6_zqF80vumUEYJkzY0Zqrd8QcWXHVL0L9jADhw3UXMLNla53-5pHKKRgthITxRHqmcAvI5r5',
-                          ),
-                          fit: BoxFit.cover,
+                        gradient: RadialGradient(
+                          center: const Alignment(0.45, -0.3),
+                          radius: 1.15,
+                          colors: [
+                            AppColors.primary.withValues(alpha: 0.26),
+                            const Color(0xFF102819),
+                            AppColors.backgroundDark,
+                          ],
+                        ),
+                      ),
+                      child: Align(
+                        alignment: const Alignment(0.8, -0.45),
+                        child: Icon(
+                          Icons.sports_cricket_rounded,
+                          size: 180,
+                          color: Colors.white.withValues(alpha: 0.035),
                         ),
                       ),
                     ),
@@ -191,7 +205,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               // Login Sheet
               Expanded(
-                flex: 6,
+                flex: keyboardOpen ? 1 : 6,
                 child: Container(
                   decoration: BoxDecoration(
                     color: AppColors.surfaceDark.withValues(alpha: 0.8),

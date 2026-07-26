@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useHeaderActions } from '../../contexts/HeaderActionsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { useNotifications } from '../../hooks/useNotifications';
+import { useInboxNotifications } from '../../hooks/useInboxNotifications';
 import { useGlobalSearch } from '../../hooks/useGlobalSearch';
 import { formatCurrency } from '../../utils/formatUtils';
 import { getSearchShortcutLabel } from '../../utils/platformUtils';
@@ -20,7 +20,12 @@ const Header: React.FC = () => {
       : (roleDisplayName || 'User');
   const { theme, toggleTheme } = useTheme();
   const { onNewEntry, hasHandler } = useHeaderActions();
-  const { notifications } = useNotifications(false); // Only fetch count, not full list
+  const {
+    notifications,
+    unreadCount,
+    markAsRead,
+    markAllAsRead,
+  } = useInboxNotifications();
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
   const [showCalendarDropdown, setShowCalendarDropdown] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
@@ -142,26 +147,9 @@ const Header: React.FC = () => {
     return raw.charAt(0).toUpperCase() + raw.slice(1);
   };
 
-  // Get unread notifications count (notifications from last 24 hours)
-  const unreadCount = React.useMemo(() => {
-    const oneDayAgo = new Date();
-    oneDayAgo.setDate(oneDayAgo.getDate() - 1);
-    return notifications.filter(n => {
-      if (!n.createdAt) return false;
-      try {
-        const createdDate = n.createdAt?.toDate ? n.createdAt.toDate() :
-          (n.createdAt?.seconds ? new Date(n.createdAt.seconds * 1000) :
-            new Date(n.createdAt));
-        return createdDate > oneDayAgo;
-      } catch {
-        return false;
-      }
-    }).length;
-  }, [notifications]);
-
   // Recent notifications (last 5)
   const recentNotifications = React.useMemo(() => {
-    return notifications
+    return [...notifications]
       .sort((a, b) => {
         try {
           const aDate = a.createdAt?.toDate ? a.createdAt.toDate() :
@@ -418,12 +406,23 @@ const Header: React.FC = () => {
             <div className="absolute right-0 mt-3 w-[min(24rem,calc(100vw-1.5rem))] max-w-[calc(100vw-1.5rem)] bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 z-50 max-h-[70vh] overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
               <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                 <h3 className="font-black text-gray-900 dark:text-gray-100 text-sm">Notifications</h3>
-                <button
-                  onClick={() => navigate('/notifications')}
-                  className="text-xs text-primary font-bold hover:underline"
-                >
-                  View All
-                </button>
+                <div className="flex items-center gap-3">
+                  {unreadCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => void markAllAsRead()}
+                      className="text-xs text-slate-500 font-bold hover:text-primary"
+                    >
+                      Mark all read
+                    </button>
+                  )}
+                  <button
+                    onClick={() => navigate('/notifications')}
+                    className="text-xs text-primary font-bold hover:underline"
+                  >
+                    Manage
+                  </button>
+                </div>
               </div>
               <div className="divide-y divide-gray-100 dark:divide-gray-700">
                 {recentNotifications.length === 0 ? (
@@ -436,10 +435,25 @@ const Header: React.FC = () => {
                     <button
                       key={notification.id}
                       onClick={() => {
-                        navigate('/notifications');
+                        void markAsRead(notification.id);
+                        const actionUrl = notification.actionUrl;
+                        const bookingId =
+                          notification.bookingId ||
+                          (notification.data?.bookingId as string | undefined);
+                        navigate(
+                          actionUrl?.startsWith('/')
+                            ? actionUrl
+                            : bookingId
+                              ? `/bookings`
+                              : '/notifications'
+                        );
                         setShowNotificationsDropdown(false);
                       }}
-                      className="w-full p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                      className={`w-full p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${
+                        notification.read !== true && notification.isRead !== true
+                          ? 'bg-primary/5'
+                          : ''
+                      }`}
                     >
                       <div className="flex items-start gap-3">
                         <div className="flex-1 min-w-0">

@@ -179,6 +179,18 @@ class AuthProvider with ChangeNotifier {
           try {
             await FirebaseService.auth.signInWithCredential(credential);
             _user = FirebaseService.auth.currentUser;
+            if (_user != null) {
+              await _createOrUpdateUserProfile(_user!);
+              if (_error != null || _user == null) {
+                _isLoading = false;
+                notifyListeners();
+                if (!completer.isCompleted) {
+                  completer.complete(false);
+                }
+                return;
+              }
+              await NotificationService.saveTokenAfterAuth();
+            }
             _isLoading = false;
             notifyListeners();
             if (!completer.isCompleted) {
