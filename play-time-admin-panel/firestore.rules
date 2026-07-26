@@ -551,12 +551,9 @@ service cloud.firestore {
 
     // ---------- Leaderboards / Polls / Flash Deals ----------
     match /leaderboards/{leaderboardId} {
-      allow read: if isAuthenticated() && (
-        isSuperAdmin() ||
-        ownsVendorResource() ||
-        (resource.data.venueId != null && ownsVenue(resource.data.venueId)) ||
-        resource.data.type in ['Global', 'Venue', 'Monthly', 'All-Time']
-      );
+      // Leaderboards are player-facing Social Hub content. All current types
+      // are public to signed-in users; writes remain vendor/admin scoped.
+      allow read: if isAuthenticated();
       allow create: if isAuthenticated() && (
         isSuperAdmin() ||
         (vendorCreatesOwn() &&

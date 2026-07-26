@@ -10,10 +10,14 @@ const {
   initializeTestEnvironment,
 } = require('@firebase/rules-unit-testing');
 const {
+  collection,
   doc,
   getDoc,
+  getDocs,
+  query,
   setDoc,
   updateDoc,
+  where,
 } = require('firebase/firestore');
 const {
   ref,
@@ -87,6 +91,11 @@ beforeEach(async () => {
       setDoc(doc(db, 'tournaments/tournament-a'), {
         venueId: 'venue-a',
         status: 'Open',
+      }),
+      setDoc(doc(db, 'leaderboards/global-board'), {
+        type: 'Global',
+        sport: 'Badminton',
+        entries: [],
       }),
     ]);
   });
@@ -167,6 +176,17 @@ describe('Firestore payment and checkout rules', () => {
     await assertSucceeds(updateDoc(doc(db, 'payments/other-payment'), {
       status: 'Refunded',
     }));
+  });
+
+  test('signed-in players can query Social Hub leaderboards', async () => {
+    const playerDb = testEnv.authenticatedContext('player-1').firestore();
+    const anonymousDb = testEnv.unauthenticatedContext().firestore();
+    const playerQuery = query(
+      collection(playerDb, 'leaderboards'),
+      where('type', 'in', ['Global', 'Venue', 'Monthly', 'All-Time']),
+    );
+    await assertSucceeds(getDocs(playerQuery));
+    await assertFails(getDocs(collection(anonymousDb, 'leaderboards')));
   });
 });
 

@@ -1453,7 +1453,12 @@ class FirestoreService {
 
   static Future<List<AppLeaderboard>> getLeaderboards({String? venueId}) async {
     try {
-      Query<Map<String, dynamic>> query = _firestore.collection('leaderboards');
+      Query<Map<String, dynamic>> query = _firestore
+          .collection('leaderboards')
+          .where(
+            'type',
+            whereIn: const ['Global', 'Venue', 'Monthly', 'All-Time'],
+          );
       if (venueId != null && venueId.isNotEmpty) {
         query = query.where('venueId', isEqualTo: venueId);
       }
