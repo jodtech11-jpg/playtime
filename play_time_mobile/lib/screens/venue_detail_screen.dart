@@ -11,6 +11,7 @@ import '../constants/app_strings.dart';
 import '../providers/venue_provider.dart';
 import '../providers/booking_provider.dart';
 import '../providers/membership_provider.dart';
+import '../providers/engagement_provider.dart';
 import '../models/venue.dart';
 import '../models/court.dart';
 import '../models/membership_plan.dart';
@@ -21,6 +22,7 @@ import '../services/analytics_service.dart';
 import '../widgets/shimmer_box.dart';
 import '../providers/sport_provider.dart';
 import '../utils/sport_utils.dart';
+import '../utils/error_utils.dart';
 
 class VenueDetailScreen extends StatefulWidget {
   final String venueId;
@@ -421,7 +423,12 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to create booking: $e'),
+            content: Text(
+              friendlyErrorMessage(
+                e,
+                fallback: 'Could not create booking. Please try another slot.',
+              ),
+            ),
             backgroundColor: AppColors.error,
           ),
         );
@@ -566,6 +573,200 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
       'Dec',
     ];
     return months[month - 1];
+  }
+
+  Widget _buildVenueEventsSection(Venue venue) {
+    return Consumer<EngagementProvider>(
+      builder: (context, engagement, _) {
+        final matches = engagement.upcomingQuickMatchesForVenue(venue.id);
+        final tournaments = engagement.openTournamentsForVenue(venue.id);
+        final deals = engagement.flashDealsForVenue(venue.id);
+        if (matches.isEmpty && tournaments.isEmpty && deals.isEmpty) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'At this venue',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'No open matches or tournaments here right now. Book a court below, or browse Team Up for other venues.',
+                style: TextStyle(
+                  color: Colors.grey[400],
+                  fontSize: 13,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => context.push('/team-up'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  padding: EdgeInsets.zero,
+                ),
+                child: const Text(
+                  'Browse Team Up',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'At this venue',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => context.push('/team-up'),
+                  child: const Text(
+                    'See all',
+                    style: TextStyle(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (matches.isNotEmpty) ...[
+              Text(
+                'Open matches',
+                style: TextStyle(
+                  color: Colors.grey[400],
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...matches.take(3).map(
+                (m) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _venueEventTile(
+                    icon: Icons.sports,
+                    title: m.sport,
+                    subtitle:
+                        '${m.currentPlayers}/${m.maxPlayers} players · ${m.time}',
+                    onTap: () => context.push('/team-up'),
+                  ),
+                ),
+              ),
+            ],
+            if (tournaments.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Tournaments',
+                style: TextStyle(
+                  color: Colors.grey[400],
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...tournaments.take(3).map(
+                (t) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _venueEventTile(
+                    icon: Icons.emoji_events,
+                    title: t.name,
+                    subtitle: '${t.sport} · Register in Team Up',
+                    onTap: () => context.push('/team-up'),
+                  ),
+                ),
+              ),
+            ],
+            if (deals.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Flash deals',
+                style: TextStyle(
+                  color: Colors.grey[400],
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...deals.take(2).map(
+                (d) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _venueEventTile(
+                    icon: Icons.local_offer,
+                    title: d.title,
+                    subtitle: '₹${d.discountedPrice.toInt()}',
+                    onTap: () {},
+                  ),
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _venueEventTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: AppColors.surfaceDark,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Icon(icon, color: AppColors.primary, size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: Colors.grey[400],
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: Colors.grey[600], size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildVenueSubscriptionsSection(Venue venue) {
@@ -1165,6 +1366,8 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
                       height: 1.6,
                     ),
                   ),
+                  const SizedBox(height: 32),
+                  _buildVenueEventsSection(venue),
                   const SizedBox(height: 32),
                   _buildVenueSubscriptionsSection(venue),
                   const SizedBox(height: 32),

@@ -6,6 +6,7 @@ import '../theme/app_colors.dart';
 import '../providers/cart_provider.dart';
 import '../services/firestore_service.dart';
 import '../services/payment_service.dart';
+import '../utils/error_utils.dart';
 
 class CheckoutScreen extends StatefulWidget {
   const CheckoutScreen({super.key});
@@ -203,11 +204,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             context.go('/home');
           }
         },
-        onError: (error) {
+        onError: (error) async {
+          try {
+            await FirestoreService.updateOrder(orderId, {
+              'status': 'Cancelled',
+              'paymentStatus': 'Pending',
+            });
+          } catch (_) {}
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Payment failed: $error'),
+                content: Text(
+                  'Payment failed: ${friendlyErrorMessage(error, fallback: error)}',
+                ),
                 backgroundColor: AppColors.error,
                 duration: const Duration(seconds: 5),
               ),
@@ -219,7 +228,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to place order: $e'),
+            content: Text(
+              friendlyErrorMessage(
+                e,
+                fallback: 'Could not place order. Please try again.',
+              ),
+            ),
             backgroundColor: AppColors.error,
           ),
         );

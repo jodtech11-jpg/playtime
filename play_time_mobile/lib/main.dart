@@ -126,14 +126,9 @@ class _MyAppState extends State<MyApp> {
         ChangeNotifierProvider(create: (_) => LocationProvider()),
         ChangeNotifierProvider(create: (_) => LanguageProvider()),
         ChangeNotifierProvider(create: (_) => ConnectivityProvider()),
-        ChangeNotifierProxyProvider<VenueProvider, EngagementProvider>(
-          create: (_) => EngagementProvider(),
-          update: (_, venues, engagement) {
-            final provider = engagement ?? EngagementProvider();
-            provider.setVenueFilter(venues.selectedVenue?.id);
-            return provider;
-          },
-        ),
+        // Keep engagement global by default. Auto-filtering by selectedVenue
+        // hid all matches/tournaments on Home after opening any venue card.
+        ChangeNotifierProvider(create: (_) => EngagementProvider()),
       ],
       child: OfflineBannerWrapper(
         child: MaterialApp.router(

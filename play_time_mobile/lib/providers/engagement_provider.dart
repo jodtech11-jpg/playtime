@@ -41,6 +41,19 @@ class EngagementProvider with ChangeNotifier {
       .where((t) => t.status == 'Open' || t.status == 'Ongoing')
       .toList();
 
+  /// Venue-scoped helpers (does not change the global load).
+  List<QuickMatch> upcomingQuickMatchesForVenue(String venueId) =>
+      upcomingQuickMatches.where((m) => m.venueId == venueId).toList();
+
+  List<TournamentSummary> openTournamentsForVenue(String venueId) =>
+      openTournaments.where((t) => t.venueId == venueId).toList();
+
+  List<AppPoll> pollsForVenue(String venueId) =>
+      _polls.where((p) => p.venueId == null || p.venueId == venueId).toList();
+
+  List<FlashDealItem> flashDealsForVenue(String venueId) =>
+      _flashDeals.where((d) => d.venueId == venueId).toList();
+
   EngagementProvider() {
     unawaited(loadAll());
   }

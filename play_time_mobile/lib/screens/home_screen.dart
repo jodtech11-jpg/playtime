@@ -848,13 +848,11 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                                 .take(3)
                                 .toList();
 
-                            if (matches.isEmpty &&
-                                tournaments.isEmpty &&
-                                deals.isEmpty &&
-                                campaigns.isEmpty &&
-                                upcomingBookings.isEmpty) {
-                              return const SizedBox.shrink();
-                            }
+                            final hasContent = matches.isNotEmpty ||
+                                tournaments.isNotEmpty ||
+                                deals.isNotEmpty ||
+                                campaigns.isNotEmpty ||
+                                upcomingBookings.isNotEmpty;
 
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -883,6 +881,61 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                                     ),
                                   ],
                                 ),
+                                if (!hasContent) ...[
+                                  const SizedBox(height: 8),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.surfaceDark,
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.06,
+                                        ),
+                                      ),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'No upcoming matches or offers yet',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          'Open Team Up to browse matches, tournaments, and polls — or book a court below.',
+                                          style: TextStyle(
+                                            color: Colors.grey[400],
+                                            fontSize: 12,
+                                            height: 1.4,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        TextButton(
+                                          onPressed: () =>
+                                              context.push('/team-up'),
+                                          style: TextButton.styleFrom(
+                                            foregroundColor: AppColors.primary,
+                                            padding: EdgeInsets.zero,
+                                          ),
+                                          child: const Text(
+                                            'Browse Team Up',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                ],
                                 if (upcomingBookings.isNotEmpty) ...[
                                   const SizedBox(height: 8),
                                   Text(
@@ -948,8 +1001,7 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                                       title: t.name,
                                       subtitle:
                                           '${t.sport} • ${t.venueName ?? 'Venue'}',
-                                      onTap: () =>
-                                          context.push('/venue/${t.venueId}'),
+                                      onTap: () => context.push('/team-up'),
                                     ),
                                   ),
                                 ],

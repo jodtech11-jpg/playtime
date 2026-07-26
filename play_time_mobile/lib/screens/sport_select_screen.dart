@@ -15,6 +15,7 @@ import '../services/payment_service.dart';
 import '../widgets/loading_widget.dart';
 import '../widgets/error_widget.dart';
 import '../utils/sport_utils.dart';
+import '../utils/error_utils.dart';
 
 class SportSelectScreen extends StatefulWidget {
   const SportSelectScreen({super.key});
@@ -795,7 +796,9 @@ class _QuickBookModalState extends State<_QuickBookModal> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Payment failed: $error'),
+                content: Text(
+                  'Payment failed: ${friendlyErrorMessage(error, fallback: error)}',
+                ),
                 backgroundColor: AppColors.error,
               ),
             );
@@ -806,7 +809,12 @@ class _QuickBookModalState extends State<_QuickBookModal> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to create booking: $e'),
+            content: Text(
+              friendlyErrorMessage(
+                e,
+                fallback: 'Could not create booking. Please try another slot.',
+              ),
+            ),
             backgroundColor: AppColors.error,
           ),
         );
