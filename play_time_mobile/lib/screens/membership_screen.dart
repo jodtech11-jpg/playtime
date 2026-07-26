@@ -18,6 +18,7 @@ class MembershipScreen extends StatefulWidget {
 
 class _MembershipScreenState extends State<MembershipScreen> {
   bool _isProcessing = false;
+  String? _processingPlanId;
 
   @override
   void dispose() {
@@ -434,7 +435,10 @@ class _MembershipScreenState extends State<MembershipScreen> {
   Future<void> _handlePurchase(MembershipPlan plan) async {
     if (_isProcessing) return;
 
-    setState(() => _isProcessing = true);
+    setState(() {
+      _isProcessing = true;
+      _processingPlanId = plan.id;
+    });
     String? membershipId;
     final membershipProvider = Provider.of<MembershipProvider>(
       context,
@@ -538,7 +542,10 @@ class _MembershipScreenState extends State<MembershipScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() => _isProcessing = false);
+        setState(() {
+          _isProcessing = false;
+          _processingPlanId = null;
+        });
       }
     }
   }
@@ -744,7 +751,7 @@ class _MembershipScreenState extends State<MembershipScreen> {
                       ),
                     ),
                   ),
-                  child: _isProcessing
+                  child: _processingPlanId == plan.id
                       ? const SizedBox(
                           width: 20,
                           height: 20,

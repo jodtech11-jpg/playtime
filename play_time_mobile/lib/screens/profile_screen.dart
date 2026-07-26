@@ -1028,7 +1028,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // Content
               Expanded(
                 child: RefreshIndicator(
-                  onRefresh: _loadUserProfile,
+                  onRefresh: () async {
+                    await Future.wait([
+                      _loadUserProfile(),
+                      bookingProvider.pullToRefresh(),
+                    ]);
+                  },
                   color: AppColors.primary,
                   child: SingleChildScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),

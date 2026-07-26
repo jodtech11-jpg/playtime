@@ -6,6 +6,7 @@ import '../constants/app_strings.dart';
 import '../widgets/bottom_nav.dart';
 import '../providers/booking_provider.dart';
 import '../models/booking.dart';
+import '../widgets/error_widget.dart';
 
 class BookingsScreen extends StatelessWidget {
   const BookingsScreen({super.key});
@@ -49,6 +50,13 @@ class BookingsScreen extends StatelessWidget {
           if (bookingProvider.isLoading && bookingProvider.bookings.isEmpty) {
             return const Center(
               child: CircularProgressIndicator(color: AppColors.primary),
+            );
+          }
+          if (bookingProvider.error != null &&
+              bookingProvider.bookings.isEmpty) {
+            return ErrorDisplayWidget(
+              message: bookingProvider.error!,
+              onRetry: bookingProvider.pullToRefresh,
             );
           }
           final bookings = bookingProvider.bookings;

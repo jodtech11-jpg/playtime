@@ -1248,7 +1248,15 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
                   try {
                     venue = venueList.firstWhere((v) => v.id == widget.venueId);
                   } catch (_) {}
-                  if (venue == null) return;
+                  venue ??= _venue;
+                  if (venue == null) {
+                    messenger.showSnackBar(
+                      const SnackBar(
+                        content: Text('Venue details are not ready to share.'),
+                      ),
+                    );
+                    return;
+                  }
 
                   final shareText =
                       'Check out ${venue.name} on PlayTime!\n\n'
