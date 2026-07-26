@@ -10,7 +10,11 @@
  */
 
 const functions = require('firebase-functions');
-const {onDocumentCreated, onDocumentUpdated} = require('firebase-functions/v2/firestore');
+const {
+  onDocumentCreated,
+  onDocumentUpdated,
+  onDocumentWritten,
+} = require('firebase-functions/v2/firestore');
 const {onSchedule} = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
@@ -136,6 +140,67 @@ function cleanString(value) {
 // ---------------------------------------------------------------------------
 // Secure player mutations
 // ---------------------------------------------------------------------------
+
+/**
+ * Join or leave a squad without allowing clients to rewrite its member list.
+ * POST body: {teamId, action: "join"|"leave"}
+ */
+exports.updateTeamMembership = functions.https.onRequest(async (req, res) => {
+  const auth = await requireAuthenticatedPost(req, res);
+  if (!auth) return;
+
+  const teamId = cleanString(req.body && req.body.teamId);
+  const action = cleanString(req.body && req.body.action);
+  if (!teamId || !['join', 'leave'].includes(action)) {
+    res.status(400).json({error: 'teamId and a valid action are required'});
+    return;
+  }
+
+  const teamRef = admin.firestore().collection('teams').doc(teamId);
+  try {
+    const result = await admin.firestore().runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(teamRef);
+      if (!snapshot.exists) throw new Error('TEAM_NOT_FOUND');
+
+      const data = snapshot.data() || {};
+      const members = Array.isArray(data.members) ? data.members : [];
+      const memberId = (member) => typeof member === 'string' ?
+        member :
+        cleanString(member && (member.id || member.userId));
+      const alreadyMember = members.some((member) => memberId(member) === auth.uid);
+
+      if (action === 'join') {
+        if (alreadyMember) return {joined: true, alreadyMember: true};
+        if (members.length >= 15) throw new Error('TEAM_FULL');
+        transaction.update(teamRef, {
+          members: [...members, auth.uid],
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return {joined: true, alreadyMember: false};
+      }
+
+      if (data.createdBy === auth.uid) throw new Error('OWNER_CANNOT_LEAVE');
+      if (!alreadyMember) return {joined: false, alreadyMember: false};
+      transaction.update(teamRef, {
+        members: members.filter((member) => memberId(member) !== auth.uid),
+        [`memberRoles.${auth.uid}`]: admin.firestore.FieldValue.delete(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return {joined: false, alreadyMember: true};
+    });
+    res.json(result);
+  } catch (error) {
+    const status = error.message === 'TEAM_NOT_FOUND' ? 404 :
+      error.message === 'TEAM_FULL' || error.message === 'OWNER_CANNOT_LEAVE' ? 409 : 500;
+    const message = {
+      TEAM_NOT_FOUND: 'Squad not found.',
+      TEAM_FULL: 'This squad is already full.',
+      OWNER_CANNOT_LEAVE: 'The squad owner cannot leave their own squad.',
+    }[error.message] || 'Could not update squad membership.';
+    console.error('updateTeamMembership failed:', error);
+    res.status(status).json({error: message});
+  }
+});
 
 /**
  * Join or leave a quick match without allowing clients to rewrite playerIds.
@@ -1140,9 +1205,158 @@ exports.onBookingStatusChanged = onDocumentUpdated(
   },
 );
 
+/** Maintain a privacy-safe availability projection for player slot searches. */
+exports.syncCourtAvailability = onDocumentWritten(
+  'bookings/{bookingId}',
+  async (event) => {
+    const before = event.data && event.data.before.exists ?
+      event.data.before.data() :
+      null;
+    const after = event.data && event.data.after.exists ?
+      event.data.after.data() :
+      null;
+    const bookingId = event.params.bookingId;
+    const availabilityRef = admin.firestore()
+      .collection('courtAvailability')
+      .doc(bookingId);
+    const activeStatuses = new Set(['Pending', 'Confirmed', 'Processing']);
+
+    if (after &&
+        activeStatuses.has(after.status) &&
+        after.venueId &&
+        after.courtId &&
+        after.startTime &&
+        after.endTime) {
+      await availabilityRef.set({
+        bookingId,
+        venueId: after.venueId,
+        courtId: after.courtId,
+        startTime: after.startTime,
+        endTime: after.endTime,
+        status: after.status,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return null;
+    }
+
+    const writes = [availabilityRef.delete()];
+    const slotLockId = (after && after.slotLockId) || (before && before.slotLockId);
+    if (slotLockId) {
+      writes.push(admin.firestore().collection('booking_slot_locks').doc(slotLockId).delete());
+    }
+    await Promise.all(writes);
+    return null;
+  },
+);
+
+/** Keep post moderation counters in sync when a player submits a report. */
+exports.onReportCreated = onDocumentCreated('reports/{reportId}', async (event) => {
+  const report = event.data && event.data.data();
+  const postId = cleanString(report && report.postId);
+  if (!postId) return null;
+  const postRef = admin.firestore().collection('posts').doc(postId);
+  const post = await postRef.get();
+  if (!post.exists) return null;
+  await postRef.set({
+    isReported: true,
+    reportCount: admin.firestore.FieldValue.increment(1),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, {merge: true});
+  return null;
+});
+
 // ---------------------------------------------------------------------------
-// Razorpay webhooks
+// Razorpay orders and webhooks
 // ---------------------------------------------------------------------------
+
+function getRazorpayCredentials() {
+  return {
+    keyId: process.env.RAZORPAY_KEY_ID ||
+      (functions.config().razorpay && functions.config().razorpay.key_id) || '',
+    keySecret: process.env.RAZORPAY_KEY_SECRET ||
+      (functions.config().razorpay && functions.config().razorpay.key_secret) || '',
+  };
+}
+
+/**
+ * Create a server-trusted Razorpay order for a player wallet top-up.
+ * POST body: {amount} where amount is whole INR rupees.
+ */
+exports.createWalletTopUpOrder = functions.https.onRequest(async (req, res) => {
+  const auth = await requireAuthenticatedPost(req, res);
+  if (!auth) return;
+
+  const amount = Number(req.body && req.body.amount);
+  if (!Number.isInteger(amount) || amount < 10 || amount > 50000) {
+    res.status(400).json({error: 'Enter an amount between ₹10 and ₹50,000.'});
+    return;
+  }
+  const {keyId, keySecret} = getRazorpayCredentials();
+  if (!keyId || !keySecret) {
+    res.status(503).json({error: 'Wallet payments are not configured.'});
+    return;
+  }
+
+  const topUpRef = admin.firestore().collection('walletTopups').doc();
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  await topUpRef.set({
+    userId: auth.uid,
+    ownerId: auth.uid,
+    amount,
+    expectedAmountPaise: amount * 100,
+    currency: 'INR',
+    status: 'Creating',
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  try {
+    const razorpayResponse = await fetch('https://api.razorpay.com/v1/orders', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString('base64')}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        amount: amount * 100,
+        currency: 'INR',
+        receipt: `wallet_${topUpRef.id}`,
+        notes: {
+          walletTopupId: topUpRef.id,
+          userId: auth.uid,
+          sourceType: 'Wallet',
+          sourceId: topUpRef.id,
+          venueId: 'platform',
+        },
+      }),
+    });
+    const order = await razorpayResponse.json().catch(() => ({}));
+    if (!razorpayResponse.ok || !order.id) {
+      throw new Error(order.error?.description || 'Razorpay order creation failed');
+    }
+    await topUpRef.update({
+      status: 'Pending',
+      razorpayOrderId: order.id,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    res.json({
+      topUpId: topUpRef.id,
+      orderId: order.id,
+      keyId,
+      amount,
+      amountPaise: amount * 100,
+      currency: 'INR',
+    });
+  } catch (error) {
+    await topUpRef.set({
+      status: 'Failed',
+      failureReason: error.message || 'Order creation failed',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, {merge: true});
+    console.error('createWalletTopUpOrder failed:', error);
+    res.status(502).json({error: 'Could not start the wallet payment.'});
+  }
+});
 
 /**
  * Razorpay webhooks — verifies HMAC-SHA256 of the raw body using the configured secret.
@@ -1214,6 +1428,7 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
     let membershipId = cleanString(notes.membershipId);
     let settlementId = cleanString(notes.settlementId);
     let marketplaceOrderId = cleanString(notes.orderId);
+    let walletTopupId = cleanString(notes.walletTopupId);
     const paymentId = cleanString(paymentEntity && paymentEntity.id) ||
       cleanString(refundEntity && refundEntity.payment_id);
     const razorpayOrderId = cleanString(paymentEntity && paymentEntity.order_id) ||
@@ -1232,6 +1447,7 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
       membershipId = cleanString(existingPayment.membershipId);
       settlementId = cleanString(existingPayment.settlementId);
       marketplaceOrderId = cleanString(existingPayment.orderId);
+      walletTopupId = cleanString(existingPayment.walletTopupId);
     }
     const amountPaise = Number(entity.amount || entity.amount_paid || 0);
     const amountRefundedPaise = Number(
@@ -1239,9 +1455,11 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
 
     const notedSourceType = cleanString(notes.sourceType);
     const existingSourceType = cleanString(existingPayment.sourceType);
-    let sourceType = ['Booking', 'Membership', 'Settlement', 'Order'].includes(notedSourceType) ?
+    let sourceType = ['Booking', 'Membership', 'Settlement', 'Order', 'Wallet']
+      .includes(notedSourceType) ?
       notedSourceType :
-      (['Booking', 'Membership', 'Settlement', 'Order'].includes(existingSourceType) ?
+      (['Booking', 'Membership', 'Settlement', 'Order', 'Wallet']
+        .includes(existingSourceType) ?
         existingSourceType : null);
     let sourceId = cleanString(notes.sourceId) || cleanString(existingPayment.sourceId);
     let sourceData = {};
@@ -1262,18 +1480,24 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
       sourceType = 'Order';
       sourceId = marketplaceOrderId;
       sourceCollection = 'orders';
+    } else if (walletTopupId) {
+      sourceType = 'Wallet';
+      sourceId = walletTopupId;
+      sourceCollection = 'walletTopups';
     } else if (sourceType && sourceId) {
       sourceCollection = {
         Booking: 'bookings',
         Membership: 'memberships',
         Settlement: 'settlements',
         Order: 'orders',
+        Wallet: 'walletTopups',
       }[sourceType] || null;
     }
     if (!bookingId && sourceType === 'Booking') bookingId = sourceId;
     if (!membershipId && sourceType === 'Membership') membershipId = sourceId;
     if (!settlementId && sourceType === 'Settlement') settlementId = sourceId;
     if (!marketplaceOrderId && sourceType === 'Order') marketplaceOrderId = sourceId;
+    if (!walletTopupId && sourceType === 'Wallet') walletTopupId = sourceId;
     if (sourceCollection && sourceId) {
       const sourceSnapshot = await admin.firestore()
         .collection(sourceCollection)
@@ -1330,12 +1554,58 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
           updatedAt: now,
         }, {merge: true});
       }
+      if (walletTopupId) {
+        const topUpRef = admin.firestore().collection('walletTopups').doc(walletTopupId);
+        const userRef = userId && admin.firestore().collection('users').doc(userId);
+        const transactionRef = paymentDocumentId &&
+          admin.firestore().collection('walletTransactions').doc(paymentDocumentId);
+        if (!userRef || !transactionRef) {
+          throw new Error('Wallet payment is missing user or transaction metadata');
+        }
+        await admin.firestore().runTransaction(async (transaction) => {
+          const topUpSnapshot = await transaction.get(topUpRef);
+          if (!topUpSnapshot.exists) throw new Error('Wallet top-up not found');
+          const topUp = topUpSnapshot.data();
+          if (topUp.status === 'Completed') return;
+          if (topUp.userId !== userId ||
+              topUp.razorpayOrderId !== razorpayOrderId ||
+              Number(topUp.amount) * 100 !== amountPaise) {
+            throw new Error('Wallet top-up verification failed');
+          }
+          const userSnapshot = await transaction.get(userRef);
+          const currentBalance = Number(userSnapshot.data()?.walletBalance || 0);
+          const newBalance = currentBalance + Number(topUp.amount);
+          transaction.set(userRef, {
+            walletBalance: newBalance,
+            updatedAt: now,
+          }, {merge: true});
+          transaction.update(topUpRef, {
+            status: 'Completed',
+            paymentTransactionId: transactionId,
+            webhookVerifiedAt: now,
+            updatedAt: now,
+          });
+          transaction.set(transactionRef, {
+            userId,
+            type: 'Credit',
+            amount: Number(topUp.amount),
+            balanceAfter: newBalance,
+            description: 'Wallet top-up',
+            paymentGateway: 'Razorpay',
+            paymentTransactionId: transactionId,
+            razorpayOrderId,
+            status: 'Completed',
+            createdAt: now,
+            updatedAt: now,
+          }, {merge: true});
+        });
+      }
       // Record a Payment-schema document. The Razorpay payment ID is the
       // idempotency key; order-only events use a stable order-prefixed key.
       if (canWritePayment) {
         await admin.firestore().collection('payments').doc(paymentDocumentId).set({
           type: 'Online',
-          direction: 'UserToVenue',
+          direction: sourceType === 'Wallet' ? 'UserToPlatform' : 'UserToVenue',
           sourceType,
           sourceId,
           userId,
@@ -1350,6 +1620,7 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
           bookingId,
           membershipId,
           settlementId,
+          walletTopupId,
           status: 'Completed',
           paymentDate: now,
           rawEvent: event,
@@ -1388,10 +1659,19 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
           updatedAt: now,
         }, {merge: true});
       }
+      if (walletTopupId) {
+        await admin.firestore().collection('walletTopups').doc(walletTopupId).set({
+          status: 'Failed',
+          failureReason: cleanString(
+            paymentEntity && paymentEntity.error_description,
+          ) || 'Payment failed',
+          updatedAt: now,
+        }, {merge: true});
+      }
       if (canWritePayment) {
         await admin.firestore().collection('payments').doc(paymentDocumentId).set({
           type: 'Online',
-          direction: 'UserToVenue',
+          direction: sourceType === 'Wallet' ? 'UserToPlatform' : 'UserToVenue',
           sourceType,
           sourceId,
           userId,
@@ -1402,6 +1682,7 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
           paymentGateway: 'Razorpay',
           transactionId,
           orderId: marketplaceOrderId,
+          walletTopupId,
           razorpayOrderId,
           status: 'Failed',
           rawEvent: event,
@@ -1778,6 +2059,36 @@ exports.provisionUserLogin = functions.https.onRequest(async (req, res) => {
     res.status(500).json({error: error.message || 'Failed to provision user login'});
   }
 });
+
+// ---------------------------------------------------------------------------
+// Server-authoritative payment and sensitive mutation APIs
+// ---------------------------------------------------------------------------
+
+const paymentBackend = require('./payment-backend')({
+  admin,
+  functions,
+  applyCors,
+  requireAuthenticatedPost,
+  requireAdmin,
+  getRazorpayCredentials,
+});
+
+// Intentionally replace the legacy export with the authoritative handler.
+// The replacement still resolves legacy notes-based source metadata.
+exports.razorpayWebhook = paymentBackend.razorpayWebhook;
+exports.createBookingPaymentOrder = paymentBackend.createBookingPaymentOrder;
+exports.createMembershipPaymentOrder = paymentBackend.createMembershipPaymentOrder;
+exports.createMarketplacePaymentOrder = paymentBackend.createMarketplacePaymentOrder;
+exports.spendWallet = paymentBackend.spendWallet;
+exports.adjustWallet = paymentBackend.adjustWallet;
+exports.createRazorpayRefund = paymentBackend.createRazorpayRefund;
+exports.votePoll = paymentBackend.votePoll;
+exports.votePollCallable = paymentBackend.votePollCallable;
+exports.cleanupStalePendingBookings = paymentBackend.cleanupStalePendingBookings;
+exports.banUser = paymentBackend.banUser;
+exports.sendWhatsAppMessage = paymentBackend.sendWhatsAppMessage;
+exports.integrationHealth = paymentBackend.integrationHealth;
+exports.generateTournamentBracket = paymentBackend.generateTournamentBracket;
 
 // ---------------------------------------------------------------------------
 // Health check

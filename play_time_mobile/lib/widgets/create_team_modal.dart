@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../theme/app_colors.dart';
+import '../providers/sport_provider.dart';
 import '../providers/team_provider.dart';
 
 class CreateTeamModal extends StatefulWidget {
@@ -23,6 +25,19 @@ class _CreateTeamModalState extends State<CreateTeamModal> {
 
   @override
   Widget build(BuildContext context) {
+    final sportNames = context
+        .watch<SportProvider>()
+        .sports
+        .where((sport) => sport.isActive && sport.name.trim().isNotEmpty)
+        .map((sport) => sport.name.trim())
+        .toList();
+    if (sportNames.isEmpty) {
+      sportNames.addAll(['Football', 'Cricket', 'Badminton']);
+    }
+    if (!sportNames.contains(_selectedSport)) {
+      _selectedSport = sportNames.first;
+    }
+
     return Container(
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
@@ -124,48 +139,42 @@ class _CreateTeamModalState extends State<CreateTeamModal> {
               ),
             ),
             const SizedBox(height: 12),
-            Row(
-              children: ['Football', 'Cricket', 'Badminton'].map((sport) {
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: sportNames.map((sport) {
                 final isSelected = _selectedSport == sport;
-                return Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: GestureDetector(
-                      onTap: () {
-                        setState(() => _selectedSport = sport);
-                      },
-                      child: Container(
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? AppColors.primary.withValues(alpha: 0.1)
-                              : AppColors.backgroundDark,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isSelected
-                                ? AppColors.primary
-                                : Colors.white.withValues(alpha: 0.05),
-                          ),
-                        ),
-                        child: Center(
-                          child: Text(
-                            sport.toUpperCase(),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: isSelected
-                                  ? AppColors.primary
-                                  : Colors.grey[500],
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.25,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                return ChoiceChip(
+                  selected: isSelected,
+                  onSelected: (_) => setState(() => _selectedSport = sport),
+                  label: Text(
+                    sport.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
+                  backgroundColor: AppColors.backgroundDark,
+                  selectedColor: AppColors.primary.withValues(alpha: 0.14),
+                  side: BorderSide(
+                    color: isSelected
+                        ? AppColors.primary
+                        : AppColors.borderMedium,
+                  ),
+                  labelStyle: TextStyle(
+                    color: isSelected
+                        ? AppColors.primary
+                        : AppColors.textSecondary,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.25,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  materialTapTargetSize: MaterialTapTargetSize.padded,
                 );
               }).toList(),
             ),

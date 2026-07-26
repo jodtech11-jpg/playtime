@@ -12,6 +12,7 @@ import '../providers/feed_provider.dart';
 import '../providers/venue_provider.dart';
 import '../models/match_feed_item.dart';
 import '../models/booking.dart';
+import '../models/venue.dart';
 import '../services/social_service.dart';
 import '../services/firestore_service.dart';
 import '../widgets/loading_widget.dart';
@@ -42,13 +43,22 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
   // _postContentController and _isCreatingPost removed as they are now handled in CreatePostModal
   String _sortBy = 'recent'; // 'recent', 'likes', 'comments'
   String? _filterSport;
+
+  /// null = all venues (community feed)
+  String? _filterVenueId;
   final Set<String> _hiddenPosts = {}; // Track hidden posts
 
   @override
   void initState() {
     super.initState();
-    // Load like statuses after first frame when feed is loaded
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final venueProvider = Provider.of<VenueProvider>(context, listen: false);
+      // Start on All venues so the feed is not locked to the nearest venue only.
+      _filterVenueId = null;
+      if (venueProvider.venues.isEmpty) {
+        venueProvider.loadVenues();
+      }
+      Provider.of<FeedProvider>(context, listen: false).loadFeedItems();
       _loadLikeStatuses();
     });
   }
@@ -320,8 +330,9 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
       await FirebaseFirestore.instance.collection('reports').add({
         'postId': postId,
         'userId': user.uid,
+        'reporterId': user.uid,
         'type': 'post',
-        'reason': 'Inappropriate content',
+        'reason': 'Inappropriate Content',
         'status': 'Pending',
         'createdAt': FieldValue.serverTimestamp(),
       });
@@ -416,9 +427,16 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
     final bookingProvider = Provider.of<BookingProvider>(context);
     final venueProvider = Provider.of<VenueProvider>(context);
     final upcomingBookings = bookingProvider.getUpcomingBookings();
-    final selectedVenue = venueProvider.venues.isNotEmpty
-        ? venueProvider.venues.first
-        : null;
+    final allVenues = venueProvider.venues;
+    Venue? selectedVenue;
+    if (_filterVenueId != null) {
+      for (final venue in allVenues) {
+        if (venue.id == _filterVenueId) {
+          selectedVenue = venue;
+          break;
+        }
+      }
+    }
 
     return PopScope(
       canPop: false,
@@ -648,7 +666,7 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                selectedVenue?.name ?? 'Social Feed',
+                                selectedVenue?.name ?? 'Community Feed',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 28,
@@ -656,29 +674,29 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
                                 ),
                               ),
                               const SizedBox(height: 8),
-                              if (selectedVenue != null)
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.location_on,
-                                      color: AppColors.primary,
-                                      size: 18,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Expanded(
-                                      child: Text(
-                                        selectedVenue.address,
-                                        style: TextStyle(
-                                          color: AppColors.textSecondary,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w700,
-                                          letterSpacing: 0.25,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.location_on,
+                                    color: AppColors.primary,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Text(
+                                      selectedVenue?.address ??
+                                          'Posts from all venues',
+                                      style: TextStyle(
+                                        color: AppColors.textSecondary,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.25,
                                       ),
+                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
                         ),
@@ -708,12 +726,82 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
                                 },
                               ),
                             ),
+                          )
+                        else
+                          Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: AppColors.primary.withValues(alpha: 0.12),
+                              border: Border.all(
+                                color: AppColors.primary.withValues(
+                                  alpha: 0.35,
+                                ),
+                                width: 2,
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.groups_rounded,
+                              color: AppColors.primary,
+                            ),
                           ),
                       ],
                     ),
                   ],
                 ),
               ),
+              // Venue filter — show every active venue, not only the nearest one
+              if (allVenues.isNotEmpty)
+                Container(
+                  height: 40,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: ListView.separated(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    scrollDirection: Axis.horizontal,
+                    itemCount: allVenues.length + 1,
+                    separatorBuilder: (_, _) => const SizedBox(width: 8),
+                    itemBuilder: (context, index) {
+                      final isAll = index == 0;
+                      final venue = isAll ? null : allVenues[index - 1];
+                      final selected = isAll
+                          ? _filterVenueId == null
+                          : _filterVenueId == venue!.id;
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _filterVenueId = isAll ? null : venue!.id;
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? AppColors.primary
+                                : AppColors.surfaceDark,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: selected
+                                  ? AppColors.primary
+                                  : Colors.white.withValues(alpha: 0.08),
+                            ),
+                          ),
+                          child: Text(
+                            isAll ? 'All Venues' : venue!.name,
+                            style: TextStyle(
+                              color: selected
+                                  ? AppColors.backgroundDark
+                                  : Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
               // Stats
               Container(
                 padding: const EdgeInsets.all(16),
@@ -731,31 +819,53 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
                         ),
                         child: Column(
                           children: [
-                            FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    selectedVenue != null
-                                        ? (selectedVenue.rating != null
-                                              ? selectedVenue.rating!
-                                                    .toStringAsFixed(1)
-                                              : 'NEW')
-                                        : '0',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  const Icon(
-                                    Icons.star_rounded,
-                                    color: AppColors.primary,
-                                    size: 18,
-                                  ),
-                                ],
+                            Text(
+                              '${allVenues.length}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'VENUES',
+                              style: TextStyle(
+                                color: Colors.grey[500],
+                                fontSize: 9,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.35,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceDark,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.05),
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              selectedVenue != null
+                                  ? (selectedVenue.rating != null
+                                        ? selectedVenue.rating!.toStringAsFixed(
+                                            1,
+                                          )
+                                        : 'NEW')
+                                  : '—',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
                               ),
                             ),
                             const SizedBox(height: 8),
@@ -783,47 +893,19 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
                             color: Colors.white.withValues(alpha: 0.05),
                           ),
                         ),
-                        child: Column(
-                          children: [
-                            Text(
-                              '0',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 24,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'PLAYERS',
-                              style: TextStyle(
-                                color: Colors.grey[500],
-                                fontSize: 9,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 0.35,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceDark,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.05),
-                          ),
-                        ),
                         child: Consumer<FeedProvider>(
                           builder: (context, feedProvider, child) {
+                            final count = _filterAndSortItems(
+                              feedProvider.feedItems
+                                  .where(
+                                    (item) => !_hiddenPosts.contains(item.id),
+                                  )
+                                  .toList(),
+                            ).length;
                             return Column(
                               children: [
                                 Text(
-                                  '${feedProvider.feedItems.length}',
+                                  '$count',
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 24,
@@ -857,11 +939,7 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
                   scrollDirection: Axis.horizontal,
                   itemCount: 3,
                   itemBuilder: (context, index) {
-                    final labels = [
-                      'Recent Matches',
-                      'Top Highlights',
-                      'Upcoming',
-                    ];
+                    final labels = ['Recent', 'Top Highlights', 'Live'];
                     final isSelected = _selectedChip == index;
                     return Padding(
                       padding: const EdgeInsets.only(right: 12),
@@ -1040,7 +1118,12 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
                         ),
                       ),
                       Text(
-                        item.time,
+                        [
+                          item.time,
+                          if (item.venueName != null &&
+                              item.venueName!.trim().isNotEmpty)
+                            item.venueName!.trim(),
+                        ].where((part) => part.isNotEmpty).join(' • '),
                         style: TextStyle(
                           color: Colors.grey[500],
                           fontSize: 10,
@@ -1052,61 +1135,115 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
                   ),
                 ],
               ),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_horiz, color: Colors.grey),
-                color: AppColors.surfaceDark,
-                onSelected: (value) {
-                  switch (value) {
-                    case 'share':
-                      _sharePost(item);
-                      break;
-                    case 'report':
-                      _reportPost(item.id);
-                      break;
-                    case 'hide':
-                      _hidePost(item.id);
-                      break;
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'share',
-                    child: Row(
-                      children: [
-                        Icon(Icons.share, color: Colors.white, size: 20),
-                        SizedBox(width: 12),
-                        Text('Share', style: TextStyle(color: Colors.white)),
-                      ],
+              if (item.isPendingReview)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.amber.withValues(alpha: 0.35),
                     ),
                   ),
-                  const PopupMenuItem(
-                    value: 'report',
-                    child: Row(
-                      children: [
-                        Icon(Icons.flag, color: Colors.white, size: 20),
-                        SizedBox(width: 12),
-                        Text('Report', style: TextStyle(color: Colors.white)),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'hide',
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.visibility_off,
-                          color: Colors.white,
-                          size: 20,
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.schedule_rounded,
+                        color: Colors.amber,
+                        size: 14,
+                      ),
+                      SizedBox(width: 6),
+                      Text(
+                        'PENDING REVIEW',
+                        style: TextStyle(
+                          color: Colors.amber,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.3,
                         ),
-                        SizedBox(width: 12),
-                        Text('Hide', style: TextStyle(color: Colors.white)),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                )
+              else
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_horiz, color: Colors.grey),
+                  color: AppColors.surfaceDark,
+                  onSelected: (value) {
+                    switch (value) {
+                      case 'share':
+                        _sharePost(item);
+                        break;
+                      case 'report':
+                        _reportPost(item.id);
+                        break;
+                      case 'hide':
+                        _hidePost(item.id);
+                        break;
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'share',
+                      child: Row(
+                        children: [
+                          Icon(Icons.share, color: Colors.white, size: 20),
+                          SizedBox(width: 12),
+                          Text('Share', style: TextStyle(color: Colors.white)),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'report',
+                      child: Row(
+                        children: [
+                          Icon(Icons.flag, color: Colors.white, size: 20),
+                          SizedBox(width: 12),
+                          Text('Report', style: TextStyle(color: Colors.white)),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'hide',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.visibility_off,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                          SizedBox(width: 12),
+                          Text('Hide', style: TextStyle(color: Colors.white)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
             ],
           ),
+          if (item.isPendingReview) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'Only you can see this post while an admin reviews it.',
+                style: TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           // Image Display
           if (item.imageUrl != null && item.imageUrl!.isNotEmpty)
@@ -1166,79 +1303,82 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
             ),
           const SizedBox(height: 16),
           // Actions
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  IconButton(
-                    icon: Icon(
-                      _likedPosts[item.id] == true
-                          ? Icons.favorite
-                          : Icons.favorite_border,
-                      color: _likedPosts[item.id] == true
-                          ? Colors.red
-                          : AppColors.primary,
+          if (!item.isPendingReview)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    IconButton(
+                      icon: Icon(
+                        _likedPosts[item.id] == true
+                            ? Icons.favorite
+                            : Icons.favorite_border,
+                        color: _likedPosts[item.id] == true
+                            ? Colors.red
+                            : AppColors.primary,
+                      ),
+                      onPressed: () => _handleLike(item.id),
                     ),
-                    onPressed: () => _handleLike(item.id),
-                  ),
-                  Text(
-                    '${_postLikes[item.id] ?? item.likes}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
+                    Text(
+                      '${_postLikes[item.id] ?? item.likes}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 24),
-                  IconButton(
-                    icon: Icon(
-                      _showComments[item.id] == true
-                          ? Icons.chat_bubble
-                          : Icons.chat_bubble_outline,
-                      color: _showComments[item.id] == true
-                          ? AppColors.primary
-                          : Colors.grey,
+                    const SizedBox(width: 24),
+                    IconButton(
+                      icon: Icon(
+                        _showComments[item.id] == true
+                            ? Icons.chat_bubble
+                            : Icons.chat_bubble_outline,
+                        color: _showComments[item.id] == true
+                            ? AppColors.primary
+                            : Colors.grey,
+                      ),
+                      onPressed: () => _handleComment(item.id),
                     ),
-                    onPressed: () => _handleComment(item.id),
-                  ),
-                  Text(
-                    '${_postComments[item.id] ?? item.comments}',
+                    Text(
+                      '${_postComments[item.id] ?? item.comments}',
+                      style: TextStyle(
+                        color: Colors.grey[500],
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _sharePost(item),
+                  icon: const Icon(Icons.ios_share, color: AppColors.primary),
+                  label: const Text(
+                    'SHARE',
                     style: TextStyle(
-                      color: Colors.grey[500],
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.25,
                     ),
                   ),
-                ],
-              ),
-              OutlinedButton.icon(
-                onPressed: () => _sharePost(item),
-                icon: const Icon(Icons.ios_share, color: AppColors.primary),
-                label: const Text(
-                  'SHARE',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.25,
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.1),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                   ),
                 ),
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 12,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-              ),
-            ],
-          ),
+              ],
+            ),
           // Comments Section
-          if (_showComments[item.id] == true) ...[
+          if (!item.isPendingReview && _showComments[item.id] == true) ...[
             const SizedBox(height: 16),
             _buildCommentsSection(item.id),
           ],
@@ -1491,6 +1631,19 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
   List<MatchFeedItem> _filterAndSortItems(List<MatchFeedItem> items) {
     var filtered = List<MatchFeedItem>.from(items);
 
+    // Venue filter: All shows every post; a venue chip shows that venue's posts
+    // plus community posts (no venue) so global posts stay visible.
+    if (_filterVenueId != null) {
+      filtered = filtered
+          .where(
+            (item) =>
+                item.venueId == null ||
+                item.venueId!.isEmpty ||
+                item.venueId == _filterVenueId,
+          )
+          .toList();
+    }
+
     // Apply chip filter first
     if (_selectedChip == 1) {
       // Top Highlights - filter and sort by likes (already sorted by provider)
@@ -1501,17 +1654,15 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
         return bLikes.compareTo(aLikes);
       });
     } else if (_selectedChip == 2) {
-      // Upcoming - filter for live matches
+      // Live matches
       filtered = filtered
           .where((item) => item.type == MatchFeedType.live)
           .toList();
     }
-    // Chip 0 (Recent Matches) - no additional filtering
 
     // Apply sport filter (if sport info is available in future)
     if (_filterSport != null) {
-      // This would need sport info in the feed item
-      // For now, skip sport filtering as MatchFeedItem doesn't have sport field
+      // MatchFeedItem does not currently carry sport metadata.
     }
 
     // Apply sort (only if not already sorted by chip filter)

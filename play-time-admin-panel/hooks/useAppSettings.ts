@@ -34,6 +34,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   settlementFrequency: 'weekly',
   minimumPayoutAmount: 1000,
   enableAutoSettlement: false,
+  autoSettlementConfigured: false,
+  allowVendorVenueSubscriptionManagement: false,
   taxRate: 0,
   enableGST: false,
   gstNumber: '',
@@ -184,11 +186,12 @@ export const useAppSettings = (realtime: boolean = true) => {
         });
       }
 
-      if (safeRazorpay) {
+      if (safeRazorpay || updates.allowVendorVenueSubscriptionManagement !== undefined) {
         await appSettingsCollection.updatePublic({
-          integrations: {
-            razorpay: safeRazorpay
-          }
+          ...(safeRazorpay ? { integrations: { razorpay: safeRazorpay } } : {}),
+          ...(updates.allowVendorVenueSubscriptionManagement !== undefined
+            ? { allowVendorVenueSubscriptionManagement: updates.allowVendorVenueSubscriptionManagement }
+            : {}),
         });
       }
     } catch (err: any) {

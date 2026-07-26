@@ -1,5 +1,8 @@
 /// Maps raw exceptions / Firebase messages to short player-friendly copy.
-String friendlyErrorMessage(Object error, {String fallback = 'Something went wrong. Please try again.'}) {
+String friendlyErrorMessage(
+  Object error, {
+  String fallback = 'Something went wrong. Please try again.',
+}) {
   final raw = error.toString();
   final lower = raw.toLowerCase();
 
@@ -20,7 +23,9 @@ String friendlyErrorMessage(Object error, {String fallback = 'Something went wro
     return 'Please log in again to continue.';
   }
   if (lower.contains('slot') &&
-      (lower.contains('booked') || lower.contains('taken') || lower.contains('overlap'))) {
+      (lower.contains('booked') ||
+          lower.contains('taken') ||
+          lower.contains('overlap'))) {
     return 'That time slot is no longer available. Please pick another.';
   }
   if (lower.contains('razorpay') && lower.contains('not configured')) {
@@ -33,6 +38,8 @@ String friendlyErrorMessage(Object error, {String fallback = 'Something went wro
   // Strip Flutter/Firebase Exception wrappers when the rest is already readable.
   final cleaned = raw
       .replaceFirst(RegExp(r'^Exception:\s*'), '')
+      .replaceFirst(RegExp(r'^Bad state:\s*', caseSensitive: false), '')
+      .replaceFirst(RegExp(r'^StateError:\s*', caseSensitive: false), '')
       .replaceFirst(RegExp(r'^\[.*?\]\s*'), '')
       .trim();
   if (cleaned.isNotEmpty &&

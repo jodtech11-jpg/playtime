@@ -37,7 +37,6 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
   String? _selectedSport = 'All';
   String _sortBy = 'rating'; // Default sort by rating
   String? _userName;
-  Map<String, dynamic>? _userProfile;
   Set<String> _favoriteVenueIds = {};
 
   @override
@@ -76,7 +75,6 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
       final profile = await FirestoreService.getUserProfile(user.uid);
       if (mounted) {
         setState(() {
-          _userProfile = profile;
           _userName =
               user.displayName ??
               profile?['name'] ??
@@ -367,126 +365,6 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: -1,
                                 height: 1.2,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            // Progress Bar Module
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: AppColors.surfaceDark,
-                                borderRadius: BorderRadius.circular(24),
-                                border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.05),
-                                ),
-                              ),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  Container(
-                                    width: 40,
-                                    height: 40,
-                                    decoration: BoxDecoration(
-                                      color: AppColors.primary.withValues(
-                                        alpha: 0.1,
-                                      ),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: AppColors.primary.withValues(
-                                          alpha: 0.2,
-                                        ),
-                                      ),
-                                    ),
-                                    child: const Icon(
-                                      Icons.military_tech,
-                                      color: AppColors.primary,
-                                      size: 20,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Text(
-                                          'LEVEL ${_userProfile?['level'] ?? 1}',
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w900,
-                                            letterSpacing: 0.35,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        LinearProgressIndicator(
-                                          value: () {
-                                            final progress =
-                                                _userProfile?['progress'];
-                                            if (progress == null) return 0.0;
-                                            if (progress is double) {
-                                              return progress;
-                                            }
-                                            if (progress is int) {
-                                              return progress.toDouble();
-                                            }
-                                            if (progress is num) {
-                                              return progress.toDouble();
-                                            }
-                                            return 0.0;
-                                          }(),
-                                          backgroundColor: Colors.white10,
-                                          valueColor:
-                                              const AlwaysStoppedAnimation<
-                                                Color
-                                              >(AppColors.primary),
-                                          minHeight: 6,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Container(
-                                    width: 1,
-                                    height: 32,
-                                    color: Colors.white.withValues(alpha: 0.05),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Column(
-                                    children: [
-                                      Row(
-                                        children: [
-                                          const Icon(
-                                            Icons.local_fire_department,
-                                            color: Colors.orange,
-                                            size: 16,
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            '${_userProfile?['streak'] ?? 0} Day Streak',
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w900,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      SizedBox(height: 4),
-                                      Text(
-                                        '+20 XP TOMORROW',
-                                        style: TextStyle(
-                                          color: Colors.grey,
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.w900,
-                                          letterSpacing: 0.25,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
                               ),
                             ),
                             const SizedBox(height: 16),

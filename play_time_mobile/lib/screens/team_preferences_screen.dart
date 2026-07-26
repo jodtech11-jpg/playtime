@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 import '../theme/app_colors.dart';
 import '../services/firestore_service.dart';
+import '../providers/sport_provider.dart';
 
 class TeamPreferencesScreen extends StatefulWidget {
   const TeamPreferencesScreen({super.key});
@@ -23,13 +25,6 @@ class _TeamPreferencesScreenState extends State<TeamPreferencesScreen> {
   int _maxDistance = 10; // km
   List<String> _preferredVenues = [];
 
-  final List<String> _sports = [
-    'Football',
-    'Cricket',
-    'Basketball',
-    'Tennis',
-    'Badminton',
-  ];
   final List<String> _skillLevels = [
     'Beginner',
     'Intermediate',
@@ -123,6 +118,14 @@ class _TeamPreferencesScreenState extends State<TeamPreferencesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final sports = <String>{
+      ...context
+          .watch<SportProvider>()
+          .sports
+          .where((sport) => sport.isActive && sport.name.trim().isNotEmpty)
+          .map((sport) => sport.name.trim()),
+      _preferredSport,
+    }.toList();
     return Scaffold(
       backgroundColor: AppColors.backgroundDark,
       appBar: AppBar(
@@ -189,7 +192,7 @@ class _TeamPreferencesScreenState extends State<TeamPreferencesScreen> {
                   _buildDropdown(
                     'Preferred Sport',
                     _preferredSport,
-                    _sports,
+                    sports,
                     (value) => setState(() => _preferredSport = value!),
                   ),
                   const SizedBox(height: 24),

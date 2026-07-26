@@ -1,13 +1,14 @@
 # 🔔 FCM Cloud Function Setup Guide
 
-## ✅ Cloud Function Successfully Deployed!
+## Deployment requirement
 
-The FCM push notification Cloud Function has been successfully deployed to Firebase.
+The admin panel requires the authenticated `sendNotification` HTTPS function. This
+document does not assert that any environment is currently deployed.
 
 ### Function URLs
 
-- **Send Notification**: `https://us-central1-playtime-d9b83.cloudfunctions.net/sendNotification`
-- **Health Check**: `https://us-central1-playtime-d9b83.cloudfunctions.net/health`
+- **Send Notification**: `${VITE_CLOUD_FUNCTIONS_BASE_URL}/sendNotification`
+- **Health Check**: `${VITE_CLOUD_FUNCTIONS_BASE_URL}/health`
 
 ## 📝 Environment Variable Setup
 
@@ -15,7 +16,9 @@ Add the following to your `.env` file in the `play-time-admin-panel` directory:
 
 ```env
 # FCM Cloud Function URL (for push notifications)
-VITE_FCM_CLOUD_FUNCTION_URL=https://us-central1-playtime-d9b83.cloudfunctions.net/sendNotification
+VITE_CLOUD_FUNCTIONS_BASE_URL=https://us-central1-your-project-id.cloudfunctions.net
+# Optional legacy override used only by the push client:
+VITE_FCM_CLOUD_FUNCTION_URL=https://us-central1-your-project-id.cloudfunctions.net/sendNotification
 ```
 
 ## 🔄 After Adding the Environment Variable
@@ -33,10 +36,7 @@ VITE_FCM_CLOUD_FUNCTION_URL=https://us-central1-playtime-d9b83.cloudfunctions.ne
 ## 🧪 Testing the Function
 
 ### Health Check
-You can test if the function is working by visiting:
-```
-https://us-central1-playtime-d9b83.cloudfunctions.net/health
-```
+Use the health URL derived from `VITE_CLOUD_FUNCTIONS_BASE_URL`.
 
 This should return:
 ```json
@@ -107,15 +107,14 @@ Health check endpoint to verify the function is running.
 - **Runtime**: Node.js 20
 - **Region**: us-central1
 - **Generation**: 2nd Gen (Cloud Functions v2)
-- **Authentication**: Public (can be restricted if needed)
+- **Authentication**: `sendNotification` requires a Firebase ID token for an authorized admin
 
 ## 🔒 Security Considerations
 
-The function is currently publicly accessible. For production, you may want to:
-
-1. **Add authentication**: Require a secret token in the request headers
-2. **Restrict by IP**: Limit access to specific IP addresses
-3. **Use Firebase App Check**: Verify requests come from your app
+Never place an FCM server key or service-account credential in a `VITE_*` variable.
+The browser sends the signed-in admin's Firebase ID token. The function must verify
+that token, enforce admin permissions and venue scope, validate payload sizes, and
+rate-limit requests. App Check can be added as defense in depth.
 
 ## 📚 Related Documentation
 
@@ -124,13 +123,12 @@ The function is currently publicly accessible. For production, you may want to:
 
 ## ✅ Next Steps
 
-1. ✅ Cloud Function deployed
-2. ⏳ Add `VITE_FCM_CLOUD_FUNCTION_URL` to `.env` file
-3. ⏳ Restart development server
-4. ⏳ Test notification sending
+1. Deploy the authenticated function through the normal release process.
+2. Set the function base URL in the target environment.
+3. Restart the development server.
+4. Test with an authorized admin and confirm function logs.
 
 ---
 
-**Last Updated**: January 7, 2026
-**Function Version**: 1.0.0
+**Last Updated**: July 26, 2026
 

@@ -476,7 +476,6 @@ class _MembershipScreenState extends State<MembershipScreen> {
       membershipId = await membershipProvider.createMembership(
         planId: plan.id,
         venueId: 'platform',
-        price: plan.price,
       );
 
       await PaymentService.processMembershipPayment(

@@ -689,6 +689,7 @@ const Marketplace: React.FC = () => {
                 <option value="Pending">Pending</option>
                 <option value="Paid">Paid</option>
                 <option value="Failed">Failed</option>
+                <option value="Refund Pending">Refund Pending</option>
                 <option value="Refunded">Refunded</option>
                 <option value="Partially Refunded">Partially Refunded</option>
               </select>

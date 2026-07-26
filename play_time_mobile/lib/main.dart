@@ -31,6 +31,8 @@ import 'screens/language_settings_screen.dart';
 import 'screens/help_support_screen.dart';
 import 'screens/team_preferences_screen.dart';
 import 'screens/match_filters_screen.dart';
+import 'screens/orders_screen.dart';
+import 'screens/order_detail_screen.dart';
 import 'providers/auth_provider.dart';
 import 'providers/booking_provider.dart';
 import 'providers/cart_provider.dart';
@@ -45,7 +47,9 @@ import 'providers/location_provider.dart';
 import 'providers/language_provider.dart';
 import 'providers/connectivity_provider.dart';
 import 'providers/engagement_provider.dart';
+import 'providers/order_provider.dart';
 import 'widgets/offline_banner.dart';
+import 'utils/app_link_mapper.dart';
 import 'firebase_options.dart';
 import 'app_route_observer.dart';
 
@@ -53,7 +57,8 @@ Future<String> _getInitialDeepLinkPath() async {
   try {
     final appLinks = AppLinks();
     final uri = await appLinks.getInitialLink();
-    if (uri != null && uri.path.isNotEmpty) return uri.path;
+    final route = uri == null ? null : AppLinkMapper.routeFor(uri);
+    if (route != null) return route;
   } catch (e, st) {
     // Swallowing the error would hide deep-link bugs; record it and fall back
     // to the splash route so the app can still boot.
@@ -99,14 +104,41 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   late final GoRouter _router;
+  late final AppLinks _appLinks;
+  StreamSubscription<Uri>? _appLinkSubscription;
 
   @override
   void initState() {
     super.initState();
     _router = _createRouter(widget.initialLocation);
+    _appLinks = AppLinks();
+    _appLinkSubscription = _appLinks.uriLinkStream.listen(
+      (uri) {
+        final route = AppLinkMapper.routeFor(uri);
+        if (route != null) _router.go(route);
+      },
+      onError: (Object error, StackTrace stack) {
+        debugPrint('Failed to handle app link: $error');
+        unawaited(
+          FirebaseCrashlytics.instance.recordError(
+            error,
+            stack,
+            reason: 'uriLinkStream',
+            fatal: false,
+          ),
+        );
+      },
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       NotificationService.initialize(router: _router);
     });
+  }
+
+  @override
+  void dispose() {
+    _appLinkSubscription?.cancel();
+    _router.dispose();
+    super.dispose();
   }
 
   @override
@@ -129,28 +161,20 @@ class _MyAppState extends State<MyApp> {
         // Keep engagement global by default. Auto-filtering by selectedVenue
         // hid all matches/tournaments on Home after opening any venue card.
         ChangeNotifierProvider(create: (_) => EngagementProvider()),
+        ChangeNotifierProvider(create: (_) => OrderProvider()),
       ],
       child: OfflineBannerWrapper(
-        child: MaterialApp.router(
-          title: 'Play Time',
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.darkTheme,
-          routerConfig: _router,
-          builder: (context, child) {
-            final width = MediaQuery.sizeOf(context).width;
-            final scale = width < 340 ? 0.94 : (width < 380 ? 0.97 : 1.0);
-            return MediaQuery.withClampedTextScaling(
-              maxScaleFactor: 1.12,
-              child: MediaQuery(
-                data: MediaQuery.of(context).copyWith(
-                  textScaler: TextScaler.linear(
-                    MediaQuery.textScalerOf(context).scale(1.0) * scale,
-                  ),
-                ),
-                child: child ?? const SizedBox.shrink(),
-              ),
-            );
-          },
+        child: Consumer<LanguageProvider>(
+          builder: (context, language, _) => MaterialApp.router(
+            title: 'Play Time',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.darkTheme,
+            locale: language.currentLocale,
+            supportedLocales: LanguageProvider.supportedLocales,
+            localeResolutionCallback: (locale, supportedLocales) =>
+                supportedLocales.first,
+            routerConfig: _router,
+          ),
         ),
       ),
     );
@@ -239,6 +263,11 @@ GoRouter _createRouter(String initialLocation) => GoRouter(
       builder: (context, state) => const TeamUpScreen(),
     ),
     GoRoute(
+      path: '/team/:id',
+      builder: (context, state) =>
+          TeamUpScreen(invitedTeamId: state.pathParameters['id']),
+    ),
+    GoRoute(
       path: '/social-feed',
       builder: (context, state) => const SocialFeedScreen(),
     ),
@@ -291,6 +320,21 @@ GoRouter _createRouter(String initialLocation) => GoRouter(
     GoRoute(
       path: '/checkout',
       builder: (context, state) => const CheckoutScreen(),
+    ),
+    GoRoute(
+      path: '/checkout/success',
+      redirect: (context, state) {
+        final orderId = state.uri.queryParameters['orderId'] ?? '';
+        return orderId.isEmpty
+            ? '/orders'
+            : '/order/${Uri.encodeComponent(orderId)}';
+      },
+    ),
+    GoRoute(path: '/orders', builder: (context, state) => const OrdersScreen()),
+    GoRoute(
+      path: '/order/:id',
+      builder: (context, state) =>
+          OrderDetailScreen(orderId: state.pathParameters['id'] ?? ''),
     ),
     GoRoute(
       path: '/privacy-settings',

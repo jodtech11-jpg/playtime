@@ -21,6 +21,7 @@ import '../models/booking.dart';
 import '../services/analytics_service.dart';
 import '../widgets/shimmer_box.dart';
 import '../providers/sport_provider.dart';
+import '../providers/connectivity_provider.dart';
 import '../utils/sport_utils.dart';
 import '../utils/error_utils.dart';
 import '../utils/booking_time_policy.dart';
@@ -316,6 +317,15 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
   }
 
   void _handleBookSlot() async {
+    if (!context.read<ConnectivityProvider>().isOnline) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Booking requires an internet connection.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
     if (_selectedSlotId == null || _selectedCourtId == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -438,10 +448,8 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
         sport: _activeCategory,
         startTime: startTime,
         endTime: endTime,
-        amount: bookingAmount,
         courtOverride: selectedCourt,
         venueImage: venue.image,
-        skipPayment: false, // Will process payment after booking creation
       );
       bookingId = id;
       isFirstTimeBooking = isFirst;
@@ -1002,7 +1010,6 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
       membershipId = await membershipProvider.createMembership(
         planId: plan.id,
         venueId: venue.id,
-        price: plan.price,
       );
 
       await PaymentService.processMembershipPayment(

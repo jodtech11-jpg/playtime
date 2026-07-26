@@ -4,5 +4,7 @@
 <dict>
 	<key>aps-environment</key>
 	<string>development</string>
+	<!-- Associated Domains intentionally omitted until a verified production
+	     domain and apple-app-site-association file are available. -->
 </dict>
 </plist>

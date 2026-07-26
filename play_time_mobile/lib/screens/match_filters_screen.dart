@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 import '../theme/app_colors.dart';
 import '../services/firestore_service.dart';
+import '../providers/sport_provider.dart';
 
 class MatchFiltersScreen extends StatefulWidget {
   const MatchFiltersScreen({super.key});
@@ -26,13 +28,6 @@ class _MatchFiltersScreenState extends State<MatchFiltersScreen> {
   final _maxPriceController = TextEditingController(text: '5000');
   bool _showOnlyAvailable = true;
 
-  final List<String> _sports = [
-    'Football',
-    'Cricket',
-    'Basketball',
-    'Tennis',
-    'Badminton',
-  ];
   final List<String> _skillLevels = [
     'Beginner',
     'Intermediate',
@@ -181,6 +176,13 @@ class _MatchFiltersScreenState extends State<MatchFiltersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final configuredSports = context
+        .watch<SportProvider>()
+        .sports
+        .where((sport) => sport.isActive && sport.name.trim().isNotEmpty)
+        .map((sport) => sport.name.trim())
+        .toList();
+    final sports = <String>{...configuredSports, ..._selectedSports}.toList();
     return Scaffold(
       backgroundColor: AppColors.backgroundDark,
       appBar: AppBar(
@@ -247,7 +249,7 @@ class _MatchFiltersScreenState extends State<MatchFiltersScreen> {
                   Wrap(
                     spacing: 12,
                     runSpacing: 12,
-                    children: _sports.map((sport) {
+                    children: sports.map((sport) {
                       final isSelected = _selectedSports.contains(sport);
                       return GestureDetector(
                         onTap: () => _toggleSport(sport),

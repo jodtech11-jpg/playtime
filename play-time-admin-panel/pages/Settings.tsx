@@ -7,6 +7,7 @@ import LandingPageManagementModal from '../components/modals/LandingPageManageme
 import { uploadFile } from '../services/firebase';
 import { useToast } from '../contexts/ToastContext';
 import { getFirebaseErrorMessage } from '../utils/errorUtils';
+import { getIntegrationHealth } from '../services/trustedAdminApi';
 
 const Settings: React.FC = () => {
   const { user, isSuperAdmin } = useAuth();
@@ -19,6 +20,7 @@ const Settings: React.FC = () => {
   const [landingPageModalOpen, setLandingPageModalOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<string>('general');
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [checkingIntegration, setCheckingIntegration] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   // Form state - initialize with all settings
@@ -57,6 +59,8 @@ const Settings: React.FC = () => {
         settlementFrequency: settings.settlementFrequency,
         minimumPayoutAmount: settings.minimumPayoutAmount,
         enableAutoSettlement: settings.enableAutoSettlement,
+        autoSettlementConfigured: settings.autoSettlementConfigured,
+        allowVendorVenueSubscriptionManagement: settings.allowVendorVenueSubscriptionManagement,
         taxRate: settings.taxRate,
         enableGST: settings.enableGST,
         gstNumber: settings.gstNumber,
@@ -117,13 +121,28 @@ const Settings: React.FC = () => {
     }
 
     const currentIntegration = formData.integrations?.[integration];
-    const hasCredentials = integration === 'razorpay' 
+    let hasCredentials = integration === 'razorpay'
       ? !!currentIntegration?.apiKey
-      : !!(currentIntegration?.apiKey && currentIntegration?.phoneNumberId && currentIntegration?.businessAccountId);
+      : currentIntegration?.status !== 'Setup Required';
 
     if (enabled && !hasCredentials) {
       showWarning('Please configure the integration first before enabling it.');
       return;
+    }
+    let verifiedStatus: IntegrationConfig['status'] = enabled ? 'Unknown' : 'Disconnected';
+    if (enabled) {
+      try {
+        const health = await getIntegrationHealth(integration);
+        hasCredentials = health.configured;
+        verifiedStatus = health.status;
+        if (!health.healthy) {
+          showWarning(health.message || 'Backend health check failed. The integration remains disabled.');
+          return;
+        }
+      } catch (error: any) {
+        showError(getFirebaseErrorMessage(error, 'Backend integration health check is unavailable'));
+        return;
+      }
     }
 
     const updatedFormData = {
@@ -133,7 +152,7 @@ const Settings: React.FC = () => {
         [integration]: {
           ...formData.integrations![integration],
           enabled,
-          status: enabled && hasCredentials ? 'Connected' : enabled ? 'Disconnected' : 'Disconnected'
+          status: verifiedStatus
         }
       }
     };
@@ -175,12 +194,9 @@ const Settings: React.FC = () => {
       hasCredentials = !!(config.apiKey && config.phoneNumberId && config.businessAccountId);
     }
 
-    // Update status based on credentials and enabled state
     const updatedConfig: IntegrationConfig = {
       ...config,
-      status: hasCredentials 
-        ? (config.enabled ? 'Connected' : 'Disconnected')
-        : 'Setup Required'
+      status: hasCredentials ? 'Unknown' : 'Setup Required'
     };
 
     const updatedFormData = {
@@ -195,6 +211,29 @@ const Settings: React.FC = () => {
     await updateSettings(updatedFormData);
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 2000);
+  };
+
+  const handleIntegrationHealthCheck = async (integration: 'razorpay' | 'whatsapp') => {
+    try {
+      setCheckingIntegration(integration);
+      const health = await getIntegrationHealth(integration);
+      setFormData((current) => ({
+        ...current,
+        integrations: {
+          ...current.integrations!,
+          [integration]: {
+            ...current.integrations![integration],
+            status: health.status,
+          },
+        },
+      }));
+      if (health.healthy) showSuccess(`${integration} backend health check passed.`);
+      else showWarning(health.message || `${integration} is not healthy.`);
+    } catch (error: any) {
+      showError(getFirebaseErrorMessage(error, 'Backend integration health check is unavailable'));
+    } finally {
+      setCheckingIntegration(null);
+    }
   };
 
   const updateFormField = (field: keyof AppSettings, value: any) => {
@@ -705,17 +744,40 @@ const Settings: React.FC = () => {
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
                 <div>
                   <label className="text-sm font-bold text-gray-700">Auto Settlement</label>
-                  <p className="text-xs text-gray-500">Automatically process settlements</p>
+                  <p className="text-xs text-gray-500">
+                    {formData.autoSettlementConfigured
+                      ? 'Automatically process settlements'
+                      : 'Unavailable until the server-side payout workflow is configured'}
+                  </p>
                 </div>
                 <button
                   onClick={() => toggleFormField('enableAutoSettlement')}
-                  disabled={!isSuperAdmin}
+                  disabled={!isSuperAdmin || !formData.autoSettlementConfigured}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                     formData.enableAutoSettlement ? 'bg-primary' : 'bg-gray-300'
-                  } ${!isSuperAdmin ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  } ${(!isSuperAdmin || !formData.autoSettlementConfigured) ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
                     formData.enableAutoSettlement ? 'translate-x-6' : 'translate-x-1'
+                  }`} />
+                </button>
+              </div>
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                <div>
+                  <label className="text-sm font-bold text-gray-700">Vendor Plan Self-Management</label>
+                  <p className="text-xs text-gray-500">
+                    Allow venue managers to create, edit, and remove subscription plans for assigned venues.
+                  </p>
+                </div>
+                <button
+                  onClick={() => toggleFormField('allowVendorVenueSubscriptionManagement')}
+                  disabled={!isSuperAdmin}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    formData.allowVendorVenueSubscriptionManagement ? 'bg-primary' : 'bg-gray-300'
+                  } ${!isSuperAdmin ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    formData.allowVendorVenueSubscriptionManagement ? 'translate-x-6' : 'translate-x-1'
                   }`} />
                 </button>
               </div>
@@ -1069,15 +1131,11 @@ const Settings: React.FC = () => {
                 const isEnabled = integration?.enabled || false;
                 
                 // Determine status based on configuration
-                const hasCredentials = api.key === 'razorpay' 
+                const hasCredentials = api.key === 'razorpay'
                   ? !!integration?.apiKey
-                  : !!(integration?.apiKey && integration?.phoneNumberId && integration?.businessAccountId);
+                  : integration?.status !== 'Setup Required';
                 
-                const status = isEnabled && hasCredentials 
-                  ? 'Connected' 
-                  : hasCredentials && !isEnabled
-                  ? 'Disconnected'
-                  : 'Setup Required';
+                const status = integration?.status || 'Setup Required';
                 
                 return (
                   <div key={api.key} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 group hover:bg-white hover:shadow-md transition-all">
@@ -1092,8 +1150,8 @@ const Settings: React.FC = () => {
                             <span className="material-symbols-outlined text-green-600 text-sm">check_circle</span>
                           )}
                         </div>
-                        {isEnabled && hasCredentials && (
-                          <p className="text-xs text-gray-500 mt-1">Integration active and connected</p>
+                        {isEnabled && status === 'Connected' && (
+                          <p className="text-xs text-gray-500 mt-1">Enabled; backend health check passed</p>
                         )}
                         {hasCredentials && !isEnabled && (
                           <p className="text-xs text-gray-500 mt-1">Configured but disabled</p>
@@ -1115,6 +1173,13 @@ const Settings: React.FC = () => {
                       </span>
                       {isSuperAdmin && (
                         <>
+                          <button
+                            onClick={() => handleIntegrationHealthCheck(api.key)}
+                            disabled={checkingIntegration === api.key}
+                            className="px-4 py-1.5 bg-white border border-gray-200 rounded-lg text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
+                          >
+                            {checkingIntegration === api.key ? 'Checking…' : 'Check health'}
+                          </button>
                           {hasCredentials && (
                             <button
                               onClick={() => handleIntegrationToggle(api.key, !isEnabled)}

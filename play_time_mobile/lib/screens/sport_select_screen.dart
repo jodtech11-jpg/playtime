@@ -6,6 +6,7 @@ import '../theme/app_colors.dart';
 import '../providers/sport_provider.dart';
 import '../providers/venue_provider.dart';
 import '../providers/booking_provider.dart';
+import '../providers/connectivity_provider.dart';
 import '../models/venue.dart';
 import '../models/court.dart';
 import '../models/sport.dart';
@@ -693,6 +694,15 @@ class _QuickBookModalState extends State<_QuickBookModal> {
   }
 
   Future<void> _handleQuickBook() async {
+    if (!context.read<ConnectivityProvider>().isOnline) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Booking requires an internet connection.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
     if (_selectedVenue == null ||
         _selectedCourtId == null ||
         _selectedSlotId == null) {
@@ -763,10 +773,8 @@ class _QuickBookModalState extends State<_QuickBookModal> {
             sport: sport,
             startTime: startTime,
             endTime: endTime,
-            amount: bookingAmount,
             courtOverride: selectedCourt,
             venueImage: _selectedVenue!.image,
-            skipPayment: false,
           );
 
       final booking = Booking(

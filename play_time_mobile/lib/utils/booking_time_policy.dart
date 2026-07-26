@@ -2,9 +2,7 @@ class BookingTimePolicy {
   static const int minimumLeadMinutes = 15;
 
   static DateTime minimumStartTime([DateTime? now]) =>
-      (now ?? DateTime.now()).add(
-        const Duration(minutes: minimumLeadMinutes),
-      );
+      (now ?? DateTime.now()).add(const Duration(minutes: minimumLeadMinutes));
 
   static bool isBookable(DateTime startTime, [DateTime? now]) =>
       !startTime.isBefore(minimumStartTime(now));

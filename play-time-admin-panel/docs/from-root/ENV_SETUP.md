@@ -19,13 +19,13 @@ Since `.env` files are in `.gitignore` (for security), you need to create it man
 
 ```env
 # Firebase Configuration
-VITE_FIREBASE_API_KEY=AIzaSyA_VF4VE48QsNTwoq6XMP1gZ_mA4utbkmg
+VITE_FIREBASE_API_KEY=your_firebase_web_api_key
 VITE_FIREBASE_AUTH_DOMAIN=playtime-d9b83.firebaseapp.com
 VITE_FIREBASE_PROJECT_ID=playtime-d9b83
 VITE_FIREBASE_STORAGE_BUCKET=playtime-d9b83.firebasestorage.app
-VITE_FIREBASE_MESSAGING_SENDER_ID=721347779964
-VITE_FIREBASE_APP_ID=1:721347779964:web:c1af6a9d7116d7b1bed8f9
-VITE_FIREBASE_MEASUREMENT_ID=G-DB79L3E8TD
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+VITE_FIREBASE_APP_ID=your_web_app_id
+VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
 
 # Firebase Cloud Messaging (FCM) VAPID Key (Optional)
 # Get this from Firebase Console > Project Settings > Cloud Messaging > Web Push certificates

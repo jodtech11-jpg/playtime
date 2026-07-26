@@ -8,10 +8,12 @@ import { useAnalytics } from '../hooks/useAnalytics';
 import { formatCurrency, formatNumber, formatPercentage } from '../utils/formatUtils';
 import { formatDate, getToday, getWeekStart, getWeekEnd, getMonthStart, getMonthEnd } from '../utils/dateUtils';
 import DateRangePicker from '../components/shared/DateRangePicker';
+import { useAuth } from '../contexts/AuthContext';
 
 const COLORS = ['#11d473', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#06b6d4'];
 
 const Analytics: React.FC = () => {
+  const { user, isSuperAdmin } = useAuth();
   const [dateRangeType, setDateRangeType] = useState<'week' | 'month' | 'custom'>('month');
   const [customDateRange, setCustomDateRange] = useState<{ start: Date; end: Date } | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -50,7 +52,8 @@ const Analytics: React.FC = () => {
   } = useAnalytics({
     dateRange,
     includePreviousPeriod: true,
-    realtime: false
+    realtime: false,
+    venueIds: isSuperAdmin ? null : (user?.managedVenues || user?.venueIds || []),
   });
 
   // Top performing venues (top 5)
@@ -86,7 +89,9 @@ const Analytics: React.FC = () => {
         <div>
           <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-none">Advanced Analytics</h2>
           <p className="text-slate-500 dark:text-slate-400 mt-2 font-medium">
-            Intelligence and optimization for your facility operations
+            {isSuperAdmin
+              ? 'Global intelligence and optimization across all facilities'
+              : 'Analytics limited to your assigned venues'}
           </p>
         </div>
         <div className="flex items-center gap-1 bg-white dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">

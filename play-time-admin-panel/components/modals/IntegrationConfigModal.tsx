@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { IntegrationConfig } from '../../types';
 import { useToast } from '../../contexts/ToastContext';
 import { getFirebaseErrorMessage } from '../../utils/errorUtils';
+import { getIntegrationHealth } from '../../services/trustedAdminApi';
 
 // Password Input Component with visibility toggle
 const PasswordInput: React.FC<{
@@ -59,9 +60,10 @@ const IntegrationConfigModal: React.FC<IntegrationConfigModalProps> = ({
       // Initialize form with current config, but clear password fields for security
       const initialData = {
         ...currentConfig,
-        // Clear password/secret fields so user must re-enter (or we'll preserve existing)
         ...(integration === 'whatsapp' && {
-          apiKey: ''
+          apiKey: undefined,
+          apiSecret: undefined,
+          webhookSecret: undefined,
         })
       };
       setFormData(initialData);
@@ -79,6 +81,7 @@ const IntegrationConfigModal: React.FC<IntegrationConfigModalProps> = ({
   if (!isOpen) return null;
 
   const handleSave = async () => {
+    if (integration === 'whatsapp') return;
     try {
       setSaving(true);
       setTestResult(null);
@@ -90,39 +93,22 @@ const IntegrationConfigModal: React.FC<IntegrationConfigModalProps> = ({
         ...currentConfig,
         ...formData,
         // Preserve existing secret values if new ones aren't provided
-        ...(integration === 'razorpay' && {
-          apiKey: formData.apiKey || currentConfig.apiKey,
-          apiSecret: undefined,
-          webhookSecret: undefined
-        }),
-        ...(integration === 'whatsapp' && {
-          apiKey: formData.apiKey || currentConfig.apiKey,
-          phoneNumberId: formData.phoneNumberId || currentConfig.phoneNumberId,
-          businessAccountId: formData.businessAccountId || currentConfig.businessAccountId
-        })
+        apiKey: formData.apiKey || currentConfig.apiKey,
+        apiSecret: undefined,
+        webhookSecret: undefined,
       };
       
       // Validate required fields based on integration type
-      if (integration === 'razorpay') {
-        if (!mergedConfig.apiKey) {
-          showWarning('Please fill in all required fields');
-          setSaving(false);
-          return;
-        }
-      } else if (integration === 'whatsapp') {
-        if (!mergedConfig.apiKey || !mergedConfig.phoneNumberId || !mergedConfig.businessAccountId) {
-          showWarning('Please fill in all required fields');
-          setSaving(false);
-          return;
-        }
+      if (!mergedConfig.apiKey) {
+        showWarning('Please fill in all required fields');
+        setSaving(false);
+        return;
       }
 
       // Update status based on whether credentials are provided
       const updatedConfig: IntegrationConfig = {
         ...mergedConfig,
-        status: mergedConfig.apiKey
-          ? (mergedConfig.enabled ? 'Connected' : 'Disconnected')
-          : 'Setup Required'
+        status: mergedConfig.apiKey ? 'Unknown' : 'Setup Required'
       };
 
       await onSave(updatedConfig);
@@ -140,22 +126,15 @@ const IntegrationConfigModal: React.FC<IntegrationConfigModalProps> = ({
     setTestResult(null);
 
     try {
-      // Simulate connection test (in production, this would make actual API calls)
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Basic validation
-      let isValid = false;
-      if (integration === 'razorpay') {
-        isValid = !!formData.apiKey;
-      } else if (integration === 'whatsapp') {
-        isValid = !!(formData.apiKey && formData.phoneNumberId && formData.businessAccountId);
-      }
-
-      if (isValid) {
-        setTestResult({ success: true, message: 'Connection successful!' });
-      } else {
-        setTestResult({ success: false, message: 'Please fill in all required fields' });
-      }
+      const health = await getIntegrationHealth(integration);
+      setTestResult({
+        success: health.healthy,
+        message: health.message || (health.healthy
+          ? 'Backend health check passed.'
+          : health.configured
+            ? 'Backend configuration is unhealthy.'
+            : 'Integration is not configured on the server.'),
+      });
     } catch (error: any) {
       setTestResult({ success: false, message: 'Connection test failed: ' + getFirebaseErrorMessage(error) });
     } finally {
@@ -179,34 +158,9 @@ const IntegrationConfigModal: React.FC<IntegrationConfigModalProps> = ({
       ]
     },
     whatsapp: {
-      title: 'WhatsApp Business API Configuration',
-      description: 'Configure WhatsApp Business API for sending notifications and messages.',
-      fields: [
-        {
-          key: 'apiKey' as const,
-          label: 'API Key / Access Token',
-          type: 'password',
-          placeholder: 'Enter API Key',
-          required: true,
-          help: 'Your WhatsApp Business API access token'
-        },
-        {
-          key: 'phoneNumberId' as const,
-          label: 'Phone Number ID',
-          type: 'text',
-          placeholder: 'Enter Phone Number ID',
-          required: true,
-          help: 'Your WhatsApp Business phone number ID'
-        },
-        {
-          key: 'businessAccountId' as const,
-          label: 'Business Account ID',
-          type: 'text',
-          placeholder: 'Enter Business Account ID',
-          required: true,
-          help: 'Your WhatsApp Business Account ID'
-        }
-      ]
+      title: 'WhatsApp Business API Health',
+      description: 'WhatsApp credentials are configured only in trusted server-side secret storage.',
+      fields: []
     }
   };
 
@@ -273,6 +227,13 @@ const IntegrationConfigModal: React.FC<IntegrationConfigModalProps> = ({
               )}
             </div>
           ))}
+          {integration === 'whatsapp' && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+              Browser-based WhatsApp credentials are intentionally unsupported. Configure the provider
+              secret and sender identifiers in the backend, deploy the trusted send and health endpoints,
+              then use the health check below.
+            </div>
+          )}
 
           {/* Test Connection Result */}
           {testResult && (
@@ -337,7 +298,7 @@ const IntegrationConfigModal: React.FC<IntegrationConfigModalProps> = ({
             >
               Cancel
             </button>
-            <button
+            {integration === 'razorpay' && <button
               onClick={handleSave}
               disabled={saving}
               className="px-6 py-3 bg-primary text-primary-content rounded-xl text-sm font-black uppercase tracking-widest hover:bg-primary-hover shadow-lg shadow-primary/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
@@ -353,7 +314,7 @@ const IntegrationConfigModal: React.FC<IntegrationConfigModalProps> = ({
                   Save Configuration
                 </>
               )}
-            </button>
+            </button>}
           </div>
         </div>
       </div>

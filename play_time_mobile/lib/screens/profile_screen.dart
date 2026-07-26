@@ -14,9 +14,12 @@ import '../providers/location_provider.dart';
 import '../providers/membership_provider.dart';
 import '../providers/language_provider.dart';
 import '../providers/sport_provider.dart';
+import '../providers/connectivity_provider.dart';
 import '../models/booking.dart';
 import '../services/storage_service.dart';
 import '../services/firestore_service.dart';
+import '../services/wallet_payment_service.dart';
+import '../services/notification_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -30,6 +33,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Uint8List? _profileImageWebBytes;
   final ImagePicker _picker = ImagePicker();
   bool _isUploading = false;
+  bool _isWalletProcessing = false;
   String? _uploadedImageUrl;
   double _walletBalance = 0.0;
   bool _isEditMode = false;
@@ -207,13 +211,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final profile = await FirestoreService.getUserProfile(user.uid);
     final notificationSettings =
         profile?['notificationSettings'] as Map<String, dynamic>? ?? {};
+    final notificationPreferences =
+        profile?['notificationPreferences'] as Map<String, dynamic>? ?? {};
     if (!context.mounted) return;
 
-    bool bookingNotifications = notificationSettings['booking'] ?? true;
-    bool matchNotifications = notificationSettings['match'] ?? true;
-    bool socialNotifications = notificationSettings['social'] ?? true;
+    bool bookingNotifications =
+        notificationPreferences['bookingUpdates'] ??
+        notificationSettings['booking'] ??
+        true;
+    bool matchNotifications =
+        notificationPreferences['matchUpdates'] ??
+        notificationSettings['match'] ??
+        true;
+    bool socialNotifications =
+        notificationPreferences['socialUpdates'] ??
+        notificationSettings['social'] ??
+        true;
     bool promotionalNotifications =
-        notificationSettings['promotional'] ?? false;
+        notificationPreferences['promotions'] ??
+        notificationSettings['promotional'] ??
+        false;
 
     await showModalBottomSheet(
       context: context,
@@ -323,6 +340,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               'social': socialNotifications,
                               'promotional': promotionalNotifications,
                             },
+                            'notificationPreferences': {
+                              'bookingUpdates': bookingNotifications,
+                              'matchUpdates': matchNotifications,
+                              'socialUpdates': socialNotifications,
+                              'promotions': promotionalNotifications,
+                            },
+                          });
+                          await NotificationService.syncPreferenceTopics({
+                            'booking': bookingNotifications,
+                            'match': matchNotifications,
+                            'social': socialNotifications,
+                            'promotional': promotionalNotifications,
                           });
                           if (context.mounted) {
                             Navigator.pop(context);
@@ -647,13 +676,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _addMoneyToWallet(double amount) async {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Secure wallet top-ups are not available yet. No charge was made.',
+    if (_isWalletProcessing) return;
+    if (!context.read<ConnectivityProvider>().isOnline) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Wallet top-up requires an internet connection.'),
+          backgroundColor: AppColors.error,
         ),
-      ),
+      );
+      return;
+    }
+    setState(() => _isWalletProcessing = true);
+    await WalletPaymentService.startTopUp(
+      amount: amount.round(),
+      onSuccess: (paymentId) async {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Payment received. Updating your wallet balance…'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          for (var attempt = 0; attempt < 6; attempt++) {
+            await Future<void>.delayed(const Duration(seconds: 2));
+            final profile = await FirestoreService.getUserProfile(user.uid);
+            final updatedBalance = (profile?['walletBalance'] as num?)
+                ?.toDouble();
+            if (updatedBalance != null && updatedBalance > _walletBalance) {
+              if (mounted) {
+                setState(() => _walletBalance = updatedBalance);
+              }
+              break;
+            }
+          }
+        }
+        if (mounted) setState(() => _isWalletProcessing = false);
+      },
+      onError: (message) {
+        if (!mounted) return;
+        setState(() => _isWalletProcessing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message), backgroundColor: AppColors.error),
+        );
+      },
     );
   }
 
@@ -1331,7 +1398,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               Material(
                                 color: Colors.transparent,
                                 child: InkWell(
-                                  onTap: () => _showWalletTopUpDialog(context),
+                                  onTap: _isWalletProcessing
+                                      ? null
+                                      : () => _showWalletTopUpDialog(context),
                                   borderRadius: BorderRadius.circular(20),
                                   child: Ink(
                                     padding: const EdgeInsets.all(16),
@@ -1399,8 +1468,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                             ],
                                           ),
                                         ),
-                                        const Text(
-                                          'Add money',
+                                        Text(
+                                          _isWalletProcessing
+                                              ? 'Processing…'
+                                              : 'Add money',
                                           style: TextStyle(
                                             color: AppColors.primary,
                                             fontSize: 12,
@@ -1717,6 +1788,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 title: 'Notification activity',
                                 subtitle: 'View updates and booking alerts',
                                 onTap: () => context.push('/notifications'),
+                              ),
+                              const SizedBox(height: 12),
+                              _buildSettingsItem(
+                                icon: Icons.receipt_long_outlined,
+                                title: 'My orders',
+                                subtitle: 'Track marketplace purchases',
+                                onTap: () => context.push('/orders'),
                               ),
                               const SizedBox(height: 12),
                               _buildSettingsItem(

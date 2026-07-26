@@ -11,6 +11,9 @@ class MatchFeedItem {
   final int likes;
   final int comments;
   final String? imageUrl;
+  final String status;
+  final String? venueId;
+  final String? venueName;
 
   MatchFeedItem({
     required this.id,
@@ -23,7 +26,12 @@ class MatchFeedItem {
     required this.likes,
     required this.comments,
     this.imageUrl,
+    this.status = 'Approved',
+    this.venueId,
+    this.venueName,
   });
+
+  bool get isPendingReview => status == 'Pending';
 
   factory MatchFeedItem.fromJson(Map<String, dynamic> json) {
     return MatchFeedItem(
@@ -37,12 +45,18 @@ class MatchFeedItem {
       likes: json['likes'] as int,
       comments: json['comments'] as int,
       imageUrl: json['imageUrl'] as String?,
+      status: json['status'] as String? ?? 'Approved',
+      venueId: json['venueId'] as String?,
+      venueName: json['venueName'] as String?,
     );
   }
 
   factory MatchFeedItem.fromFirestore(String id, Map<String, dynamic> data) {
     final matchResult = data['matchResult'] as Map<String, dynamic>?;
     final createdAt = data['createdAt'] as Timestamp?;
+    final venueId = data['venueId'] as String?;
+    final venueName = data['venueName'] as String?;
+    final userName = data['userName'] as String?;
 
     String timeStr = '';
     if (createdAt != null) {
@@ -94,13 +108,16 @@ class MatchFeedItem {
       teamB = TeamData(name: '', icon: '⚽');
     }
 
+    final title = (userName != null && userName.trim().isNotEmpty)
+        ? userName.trim()
+        : (venueName != null && venueName.trim().isNotEmpty)
+        ? venueName.trim()
+        : 'Community Post';
+
     return MatchFeedItem(
       id: id,
       type: feedType,
-      title:
-          data['userName'] as String? ??
-          data['venueId'] as String? ??
-          'Match Update',
+      title: title,
       time: feedType == MatchFeedType.live ? 'Live • Just now' : timeStr,
       teamA: teamA,
       teamB: teamB,
@@ -108,6 +125,9 @@ class MatchFeedItem {
       likes: data['likes'] as int? ?? 0,
       comments: data['comments'] as int? ?? 0,
       imageUrl: data['imageUrl'] as String?,
+      status: data['status'] as String? ?? 'Approved',
+      venueId: venueId,
+      venueName: venueName,
     );
   }
 
@@ -123,6 +143,9 @@ class MatchFeedItem {
       'likes': likes,
       'comments': comments,
       'imageUrl': imageUrl,
+      'status': status,
+      'venueId': venueId,
+      'venueName': venueName,
     };
   }
 }

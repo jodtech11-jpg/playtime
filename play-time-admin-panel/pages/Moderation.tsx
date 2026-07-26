@@ -1,9 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { usePosts, useReportedPosts, usePendingPosts } from '../hooks/usePosts';
-import { useReports, usePendingReports } from '../hooks/useReports';
+import { usePosts } from '../hooks/usePosts';
+import { useReports } from '../hooks/useReports';
 import { useVenues } from '../hooks/useVenues';
 import { useUsers } from '../hooks/useUsers';
-import { postsCollection, reportsCollection, usersCollection } from '../services/firebase';
+import { postsCollection, reportsCollection } from '../services/firebase';
 import { Post, Report } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { formatDate, getRelativeTime } from '../utils/dateUtils';
@@ -12,16 +12,14 @@ import HistoryLogModal from '../components/modals/HistoryLogModal';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import { getFirebaseErrorMessage } from '../utils/errorUtils';
+import { banUserAccount } from '../services/trustedAdminApi';
 
 const Moderation: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isSuperAdmin } = useAuth();
   const { showError } = useToast();
   const { openConfirm, confirmDialog } = useConfirmDialog();
   const { posts: allPosts } = usePosts({ realtime: true });
-  const { posts: reportedPosts } = useReportedPosts();
-  const { posts: pendingPosts } = usePendingPosts();
   const { reports: allReports } = useReports({ realtime: true });
-  const { reports: pendingReports } = usePendingReports();
   const { venues } = useVenues({ realtime: true });
   const { users } = useUsers();
 
@@ -29,27 +27,45 @@ const Moderation: React.FC = () => {
   const [processing, setProcessing] = useState<string | null>(null);
   const [showHistoryLog, setShowHistoryLog] = useState(false);
   const [localRemovedPostIds, setLocalRemovedPostIds] = useState<Set<string>>(new Set());
+  const [selectedVenueId, setSelectedVenueId] = useState('All');
+  const managedVenueIds = user?.managedVenues || user?.venueIds || [];
+  const permittedVenueIds = isSuperAdmin
+    ? (selectedVenueId === 'All' ? null : [selectedVenueId])
+    : managedVenueIds;
+  const scopedPosts = useMemo(
+    () => permittedVenueIds === null
+      ? allPosts
+      : allPosts.filter((post) => permittedVenueIds.includes(post.venueId)),
+    [allPosts, permittedVenueIds?.join('|')]
+  );
+  const scopedPostIds = useMemo(() => new Set(scopedPosts.map((post) => post.id)), [scopedPosts]);
+  const scopedReports = useMemo(
+    () => allReports.filter((report) => scopedPostIds.has(report.postId)),
+    [allReports, scopedPostIds]
+  );
 
   // Calculate statistics
   const stats = useMemo(() => {
-    const pendingReviews = pendingPosts.length + pendingReports.length;
+    const pendingReviews =
+      scopedPosts.filter((post) => post.status === 'Pending').length +
+      scopedReports.filter((report) => report.status === 'Pending').length;
     const reportedUsers = new Set(
-      allReports
+      scopedReports
         .filter(r => r.status === 'Pending')
         .map(r => {
-          const post = allPosts.find(p => p.id === r.postId);
+          const post = scopedPosts.find(p => p.id === r.postId);
           return post?.userId;
         })
         .filter(Boolean)
     ).size;
-    const autoFlagged = allPosts.filter(p => p.isReported && p.reportCount && p.reportCount > 0).length;
+    const autoFlagged = scopedPosts.filter(p => p.isReported && p.reportCount && p.reportCount > 0).length;
 
     return {
       pendingReviews,
       reportedUsers,
       autoFlagged
     };
-  }, [pendingPosts, pendingReports, allReports, allPosts]);
+  }, [scopedReports, scopedPosts]);
 
   // Filter posts based on selected filter
   const filteredPosts = useMemo(() => {
@@ -57,19 +73,19 @@ const Moderation: React.FC = () => {
 
     switch (filter) {
       case 'Reported':
-        postsToShow = reportedPosts;
+        postsToShow = scopedPosts.filter((post) => post.isReported || (post.reportCount || 0) > 0);
         break;
       case 'Auto-Flagged':
-        postsToShow = allPosts.filter(p => p.isReported && p.reportCount && p.reportCount > 0);
+        postsToShow = scopedPosts.filter(p => p.isReported && p.reportCount && p.reportCount > 0);
         break;
       case 'Match':
-        postsToShow = allPosts.filter(p => p.type === 'Match');
+        postsToShow = scopedPosts.filter(p => p.type === 'Match');
         break;
       case 'Venue':
-        postsToShow = allPosts.filter(p => p.type === 'Venue Update');
+        postsToShow = scopedPosts.filter(p => p.type === 'Venue Update');
         break;
       default:
-        postsToShow = allPosts;
+        postsToShow = scopedPosts;
     }
 
     // Hide posts that are already removed (in DB) or optimistically removed
@@ -86,11 +102,11 @@ const Moderation: React.FC = () => {
       const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
       return dateB.getTime() - dateA.getTime();
     });
-  }, [filter, allPosts, reportedPosts, localRemovedPostIds]);
+  }, [filter, scopedPosts, localRemovedPostIds]);
 
   // Get reports for a post
   const getPostReports = (postId: string): Report[] => {
-    return allReports.filter(r => r.postId === postId && r.status === 'Pending');
+    return scopedReports.filter(r => r.postId === postId && r.status === 'Pending');
   };
 
   const handleRemovePost = (postId: string) => {
@@ -133,6 +149,10 @@ const Moderation: React.FC = () => {
   };
 
   const handleBanUser = (userId: string, postId: string) => {
+    if (!isSuperAdmin) {
+      showError('Only a super admin can disable an account globally.');
+      return;
+    }
     openConfirm({
       title: 'Ban user?',
       message: 'They will not be able to post or interact. Their posts will be removed.',
@@ -140,18 +160,12 @@ const Moderation: React.FC = () => {
         try {
           setProcessing(`ban-${userId}`);
 
-          await usersCollection.update(userId, {
-            status: 'Inactive',
-            updatedAt: serverTimestamp(),
-          });
-
-          const userPosts = allPosts.filter((p) => p.userId === userId);
-          for (const post of userPosts) {
-            await postsCollection.update(post.id, {
-              status: 'Removed',
-              updatedAt: serverTimestamp(),
-            });
-          }
+          const sourcePost = scopedPosts.find((post) => post.id === postId);
+          await banUserAccount(
+            userId,
+            `Moderation action for reported post ${postId}`,
+            sourcePost?.venueId
+          );
 
           const postReports = getPostReports(postId);
           for (const report of postReports) {
@@ -250,7 +264,7 @@ const Moderation: React.FC = () => {
             {
               label: "Pending Reviews",
               val: stats.pendingReviews.toString(),
-              change: `+${pendingPosts.length} posts`,
+              change: `${scopedPosts.filter((post) => post.status === 'Pending').length} posts`,
               trend: "up",
               icon: "pending_actions",
               color: "text-orange-600",
@@ -290,6 +304,29 @@ const Moderation: React.FC = () => {
           ))}
         </div>
 
+        <div className="flex items-center justify-between gap-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-surface-dark">
+          <div>
+            <p className="text-xs font-black uppercase tracking-widest text-gray-700 dark:text-gray-200">
+              {isSuperAdmin ? 'Moderation scope' : 'Managed venue scope'}
+            </p>
+            <p className="text-xs text-gray-500">
+              {isSuperAdmin ? 'Global access is available only to super admins.' : `${managedVenueIds.length} assigned venue(s)`}
+            </p>
+          </div>
+          {isSuperAdmin ? (
+            <select
+              value={selectedVenueId}
+              onChange={(event) => setSelectedVenueId(event.target.value)}
+              className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm dark:border-gray-700 dark:bg-gray-800"
+            >
+              <option value="All">All venues (global)</option>
+              {venues.map((venue) => <option key={venue.id} value={venue.id}>{venue.name}</option>)}
+            </select>
+          ) : (
+            <span className="text-xs font-bold text-primary">Venue scoped</span>
+          )}
+        </div>
+
         <div className="flex items-center gap-3 overflow-x-auto pb-2 no-scrollbar">
           {['All Posts', 'Reported', 'Auto-Flagged', 'Match', 'Venue'].map(f => (
             <button
@@ -302,7 +339,7 @@ const Moderation: React.FC = () => {
               }`}
             >
               {f}
-              {f === 'All Posts' && <span className="opacity-40 ml-1">{allPosts.length}</span>}
+              {f === 'All Posts' && <span className="opacity-40 ml-1">{scopedPosts.length}</span>}
             </button>
           ))}
         </div>
@@ -469,7 +506,8 @@ const Moderation: React.FC = () => {
                       <>
                         <button
                           onClick={() => handleBanUser(post.userId, post.id)}
-                          disabled={processing === `ban-${post.userId}`}
+                          disabled={!isSuperAdmin || processing === `ban-${post.userId}`}
+                          title={!isSuperAdmin ? 'Global account bans require super-admin access' : undefined}
                           className="flex-1 bg-white border border-gray-200 text-gray-700 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-100 transition-all disabled:opacity-50"
                         >
                           {processing === `ban-${post.userId}` ? 'Banning...' : 'Ban User'}
@@ -510,8 +548,8 @@ const Moderation: React.FC = () => {
       <HistoryLogModal
         isOpen={showHistoryLog}
         onClose={() => setShowHistoryLog(false)}
-        reports={allReports}
-        posts={allPosts}
+        reports={scopedReports}
+        posts={scopedPosts}
         users={users}
       />
       {confirmDialog}

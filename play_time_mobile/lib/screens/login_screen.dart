@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_colors.dart';
@@ -13,12 +14,14 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _phoneController = TextEditingController();
+  final FocusNode _phoneFocusNode = FocusNode();
   bool _isLoading = false;
   String? _phoneError;
 
   @override
   void dispose() {
     _phoneController.dispose();
+    _phoneFocusNode.dispose();
     super.dispose();
   }
 
@@ -204,7 +207,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ],
                   ),
-                ),
+                )
+              else
+                const SizedBox.shrink(),
               // Login Sheet
               Expanded(
                 flex: keyboardOpen ? 1 : 6,
@@ -326,7 +331,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ),
                                     child: TextField(
                                       controller: _phoneController,
+                                      focusNode: _phoneFocusNode,
                                       keyboardType: TextInputType.phone,
+                                      textInputAction: TextInputAction.done,
+                                      maxLength: 10,
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.digitsOnly,
+                                      ],
+                                      onSubmitted: (_) {
+                                        if (!_isLoading) _handlePhoneLogin();
+                                      },
                                       onChanged: (_) {
                                         if (_phoneError != null) {
                                           setState(() => _phoneError = null);
@@ -348,6 +362,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                           size: 20,
                                         ),
                                         border: InputBorder.none,
+                                        counterText: '',
                                         contentPadding:
                                             const EdgeInsets.symmetric(
                                               horizontal: 16,

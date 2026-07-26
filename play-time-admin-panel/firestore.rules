@@ -73,9 +73,78 @@ service cloud.firestore {
       return request.resource.data.userId == request.auth.uid;
     }
 
-    // Pending/Confirmed bookings expose time window only (for slot availability queries).
-    function isActiveBooking() {
-      return resource.data.status == 'Pending' || resource.data.status == 'Confirmed';
+    function hasNoPaymentOrPricingFields() {
+      return !request.resource.data.keys().hasAny([
+        'amount', 'price', 'subtotal', 'discount', 'shippingCost', 'tax', 'total',
+        'paymentId', 'paymentTransactionId', 'transactionId', 'razorpayPaymentId',
+        'razorpayOrderId', 'paymentMethod', 'paymentGateway', 'paymentReference'
+      ]);
+    }
+
+    function isSafePendingBookingCreate() {
+      return request.resource.data.keys().hasOnly([
+               'userId', 'venueId', 'venue', 'venueImage', 'courtId', 'court',
+               'sport', 'startTime', 'endTime', 'duration', 'date', 'time',
+               'status', 'paymentStatus', 'slotLockId', 'createdAt', 'updatedAt'
+             ]) &&
+             request.resource.data.status == 'Pending' &&
+             request.resource.data.paymentStatus == 'Pending' &&
+             hasNoPaymentOrPricingFields();
+    }
+
+    function isSafePendingMembershipCreate() {
+      return request.resource.data.keys().hasOnly([
+               'userId', 'venueId', 'planId', 'planName', 'planType',
+               'startDate', 'endDate', 'status', 'paymentStatus',
+               'createdAt', 'updatedAt'
+             ]) &&
+             request.resource.data.status == 'Pending' &&
+             request.resource.data.paymentStatus == 'Pending' &&
+             hasNoPaymentOrPricingFields();
+    }
+
+    function isSafePendingOrderCreate() {
+      // Item requests contain productId + quantity only. Trusted server code
+      // re-reads products and computes all prices/totals before payment.
+      return request.resource.data.keys().hasOnly([
+               'userId', 'userName', 'userEmail', 'userPhone', 'orderNumber',
+               'cartId', 'items', 'shippingAddress', 'venueId', 'venueName',
+               'status', 'paymentStatus', 'createdAt', 'updatedAt'
+             ]) &&
+             request.resource.data.items is list &&
+             request.resource.data.items.size() > 0 &&
+             request.resource.data.items.size() <= 100 &&
+             request.resource.data.status == 'Pending' &&
+             request.resource.data.paymentStatus == 'Pending' &&
+             hasNoPaymentOrPricingFields();
+    }
+
+    function playerCancelsOnly() {
+      return resource.data.userId == request.auth.uid &&
+             (
+               (resource.data.status in ['Pending', 'Confirmed', 'Processing'] &&
+                request.resource.data.status == 'Cancelled' &&
+                request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                  'status', 'cancelReason', 'cancellationReason',
+                  'cancellationRequestedAt', 'cancelledAt', 'updatedAt'
+                ])) ||
+               (request.resource.data.status == resource.data.status &&
+                request.resource.data.paymentStatus == resource.data.paymentStatus &&
+                request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                  'cancelRequested', 'cancellationRequested',
+                  'cancelReason', 'cancellationReason',
+                  'cancellationRequestedAt', 'updatedAt'
+                ]))
+             );
+    }
+
+    function userHasManagedVenueAffinity() {
+      return isVenueManager() && (
+        ('venueId' in resource.data && ownsVenue(resource.data.venueId)) ||
+        ('venueIds' in resource.data &&
+         resource.data.venueIds is list &&
+         resource.data.venueIds.hasAny(getUserData().managedVenues))
+      );
     }
 
     function hasValidPlayerBookingWindow() {
@@ -95,7 +164,8 @@ service cloud.firestore {
          resource.data.phone == request.auth.token.phone_number) ||
         (request.auth.token.email != null &&
          resource.data.email == request.auth.token.email) ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (isSuperAdmin() || isVenueManager()))
+        isSuperAdmin() ||
+        userHasManagedVenueAffinity()
       );
       // - Unauthenticated vendor signup: status=Pending, role=venue_manager, self-id.
       // - Authenticated self-signup: role=player or null.
@@ -112,6 +182,8 @@ service cloud.firestore {
           request.resource.data.customPermissions.size() == 0)) ||
         (isAuthenticated() && userId == request.auth.uid &&
          (request.resource.data.role == 'player' || request.resource.data.role == null) &&
+         (!('walletBalance' in request.resource.data) ||
+          request.resource.data.walletBalance == 0) &&
          (!('managedVenues' in request.resource.data) ||
           request.resource.data.managedVenues.size() == 0) &&
          (!('customPermissions' in request.resource.data) ||
@@ -127,12 +199,13 @@ service cloud.firestore {
         isSuperAdmin() ||
         (userId == request.auth.uid &&
          !request.resource.data.diff(resource.data).affectedKeys()
-           .hasAny(['role', 'status', 'managedVenues', 'customPermissions'])) ||
+           .hasAny(['role', 'status', 'managedVenues', 'customPermissions', 'walletBalance'])) ||
         (isVenueManager() &&
+         userHasManagedVenueAffinity() &&
          resource.data.role != 'super_admin' &&
          request.resource.data.role != 'super_admin' &&
          !request.resource.data.diff(resource.data).affectedKeys()
-           .hasAny(['role', 'status', 'managedVenues', 'customPermissions']))
+           .hasAny(['role', 'status', 'managedVenues', 'customPermissions', 'walletBalance']))
       );
       allow delete: if isAuthenticated() &&
                      exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
@@ -191,20 +264,18 @@ service cloud.firestore {
     }
 
     // ---------- Bookings ----------
-    // Read: owner, venue manager, super admin, OR active bookings for any signed-in
-    // user (mobile slot/availability queries on venueId + courtId + status).
+    // Full booking documents contain customer/payment data and are never used as
+    // a public availability feed. Use courtAvailability for sanitized slot data.
     match /bookings/{bookingId} {
       allow read: if isAuthenticated() && (
         isSuperAdmin() ||
         resource.data.userId == request.auth.uid ||
-        (resource.data.venueId != null && ownsVenue(resource.data.venueId)) ||
-        isActiveBooking()
+        (resource.data.venueId != null && ownsVenue(resource.data.venueId))
       );
       allow create: if isAuthenticated() && (
         (createdByCaller() &&
          hasValidPlayerBookingWindow() &&
-         request.resource.data.status == 'Pending' &&
-         request.resource.data.paymentStatus == 'Pending') ||
+         isSafePendingBookingCreate()) ||
         isSuperAdmin() ||
         (isVenueManager() &&
          request.resource.data.venueId != null &&
@@ -213,36 +284,56 @@ service cloud.firestore {
       allow update: if isAuthenticated() && (
         isSuperAdmin() ||
         (resource != null && resource.data.venueId != null && ownsVenue(resource.data.venueId)) ||
-        (resource != null &&
-         resource.data.userId == request.auth.uid &&
-         !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-           'userId', 'user', 'venueId', 'venue', 'courtId', 'court',
-           'sport', 'startTime', 'endTime', 'duration', 'date', 'time',
-           'amount', 'isFirstTimeBooking', 'createdAt'
-         ]))
+        (resource != null && playerCancelsOnly())
       );
       allow delete: if isAuthenticated() && (
         isSuperAdmin() ||
-        (resource != null && resource.data.venueId != null && ownsVenue(resource.data.venueId)) ||
-        (resource != null && resource.data.userId == request.auth.uid)
+        (resource != null && resource.data.venueId != null && ownsVenue(resource.data.venueId))
       );
     }
 
+    // ---------- Sanitized court availability ----------
+    // Server-maintained documents must contain slot/court state only, never user,
+    // contact, payment, order, or membership fields. Admin SDK writes bypass rules.
+    match /courtAvailability/{slotId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if false;
+    }
+
     // ---------- Serialized slot locks ----------
-    // Used with transactional booking creation (same start/end per court).
-    // The lock must be owned by the caller; only the owner (or admin) may delete/update.
+    // Locks contain slot metadata only; the linked booking establishes ownership.
     match /booking_slot_locks/{lockId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() &&
-                    createdByCaller() &&
-                    hasValidPlayerBookingWindow();
+                    hasValidPlayerBookingWindow() &&
+                    request.resource.data.keys().hasOnly([
+                      'venueId', 'courtId', 'startTime', 'endTime',
+                      'bookingId', 'createdAt'
+                    ]) &&
+                    request.resource.data.venueId is string &&
+                    request.resource.data.courtId is string &&
+                    request.resource.data.bookingId is string &&
+                    getAfter(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.userId
+                      == request.auth.uid &&
+                    getAfter(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.slotLockId
+                      == lockId &&
+                    getAfter(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.venueId
+                      == request.resource.data.venueId &&
+                    getAfter(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.courtId
+                      == request.resource.data.courtId &&
+                    getAfter(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.startTime
+                      == request.resource.data.startTime &&
+                    getAfter(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.endTime
+                      == request.resource.data.endTime;
       allow update: if isAuthenticated() && (
         isSuperAdmin() ||
-        (resource != null && resource.data.userId == request.auth.uid)
+        (resource != null && resource.data.venueId != null && ownsVenue(resource.data.venueId))
       );
       allow delete: if isAuthenticated() && (
         isSuperAdmin() ||
-        (resource != null && resource.data.userId == request.auth.uid)
+        (resource != null &&
+         get(/databases/$(database)/documents/bookings/$(resource.data.bookingId)).data.userId
+           == request.auth.uid)
       );
     }
 
@@ -253,17 +344,19 @@ service cloud.firestore {
         (resource.data.venueId != null && ownsVenue(resource.data.venueId)) ||
         resource.data.userId == request.auth.uid
       );
-      // Users create memberships for themselves; venue managers for managed venues.
+      // Players may only open an unpriced Pending membership request. Trusted
+      // server code resolves plan pricing and payment state.
       allow create: if isAuthenticated() && (
         isSuperAdmin() ||
-        createdByCaller() ||
+        (createdByCaller() &&
+         isSafePendingMembershipCreate()) ||
         (isVenueManager() &&
          request.resource.data.venueId != null &&
          ownsVenue(request.resource.data.venueId))
       );
       allow update: if isAuthenticated() && (
         isSuperAdmin() ||
-        (resource.data.userId == request.auth.uid) ||
+        playerCancelsOnly() ||
         (isVenueManager() &&
          resource.data.venueId != null &&
          ownsVenue(resource.data.venueId))
@@ -339,15 +432,27 @@ service cloud.firestore {
 
     // ---------- Posts (Social Feed) ----------
     match /posts/{postId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && (
+        resource.data.status == 'Approved' ||
+        resource.data.userId == request.auth.uid ||
+        isSuperAdmin()
+      );
       allow create: if isAuthenticated() &&
                      createdByCaller() &&
-                     (request.resource.data.status == 'Pending' || request.resource.data.status == 'Approved');
+                     request.resource.data.status == 'Pending';
       allow update: if isAuthenticated() && (
         isSuperAdmin() ||
-        resource.data.userId == request.auth.uid ||
+        (
+          resource.data.userId == request.auth.uid &&
+          request.resource.data.status == resource.data.status &&
+          request.resource.data.userId == resource.data.userId &&
+          request.resource.data.diff(resource.data)
+            .affectedKeys()
+            .hasOnly(['content', 'imageUrl', 'images', 'updatedAt'])
+        ) ||
         // Social interaction counter updates (counters only; content unchanged)
         (
+          resource.data.status == 'Approved' &&
           request.resource.data.diff(resource.data)
             .affectedKeys()
             .hasOnly(['likes', 'comments', 'updatedAt']) &&
@@ -362,7 +467,9 @@ service cloud.firestore {
 
       match /likes/{likeId} {
         allow read: if isAuthenticated();
-        allow create: if isAuthenticated() && createdByCaller();
+        allow create: if isAuthenticated() &&
+                      createdByCaller() &&
+                      get(/databases/$(database)/documents/posts/$(postId)).data.status == 'Approved';
         allow delete: if isAuthenticated() && (
           resource.data.userId == request.auth.uid ||
           isSuperAdmin()
@@ -371,7 +478,9 @@ service cloud.firestore {
 
       match /comments/{commentId} {
         allow read: if isAuthenticated();
-        allow create: if isAuthenticated() && createdByCaller();
+        allow create: if isAuthenticated() &&
+                      createdByCaller() &&
+                      get(/databases/$(database)/documents/posts/$(postId)).data.status == 'Approved';
         allow update: if isAuthenticated() && (
           resource.data.userId == request.auth.uid ||
           isSuperAdmin()
@@ -395,10 +504,25 @@ service cloud.firestore {
       allow create, update, delete: if isAuthenticated() && isSuperAdmin();
     }
 
-    // ---------- Products (Super Admin only) ----------
+    // ---------- Products ----------
     match /products/{productId} {
       allow read: if isAuthenticated();
-      allow create, update, delete: if isAuthenticated() && isSuperAdmin();
+      allow create: if isAuthenticated() && (
+        isSuperAdmin() ||
+        (request.resource.data.venueId != null &&
+         ownsVenue(request.resource.data.venueId))
+      );
+      allow update: if isAuthenticated() && (
+        isSuperAdmin() ||
+        (resource.data.venueId != null &&
+         ownsVenue(resource.data.venueId) &&
+         request.resource.data.venueId != null &&
+         ownsVenue(request.resource.data.venueId))
+      );
+      allow delete: if isAuthenticated() && (
+        isSuperAdmin() ||
+        (resource.data.venueId != null && ownsVenue(resource.data.venueId))
+      );
     }
 
     // ---------- Quick Matches ----------
@@ -489,11 +613,13 @@ service cloud.firestore {
         (resource != null && resource.data.venueId != null && ownsVenue(resource.data.venueId)) ||
         (resource != null && resource.data.userId == request.auth.uid)
       );
-      allow create: if isAuthenticated() && createdByCaller();
+      allow create: if isAuthenticated() &&
+                    createdByCaller() &&
+                    isSafePendingOrderCreate();
       allow update: if isAuthenticated() && (
         isSuperAdmin() ||
         (resource != null && resource.data.venueId != null && ownsVenue(resource.data.venueId)) ||
-        (resource != null && resource.data.userId == request.auth.uid)
+        (resource != null && playerCancelsOnly())
       );
       allow delete: if isSuperAdmin();
     }
@@ -537,13 +663,27 @@ service cloud.firestore {
 
     // ---------- Reports (moderation) ----------
     match /reports/{reportId} {
-      allow read: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        (resource.data.venueId != null && ownsVenue(resource.data.venueId))
+      );
       // Any authenticated user can create a report about themselves/other content,
       // but the report must carry their uid as reporterId/userId to prevent impersonation.
       allow create: if isAuthenticated() &&
-                     (request.resource.data.userId == request.auth.uid ||
-                      request.resource.data.reporterId == request.auth.uid);
-      allow update, delete: if isAuthenticated() && isSuperAdmin();
+                     request.resource.data.status == 'Pending' &&
+                     (('userId' in request.resource.data) ||
+                      ('reporterId' in request.resource.data)) &&
+                     (!('userId' in request.resource.data) ||
+                      request.resource.data.userId == request.auth.uid) &&
+                     (!('reporterId' in request.resource.data) ||
+                      request.resource.data.reporterId == request.auth.uid) &&
+                     !request.resource.data.keys().hasAny([
+                       'resolvedBy', 'resolvedAt', 'moderatedBy', 'moderatedAt'
+                     ]);
+      allow update, delete: if isAuthenticated() && (
+        isSuperAdmin() ||
+        (resource.data.venueId != null && ownsVenue(resource.data.venueId))
+      );
     }
 
     // ---------- Marketing Campaigns ----------
@@ -614,12 +754,23 @@ service cloud.firestore {
          resource.data.createdBy != null &&
          resource.data.createdBy == request.auth.uid)
       );
-      allow create: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
+      allow create: if isAuthenticated() && (
+        isSuperAdmin() ||
+        (isVenueManager() &&
+         request.resource.data.createdBy == request.auth.uid &&
+         request.resource.data.targetAudience == 'Venue Users' &&
+         request.resource.data.targetVenueId != null &&
+         ownsVenue(request.resource.data.targetVenueId))
+      );
       allow update: if isAuthenticated() && (
         isSuperAdmin() ||
         (isVenueManager() &&
          resource.data.createdBy != null &&
-         resource.data.createdBy == request.auth.uid) ||
+         resource.data.createdBy == request.auth.uid &&
+         request.resource.data.createdBy == request.auth.uid &&
+         request.resource.data.targetAudience == 'Venue Users' &&
+         request.resource.data.targetVenueId != null &&
+         ownsVenue(request.resource.data.targetVenueId)) ||
         (resource.data.userId == request.auth.uid &&
          request.resource.data.diff(resource.data).affectedKeys()
            .hasOnly(['isRead', 'read', 'readAt', 'updatedAt']))
@@ -638,7 +789,7 @@ service cloud.firestore {
         userId == request.auth.uid ||
         isSuperAdmin()
       );
-      allow create: if isAuthenticated() && (isSuperAdmin() || isVenueManager());
+      allow create: if isAuthenticated() && isSuperAdmin();
       allow update: if isAuthenticated() && (
         isSuperAdmin() ||
         (userId == request.auth.uid &&
@@ -667,12 +818,23 @@ service cloud.firestore {
     }
 
     // ---------- FCM Tokens ----------
-    // Venue managers can read tokens (needed to send scoped notifications from
-    // the panel) but may only modify their own token records.
+    // Token values are credentials: only the owner and super admin may read them.
     match /fcmTokens/{tokenId} {
-      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isSuperAdmin() || isVenueManager());
-      allow create: if isAuthenticated() && createdByCaller();
-      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isSuperAdmin());
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isSuperAdmin());
+      allow create: if isAuthenticated() &&
+                    createdByCaller() &&
+                    request.resource.data.keys().hasOnly([
+                      'token', 'userId', 'isActive', 'deviceType', 'platform',
+                      'lastUsedAt', 'createdAt', 'updatedAt'
+                    ]);
+      allow update: if isAuthenticated() && (
+        isSuperAdmin() ||
+        (resource.data.userId == request.auth.uid &&
+         request.resource.data.userId == request.auth.uid &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+           'token', 'isActive', 'deviceType', 'platform', 'lastUsedAt', 'updatedAt'
+         ]))
+      );
       allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isSuperAdmin());
     }
 
@@ -697,9 +859,8 @@ service cloud.firestore {
     }
 
     // ---------- Payments ----------
-    // Clients record payments for themselves (userId must match the caller).
-    // The Razorpay webhook (Cloud Function) writes server-verified records via Admin SDK,
-    // which bypasses these rules.
+    // Online/client payment mutations are server-only. A venue operator may
+    // preserve the existing offline settlement flow for a managed venue.
     match /payments/{paymentId} {
       allow read: if isAuthenticated() && (
         isSuperAdmin() ||
@@ -710,13 +871,22 @@ service cloud.firestore {
         isSuperAdmin() ||
         (isVenueManager() &&
          request.resource.data.venueId != null &&
-         ownsVenue(request.resource.data.venueId)) ||
-        createdByCaller()
+         ownsVenue(request.resource.data.venueId) &&
+         request.resource.data.type == 'Offline' &&
+         request.resource.data.direction == 'VenueToPlatform' &&
+         request.resource.data.sourceType == 'Settlement' &&
+         exists(/databases/$(database)/documents/settlements/$(request.resource.data.sourceId)) &&
+         get(/databases/$(database)/documents/settlements/$(request.resource.data.sourceId)).data.venueId
+           == request.resource.data.venueId &&
+         get(/databases/$(database)/documents/settlements/$(request.resource.data.sourceId)).data.amount
+           == request.resource.data.amount &&
+         request.resource.data.confirmedBy == request.auth.uid &&
+         request.resource.data.status == 'Completed' &&
+         !request.resource.data.keys().hasAny([
+           'paymentGateway', 'razorpayPaymentId', 'razorpayOrderId'
+         ]))
       );
-      allow update: if isAuthenticated() && (
-        isSuperAdmin() ||
-        (resource != null && resource.data.venueId != null && ownsVenue(resource.data.venueId))
-      );
+      allow update: if isAuthenticated() && isSuperAdmin();
       allow delete: if isAuthenticated() && isSuperAdmin();
     }
 
@@ -726,14 +896,16 @@ service cloud.firestore {
         isSuperAdmin() ||
         (resource != null && resource.data.venueId != null && ownsVenue(resource.data.venueId))
       );
-      allow create: if isAuthenticated() && (
-        isSuperAdmin() ||
-        (isVenueManager() &&
-         request.resource.data.venueId != null &&
-         ownsVenue(request.resource.data.venueId))
-      );
+      allow create: if false;
       allow update: if isAuthenticated() && isSuperAdmin();
       allow delete: if isAuthenticated() && isSuperAdmin();
+    }
+
+    // ---------- Payment reconciliation findings ----------
+    // Written only by the explicitly invoked Admin SDK reconciliation script.
+    match /reconciliationIssues/{issueId} {
+      allow read: if isAuthenticated() && isSuperAdmin();
+      allow create, update, delete: if false;
     }
 
     // ---------- Wallet Transactions ----------
@@ -742,9 +914,17 @@ service cloud.firestore {
         resource.data.userId == request.auth.uid ||
         isSuperAdmin()
       );
-      allow create: if isAuthenticated() && createdByCaller();
-      allow update: if isAuthenticated() && isSuperAdmin();
-      allow delete: if isAuthenticated() && isSuperAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // ---------- Wallet Top-ups ----------
+    // Created and finalized by trusted Cloud Functions (Admin SDK bypasses rules).
+    match /walletTopups/{topUpId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        isSuperAdmin()
+      );
+      allow create, update, delete: if false;
     }
 
     // ---------- Activity / Audit Log ----------

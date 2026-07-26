@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/team.dart';
 import '../services/firestore_service.dart';
+import '../services/team_membership_service.dart';
 
 final _firestore = FirebaseFirestore.instance;
 
@@ -103,6 +104,58 @@ class TeamProvider with ChangeNotifier {
     }
   }
 
+  Future<void> updateTeamDetails({
+    required String teamId,
+    required String name,
+    required String sport,
+  }) async {
+    final normalizedName = name.trim();
+    if (normalizedName.isEmpty) throw Exception('Squad name is required.');
+    try {
+      await _firestore.collection('teams').doc(teamId).update({
+        'name': normalizedName,
+        'sport': sport,
+        'logo': _getSportLogo(sport),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      _error = 'Failed to update squad: $e';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> scheduleTraining({
+    required String teamId,
+    required DateTime trainingAt,
+    required String venue,
+    String? notes,
+  }) async {
+    if (!trainingAt.isAfter(DateTime.now())) {
+      throw Exception('Choose a future training time.');
+    }
+    try {
+      await _firestore.collection('teams').doc(teamId).update({
+        'trainingAt': Timestamp.fromDate(trainingAt),
+        'trainingVenue': venue.trim(),
+        'trainingNotes': notes?.trim(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      _error = 'Failed to schedule training: $e';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> joinTeam(String teamId) async {
+    await TeamMembershipService.update(teamId: teamId, action: 'join');
+  }
+
+  Future<void> leaveTeam(String teamId) async {
+    await TeamMembershipService.update(teamId: teamId, action: 'leave');
+  }
+
   Future<void> refreshTeams() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
@@ -118,8 +171,16 @@ class TeamProvider with ChangeNotifier {
         return '🏏';
       case 'Badminton':
         return '🏸';
+      case 'Tennis':
+        return '🎾';
+      case 'Basketball':
+        return '🏀';
+      case 'Volleyball':
+        return '🏐';
+      case 'Table Tennis':
+        return '🏓';
       default:
-        return '⚽';
+        return '🏅';
     }
   }
 

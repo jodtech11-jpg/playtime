@@ -6,6 +6,7 @@ import { getRelativeTime } from '../../utils/dateUtils';
 import { serverTimestamp } from 'firebase/firestore';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { getFirebaseErrorMessage } from '../../utils/errorUtils';
+import { requestMarketplaceRefund } from '../../services/trustedAdminApi';
 
 interface OrderDetailsModalProps {
   isOpen: boolean;
@@ -165,14 +166,19 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
             throw new Error('Refund amount cannot exceed order total');
           }
 
-          await ordersCollection.update(order.id, {
-            paymentStatus: refundAmt === order.total ? 'Refunded' : 'Partially Refunded',
-            status: 'Refunded',
-            refundAmount: refundAmt,
-            refundReason: refundReason.trim() || undefined,
-            refundedAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
+          if (refundAmt <= 0) {
+            throw new Error('Refund amount must be greater than zero');
+          }
+          if (!refundReason.trim()) {
+            throw new Error('A refund reason is required for the audit log');
+          }
+
+          await requestMarketplaceRefund(
+            order.paymentTransactionId!,
+            refundAmt,
+            refundReason.trim()
+          );
+          setPaymentStatus('Refund Pending');
 
           if (onUpdate) onUpdate();
           setRefundAmount('');
@@ -194,7 +200,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   };
 
   const statusOptions: Order['status'][] = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled', 'Refunded'];
-  const paymentStatusOptions: Order['paymentStatus'][] = ['Pending', 'Paid', 'Failed', 'Refunded', 'Partially Refunded'];
+  const paymentStatusOptions: Order['paymentStatus'][] = ['Pending', 'Paid', 'Failed'];
 
   return (
     <>
@@ -442,7 +448,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
           </button>
 
           {/* Refund Section */}
-          {order.paymentStatus === 'Paid' && order.status !== 'Refunded' && (
+          {paymentStatus === 'Paid' && order.status !== 'Refunded' && order.paymentTransactionId && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-5 space-y-4">
               <h4 className="text-lg font-black text-red-900">Process Refund</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -475,11 +481,36 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
               </div>
               <button
                 onClick={handleProcessRefund}
-                disabled={loading || !refundAmount}
+                disabled={loading || !refundAmount || !refundReason.trim()}
                 className="px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-black hover:bg-red-700 transition-all disabled:opacity-50"
               >
                 Process Refund
               </button>
+            </div>
+          )}
+          {paymentStatus === 'Paid' && !order.paymentTransactionId && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
+              Refund unavailable: this order has no trusted payment transaction reference.
+            </div>
+          )}
+
+          {(paymentStatus === 'Refund Pending' ||
+            order.refundStatus === 'Pending' ||
+            order.refundStatus === 'Processing') && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
+              <h4 className="font-black text-amber-900">Refund awaiting gateway confirmation</h4>
+              <p className="text-sm text-amber-800 mt-1">
+                The request was accepted. This order remains pending until the payment webhook confirms
+                the refund; do not manually mark it refunded.
+              </p>
+            </div>
+          )}
+          {order.refundStatus === 'Failed' && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-5">
+              <h4 className="font-black text-red-900">Refund failed</h4>
+              <p className="text-sm text-red-800 mt-1">
+                {order.refundFailureReason || 'The payment gateway rejected the refund request.'}
+              </p>
             </div>
           )}
 

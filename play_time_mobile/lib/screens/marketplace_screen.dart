@@ -5,6 +5,7 @@ import '../theme/app_colors.dart';
 import '../providers/cart_provider.dart';
 import '../providers/product_provider.dart';
 import '../providers/engagement_provider.dart';
+import '../providers/connectivity_provider.dart';
 import '../models/product.dart';
 import '../models/engagement.dart';
 import '../widgets/loading_widget.dart';
@@ -19,9 +20,10 @@ class MarketplaceScreen extends StatefulWidget {
 }
 
 class _MarketplaceScreenState extends State<MarketplaceScreen> {
-  int _selectedCategory = 0;
+  String? _selectedCategoryId;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  bool _showAllProducts = false;
 
   @override
   void initState() {
@@ -39,7 +41,10 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
     super.dispose();
   }
 
-  List<Product> _getFilteredProducts(List<Product> products) {
+  List<Product> _getFilteredProducts(
+    List<Product> products,
+    List<Map<String, String>> categories,
+  ) {
     var filtered = products;
 
     // Filter by search query
@@ -51,25 +56,17 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
     }
 
     // Filter by category
-    if (_selectedCategory > 0) {
-      final categories = [
-        'All',
-        'Cricket',
-        'Football',
-        'Badminton',
-        'Tennis',
-        'Apparel',
-      ];
-      final selectedCategory = categories[_selectedCategory];
+    if (_selectedCategoryId != null) {
+      final selected = categories.firstWhere(
+        (category) => category['id'] == _selectedCategoryId,
+        orElse: () => const {'id': '', 'name': ''},
+      );
+      final selectedCategoryId = selected['id']!.toLowerCase();
+      final selectedCategoryName = selected['name']!.toLowerCase();
       filtered = filtered.where((product) {
         final category = product.category?.toLowerCase() ?? '';
-        return category == selectedCategory.toLowerCase() ||
-            product.name.toLowerCase().contains(
-              selectedCategory.toLowerCase(),
-            ) ||
-            product.brand.toLowerCase().contains(
-              selectedCategory.toLowerCase(),
-            );
+        return category == selectedCategoryId ||
+            category == selectedCategoryName;
       }).toList();
     }
 
@@ -276,8 +273,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -302,27 +299,38 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
               ),
             ],
           ),
-          ElevatedButton(
-            onPressed: () {
-              context.push('/membership');
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white.withValues(alpha: 0.1),
-              foregroundColor: AppColors.primary,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(
-                  color: AppColors.primary.withValues(alpha: 0.2),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {
+                context.push('/membership');
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white.withValues(alpha: 0.1),
+                foregroundColor: AppColors.primary,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(
+                    color: AppColors.primary.withValues(alpha: 0.2),
+                  ),
                 ),
               ),
-            ),
-            child: const Text(
-              'JOIN NOW',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.25,
+              child: Semantics(
+                button: true,
+                label: 'Join Play Time Pro',
+                child: Text(
+                  'JOIN NOW',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.25,
+                  ),
+                ),
               ),
             ),
           ),
@@ -492,65 +500,69 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                   ],
                 ),
               ),
-              // Categories
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 12,
-                  horizontal: 16,
-                ),
-                height: 60,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: 6,
-                  itemBuilder: (context, index) {
-                    final categories = [
-                      'All',
-                      'Cricket',
-                      'Football',
-                      'Badminton',
-                      'Tennis',
-                      'Apparel',
-                    ];
-                    final isSelected = _selectedCategory == index;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 12),
-                      child: GestureDetector(
-                        onTap: () => setState(() => _selectedCategory = index),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? AppColors.primary
-                                : AppColors.surfaceDark,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: isSelected
-                                  ? AppColors.primary
-                                  : Colors.white.withValues(alpha: 0.05),
+              Consumer<ProductProvider>(
+                builder: (context, products, _) {
+                  final categories = [
+                    const {'id': '', 'name': 'All'},
+                    ...products.categories,
+                  ];
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 12,
+                      horizontal: 16,
+                    ),
+                    height: 60,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: categories.length,
+                      itemBuilder: (context, index) {
+                        final category = categories[index];
+                        final id = category['id']!;
+                        final isSelected = (_selectedCategoryId ?? '') == id;
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 12),
+                          child: GestureDetector(
+                            onTap: () => setState(
+                              () =>
+                                  _selectedCategoryId = id.isEmpty ? null : id,
+                            ),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? AppColors.primary
+                                    : AppColors.surfaceDark,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? AppColors.primary
+                                      : Colors.white.withValues(alpha: 0.05),
+                                ),
+                              ),
+                              child: Text(
+                                category['name']!.toUpperCase(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                softWrap: false,
+                                style: TextStyle(
+                                  color: isSelected
+                                      ? AppColors.backgroundDark
+                                      : Colors.grey[400],
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.25,
+                                ),
+                              ),
                             ),
                           ),
-                          child: Text(
-                            categories[index].toUpperCase(),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            softWrap: false,
-                            style: TextStyle(
-                              color: isSelected
-                                  ? AppColors.backgroundDark
-                                  : Colors.grey[400],
-                              fontSize: 12,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.25,
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
+                        );
+                      },
+                    ),
+                  );
+                },
               ),
               // Content — lazy grid via SliverGrid when products exist
               Expanded(
@@ -558,37 +570,33 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                   builder: (context, productProvider, _) {
                     final c = Provider.of<CartProvider>(context, listen: false);
                     const sectionPad = EdgeInsets.symmetric(horizontal: 16);
-                    Widget popularRow() => Padding(
+                    Widget popularRow({bool canExpand = false}) => Padding(
                       padding: sectionPad,
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            'Popular Gear',
-                            style: TextStyle(
+                          Text(
+                            _showAllProducts ? 'All Gear' : 'Popular Gear',
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 20,
                               fontWeight: FontWeight.w900,
                             ),
                           ),
-                          TextButton(
-                            onPressed: () {
-                              setState(() {
-                                _selectedCategory = 0;
-                                _searchQuery = '';
-                                _searchController.clear();
-                              });
-                            },
-                            child: const Text(
-                              'SEE ALL',
-                              style: TextStyle(
-                                color: AppColors.primary,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 0.25,
+                          if (canExpand)
+                            TextButton(
+                              onPressed: () =>
+                                  setState(() => _showAllProducts = true),
+                              child: const Text(
+                                'SEE ALL',
+                                style: TextStyle(
+                                  color: AppColors.primary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.25,
+                                ),
                               ),
                             ),
-                          ),
                         ],
                       ),
                     );
@@ -623,7 +631,13 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
 
                     final filteredProducts = _getFilteredProducts(
                       productProvider.products,
+                      productProvider.categories,
                     );
+                    final isDefaultBrowse =
+                        _selectedCategoryId == null && _searchQuery.isEmpty;
+                    final visibleProducts = isDefaultBrowse && !_showAllProducts
+                        ? filteredProducts.take(4).toList()
+                        : filteredProducts;
                     if (filteredProducts.isEmpty) {
                       return ListView(
                         padding: const EdgeInsets.all(16),
@@ -634,15 +648,18 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                           const SizedBox(height: 16),
                           EmptyStateWidget(
                             icon:
-                                _searchQuery.isNotEmpty || _selectedCategory > 0
+                                _searchQuery.isNotEmpty ||
+                                    _selectedCategoryId != null
                                 ? Icons.search_off
                                 : Icons.shopping_bag_outlined,
                             title:
-                                _searchQuery.isNotEmpty || _selectedCategory > 0
+                                _searchQuery.isNotEmpty ||
+                                    _selectedCategoryId != null
                                 ? 'No products found'
                                 : 'No products available',
                             message:
-                                _searchQuery.isNotEmpty || _selectedCategory > 0
+                                _searchQuery.isNotEmpty ||
+                                    _selectedCategoryId != null
                                 ? 'Try adjusting your search or filters'
                                 : 'Check back later for new items',
                           ),
@@ -662,7 +679,15 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                           ),
                         ),
                         const SliverToBoxAdapter(child: SizedBox(height: 32)),
-                        SliverToBoxAdapter(child: popularRow()),
+                        SliverToBoxAdapter(
+                          child: popularRow(
+                            canExpand:
+                                isDefaultBrowse &&
+                                !_showAllProducts &&
+                                filteredProducts.length >
+                                    visibleProducts.length,
+                          ),
+                        ),
                         const SliverToBoxAdapter(child: SizedBox(height: 16)),
                         SliverPadding(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -678,9 +703,9 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                               context,
                               index,
                             ) {
-                              final product = filteredProducts[index];
+                              final product = visibleProducts[index];
                               return _buildProductCard(product, c);
-                            }, childCount: filteredProducts.length),
+                            }, childCount: visibleProducts.length),
                           ),
                         ),
                         const SliverToBoxAdapter(child: SizedBox(height: 24)),
@@ -759,6 +784,18 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                         flex: 2,
                         child: ElevatedButton(
                           onPressed: () {
+                            if (!context
+                                .read<ConnectivityProvider>()
+                                .isOnline) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Checkout requires an internet connection.',
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
                             context.push('/checkout');
                           },
                           style: ElevatedButton.styleFrom(
@@ -769,20 +806,24 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                               borderRadius: BorderRadius.circular(16),
                             ),
                           ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                'CHECKOUT',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 0.25,
+                          child: Semantics(
+                            button: true,
+                            label: 'Proceed to checkout',
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  'CHECKOUT',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 0.25,
+                                  ),
                                 ),
-                              ),
-                              SizedBox(width: 8),
-                              Icon(Icons.arrow_forward, size: 20),
-                            ],
+                                SizedBox(width: 8),
+                                Icon(Icons.arrow_forward, size: 20),
+                              ],
+                            ),
                           ),
                         ),
                       ),

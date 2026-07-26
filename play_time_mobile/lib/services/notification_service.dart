@@ -9,6 +9,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import '../firebase_options.dart';
+import '../utils/app_link_mapper.dart';
 
 class NotificationService {
   static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
@@ -19,6 +20,7 @@ class NotificationService {
   static bool _isSavingToken = false;
   static bool _initialized = false;
   static String? _venueTopic;
+  static final Set<String> _preferenceTopics = {};
   static Map<String, dynamic>? _pendingNavigation;
   static DateTime? _navigationReadyAt;
   static StreamSubscription<String>? _tokenRefreshSubscription;
@@ -99,6 +101,27 @@ class NotificationService {
               if (token != null) {
                 await _saveTokenToFirestore(token);
               }
+              final profile = await _firestore
+                  .collection('users')
+                  .doc(user.uid)
+                  .get();
+              final preferences =
+                  profile.data()?['notificationPreferences'] as Map?;
+              final legacy = profile.data()?['notificationSettings'] as Map?;
+              await syncPreferenceTopics({
+                'booking':
+                    preferences?['bookingUpdates'] ??
+                    legacy?['booking'] ??
+                    true,
+                'match':
+                    preferences?['matchUpdates'] ?? legacy?['match'] ?? true,
+                'social':
+                    preferences?['socialUpdates'] ?? legacy?['social'] ?? true,
+                'promotional':
+                    preferences?['promotions'] ??
+                    legacy?['promotional'] ??
+                    false,
+              });
             }
           } catch (e) {
             debugPrint('Error saving FCM token in auth listener: $e');
@@ -368,6 +391,14 @@ class NotificationService {
       _router!.go(actionUrl);
       return;
     }
+    final actionUri = Uri.tryParse(actionUrl);
+    final mappedAction = actionUri == null
+        ? null
+        : AppLinkMapper.routeFor(actionUri);
+    if (mappedAction != null) {
+      _router!.go(mappedAction);
+      return;
+    }
 
     final type = (data['type']?.toString() ?? 'general').toLowerCase();
     switch (type) {
@@ -393,7 +424,16 @@ class NotificationService {
         break;
       case 'order':
       case 'order_confirmed':
-        _router!.go('/marketplace');
+      case 'order_shipped':
+      case 'order_delivered':
+      case 'checkout_success':
+        final orderId =
+            data['orderId']?.toString() ?? data['id']?.toString() ?? '';
+        _router!.go(
+          orderId.isEmpty
+              ? '/orders'
+              : '/order/${Uri.encodeComponent(orderId)}',
+        );
         break;
       case 'membership':
         _router!.go('/membership');
@@ -465,6 +505,27 @@ class NotificationService {
     _venueTopic = next;
     if (previous != null) await unsubscribeFromTopic(previous);
     if (next != null) await subscribeToTopic(next);
+  }
+
+  static Future<void> syncPreferenceTopics(
+    Map<String, dynamic> preferences,
+  ) async {
+    const topicsByPreference = {
+      'booking': 'booking_updates',
+      'match': 'match_updates',
+      'social': 'social_updates',
+      'promotional': 'promotions',
+    };
+    for (final entry in topicsByPreference.entries) {
+      final enabled = preferences[entry.key] == true;
+      if (enabled && !_preferenceTopics.contains(entry.value)) {
+        await subscribeToTopic(entry.value);
+        _preferenceTopics.add(entry.value);
+      } else if (!enabled && _preferenceTopics.contains(entry.value)) {
+        await unsubscribeFromTopic(entry.value);
+        _preferenceTopics.remove(entry.value);
+      }
+    }
   }
 
   /// Delete FCM token when user logs out

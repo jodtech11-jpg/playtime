@@ -1,7 +1,7 @@
 import { fcmTokensCollection, usersCollection, bookingsCollection, appSettingsCollection, notificationsCollection, auth } from './firebase';
 import { FCMToken, Notification, AppSettings } from '../types';
 import { serverTimestamp } from 'firebase/firestore';
-import { sendWhatsAppNotification, getTargetPhoneNumbers, WhatsAppConfig } from './whatsappService';
+import { sendTrustedWhatsAppMessage } from './trustedAdminApi';
 
 /**
  * Send push notification via the authenticated Cloud Function endpoint.
@@ -201,6 +201,18 @@ const getTargetUserIds = async (
   }
 };
 
+const getTargetPhoneNumbers = async (userIds: string[]): Promise<string[]> => {
+  const users = await Promise.all(userIds.map((userId) => usersCollection.get(userId)));
+  return Array.from(new Set(users
+    .map((user: any) => String(user?.phone || '').replace(/[^\d+]/g, ''))
+    .filter(Boolean)
+    .map((phone) => {
+      if (phone.startsWith('+')) return phone;
+      if (phone.length === 10) return `+91${phone}`;
+      return `+${phone.replace(/^0+/, '')}`;
+    })));
+};
+
 /**
  * Send notification to target audience via configured channels (push / WhatsApp).
  */
@@ -251,21 +263,17 @@ export const sendNotificationToAudience = async (
         if (whatsappConfig?.enabled && whatsappConfig?.status === 'Connected') {
           if (targetUserIds.length > 0) {
             const phoneNumbers = await getTargetPhoneNumbers(targetUserIds);
-
-            if (phoneNumbers.length > 0) {
-              const config: WhatsAppConfig = {
-                apiKey: whatsappConfig.apiKey || '',
-                phoneNumberId: whatsappConfig.phoneNumberId || '',
-                businessAccountId: whatsappConfig.businessAccountId || '',
-                provider: 'whatsapp_business',
-              };
-
-              const whatsappMessage = `${notification.title}\n\n${notification.body}`;
-              const result = await sendWhatsAppNotification(whatsappMessage, phoneNumbers, config);
-
-              whatsappResult = { success: result.success, failed: result.failed };
-            }
+            const message = `${notification.title}\n\n${notification.body}`;
+            const results = await Promise.allSettled(
+              phoneNumbers.map((phone) => sendTrustedWhatsAppMessage(phone, message))
+            );
+            whatsappResult = {
+              success: results.filter((result) => result.status === 'fulfilled').length,
+              failed: results.filter((result) => result.status === 'rejected').length,
+            };
           }
+        } else if (channels.includes('whatsapp')) {
+          whatsappResult = { success: 0, failed: targetUserIds.length };
         }
       } catch (error: any) {
         console.error('Error sending WhatsApp notification:', error);

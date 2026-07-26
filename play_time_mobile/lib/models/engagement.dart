@@ -147,8 +147,7 @@ class MarketingCampaignItem {
     final now = DateTime.now();
     if (startDate != null && now.isBefore(startDate!)) return false;
     // Inclusive of the end calendar day
-    if (endDate != null &&
-        now.isAfter(endDate!.add(const Duration(days: 1)))) {
+    if (endDate != null && now.isAfter(endDate!.add(const Duration(days: 1)))) {
       return false;
     }
     return true;

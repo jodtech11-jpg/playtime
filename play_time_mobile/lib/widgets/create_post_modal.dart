@@ -5,8 +5,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../theme/app_colors.dart';
 import '../services/firestore_service.dart';
-import '../providers/feed_provider.dart';
-import 'package:provider/provider.dart';
 
 class CreatePostModal extends StatefulWidget {
   final User user;
@@ -58,7 +56,7 @@ class _CreatePostModalState extends State<CreatePostModal> {
   Future<String?> _uploadImage(XFile image) async {
     try {
       final String fileName =
-          'posts/${DateTime.now().millisecondsSinceEpoch}_${widget.user.uid}.jpg';
+          'posts/${widget.user.uid}/${DateTime.now().millisecondsSinceEpoch}.jpg';
       final Reference ref = FirebaseStorage.instance.ref().child(fileName);
 
       // Use putData for cross-platform compatibility (works on Web and Mobile)
@@ -117,17 +115,16 @@ class _CreatePostModalState extends State<CreatePostModal> {
       );
 
       if (mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           const SnackBar(
-            content: Text('Post published successfully!'),
-            backgroundColor: AppColors.success,
+            content: Text(
+              'Post submitted for review. It will appear after admin approval.',
+            ),
+            backgroundColor: AppColors.info,
           ),
         );
-
-        // Refresh feed
-        final feedProvider = Provider.of<FeedProvider>(context, listen: false);
-        await feedProvider.refreshFeed();
       }
     } catch (e) {
       if (mounted) {
@@ -353,7 +350,7 @@ class _CreatePostModalState extends State<CreatePostModal> {
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Text(
-                      'Your post will be publicly visible.',
+                      'An admin will review your post before it appears in the feed.',
                       style: TextStyle(
                         color: AppColors.primary,
                         fontSize: 11,
@@ -391,7 +388,7 @@ class _CreatePostModalState extends State<CreatePostModal> {
                         ),
                       )
                     : const Text(
-                        'POST',
+                        'SUBMIT FOR REVIEW',
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w900,

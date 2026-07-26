@@ -140,6 +140,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
         status: calculatedStatus,
         sku: sku.trim() || undefined,
         venueId: venueId || undefined,
+        venueName: selectedVenue?.name || undefined,
         tags: tags.trim() ? tags.split(',').map(t => t.trim()).filter(t => t) : undefined,
         isFeatured: isFeatured || undefined
       };

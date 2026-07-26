@@ -2,6 +2,7 @@ class MembershipPlan {
   final String id;
   final String name;
   final String? venueId;
+
   /// `platform` = Play Time Pro (player); `venue` = vendor subscription.
   final String? scope;
   final String

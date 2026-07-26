@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test:rules": "firebase emulators:exec --project playtime-rules-test --only firestore,storage \"node --test test/rules.test.cjs\"",
     "preview": "vite preview",
     "create-admin": "node scripts/create-admin-user.js",
     "update-user-role": "node scripts/update-user-role.js",
@@ -33,6 +34,7 @@
   "devDependencies": {
     "@tailwindcss/container-queries": "^0.1.1",
     "@tailwindcss/forms": "^0.5.11",
+    "@firebase/rules-unit-testing": "^3.0.4",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.23",

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_colors.dart';
+import '../services/firestore_service.dart';
 
 class HelpSupportScreen extends StatefulWidget {
   const HelpSupportScreen({super.key});
@@ -11,6 +12,32 @@ class HelpSupportScreen extends StatefulWidget {
 }
 
 class _HelpSupportScreenState extends State<HelpSupportScreen> {
+  String? _supportEmail;
+  String? _supportPhone;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSupportContacts();
+  }
+
+  Future<void> _loadSupportContacts() async {
+    final settings = await FirestoreService.getPublicSettings();
+    final support = settings['support'] is Map
+        ? Map<String, dynamic>.from(settings['support'] as Map)
+        : <String, dynamic>{};
+    String? value(String key) {
+      final result = (support[key] ?? settings[key])?.toString().trim();
+      return result == null || result.isEmpty ? null : result;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _supportEmail = value('email') ?? value('supportEmail');
+      _supportPhone = value('phone') ?? value('supportPhone');
+    });
+  }
+
   final List<Map<String, dynamic>> _faqs = [
     {
       'question': 'How do I book a venue?',
@@ -116,7 +143,9 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
                     children: [
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: () => _launchEmail(),
+                          onPressed: _supportEmail == null
+                              ? null
+                              : () => _launchEmail(),
                           icon: const Icon(Icons.email, size: 20),
                           label: const Text('Email'),
                           style: ElevatedButton.styleFrom(
@@ -132,7 +161,9 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: () => _launchPhone(),
+                          onPressed: _supportPhone == null
+                              ? null
+                              : () => _launchPhone(),
                           icon: const Icon(Icons.phone, size: 20),
                           label: const Text('Call'),
                           style: ElevatedButton.styleFrom(
@@ -264,7 +295,8 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
   }
 
   Future<void> _launchEmail() async {
-    final email = 'support@playtime.com';
+    final email = _supportEmail;
+    if (email == null) return;
     final uri = Uri.parse('mailto:$email?subject=Support Request');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
@@ -281,7 +313,8 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
   }
 
   Future<void> _launchPhone() async {
-    final phone = '+919876543210';
+    final phone = _supportPhone;
+    if (phone == null) return;
     final uri = Uri.parse('tel:$phone');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);

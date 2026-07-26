@@ -3,7 +3,9 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../theme/app_colors.dart';
+import '../models/product.dart';
 import '../providers/cart_provider.dart';
+import '../providers/connectivity_provider.dart';
 import '../services/firestore_service.dart';
 import '../services/payment_service.dart';
 import '../utils/error_utils.dart';
@@ -58,10 +60,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     double total,
   })
   _calculateOrderTotals(CartProvider cartProvider) {
-    final subtotal = cartProvider.total;
+    final subtotal = cartProvider.originalTotal;
     final discount = cartProvider.discount;
     const shippingCost = 0.0;
-    final taxableAmount = subtotal - discount + shippingCost;
+    final taxableAmount = cartProvider.total + shippingCost;
     final tax = double.parse((taxableAmount * 0.18).toStringAsFixed(2));
     final total = double.parse((taxableAmount + tax).toStringAsFixed(2));
     return (
@@ -76,6 +78,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Future<void> _handleCheckout() async {
     if (!_formKey.currentState!.validate()) return;
     if (_isProcessing) return;
+    if (!context.read<ConnectivityProvider>().isOnline) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Checkout requires an internet connection.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
 
     setState(() => _isProcessing = true);
 
@@ -107,36 +118,52 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         return;
       }
 
-      if (cartProvider.hasProductsWithoutVenue) {
-        throw StateError(
-          'One or more products are missing a fulfilment venue. Remove them and try again.',
-        );
+      // Refresh product venue/stock from Firestore before validating fulfilment.
+      final freshProducts = <String, Product>{};
+      for (final item in cartProvider.items) {
+        final product = await FirestoreService.getProductById(item.product.id);
+        if (product != null) {
+          freshProducts[product.id] = product;
+        }
       }
+      if (freshProducts.isNotEmpty) {
+        cartProvider.replaceProducts(freshProducts);
+      }
+
       if (cartProvider.isMultiVenue) {
         throw StateError(
           'Products from multiple venues cannot be checked out together. '
           'Place a separate order for each venue.',
         );
       }
-      final venueId = cartProvider.venueIds.single;
-      final venueName = cartProvider.items.first.product.venueName;
+      if (cartProvider.hasMixedFulfilment) {
+        throw StateError(
+          'Global marketplace items and venue items cannot be checked out together. '
+          'Remove one type and try again.',
+        );
+      }
+      final venueId = cartProvider.fulfilmentVenueId;
+      if (venueId == null || venueId.isEmpty) {
+        throw StateError(
+          'Unable to determine order fulfilment. Please refresh and try again.',
+        );
+      }
+      final venueName =
+          cartProvider.fulfilmentVenueName ??
+          (venueId == 'platform' ? 'Play Time' : null);
 
       // Prepare order items
       final orderItems = cartProvider.items
           .map(
             (cartItem) => {
               'productId': cartItem.product.id,
-              'productName': cartItem.product.name,
               'quantity': cartItem.quantity,
-              'price': cartItem.product.price,
-              'image': cartItem.product.image,
             },
           )
           .toList();
 
       // Calculate totals
-      final (:subtotal, :discount, :shippingCost, :tax, :total) =
-          _calculateOrderTotals(cartProvider);
+      final total = _calculateOrderTotals(cartProvider).total;
 
       // Create shipping address
       final shippingAddress = {
@@ -160,11 +187,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         'userPhone': user.phoneNumber,
         'orderNumber': orderNumber,
         'items': orderItems,
-        'subtotal': subtotal,
-        'discount': discount,
-        'shippingCost': shippingCost,
-        'tax': tax,
-        'total': total,
         'status': 'Pending',
         'shippingAddress': shippingAddress,
         'paymentStatus': 'Pending',
@@ -173,10 +195,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       };
 
       final orderId = await FirestoreService.createOrder(orderData);
-      // Capture cart items before async gap
-      final itemsSnapshot = List.of(cartProvider.items);
-
-      // Process payment — inventory is only decremented on success
+      // The backend creates the gateway order and its verified webhook owns
+      // payment confirmation, inventory, and settlement writes.
       await PaymentService.processOrderPayment(
         orderId: orderId,
         venueId: venueId,
@@ -186,43 +206,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         userEmail: user.email,
         userPhone: user.phoneNumber,
         onSuccess: (paymentId) async {
-          // Decrement inventory only after confirmed payment
-          for (final cartItem in itemsSnapshot) {
-            await FirestoreService.updateProductInventory(
-              cartItem.product.id,
-              cartItem.quantity,
-            );
-          }
           if (mounted) {
             cartProvider.clearCart();
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Order placed successfully!'),
+                content: Text(
+                  'Payment received. Your order is being confirmed.',
+                ),
                 backgroundColor: AppColors.success,
               ),
             );
-            context.go('/home');
+            context.go('/order/$orderId');
           }
         },
-        onError: (error) async {
-          final chargedButNotRecorded = error.toLowerCase().contains(
-            'payment successful',
-          );
-          if (!chargedButNotRecorded) {
-            try {
-              await FirestoreService.updateOrder(orderId, {
-                'status': 'Cancelled',
-                'paymentStatus': 'Failed',
-              });
-            } catch (_) {}
-          }
+        onError: (error) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
-                  chargedButNotRecorded
-                      ? '$error Keep your receipt; the order will be reconciled automatically.'
-                      : 'Payment failed: ${friendlyErrorMessage(error, fallback: error)}',
+                  'Payment failed: ${friendlyErrorMessage(error, fallback: error)}',
                 ),
                 backgroundColor: AppColors.error,
                 duration: const Duration(seconds: 5),
@@ -671,7 +673,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     const Divider(color: Colors.white24, height: 32),
                     _buildSummaryRow('Subtotal', subtotal),
                     if (discount > 0)
-                      _buildSummaryRow('Discount', -discount, isDiscount: true),
+                      _buildSummaryRow('Discount', discount, isDiscount: true),
                     _buildSummaryRow('Shipping', shippingCost),
                     _buildSummaryRow('Tax (18% GST)', tax),
                     const Divider(color: Colors.white24, height: 32),
@@ -727,25 +729,29 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         borderRadius: BorderRadius.circular(16),
                       ),
                     ),
-                    child: _isProcessing
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                AppColors.backgroundDark,
+                    child: Semantics(
+                      button: true,
+                      label: 'Pay ₹${total.toInt()}',
+                      child: _isProcessing
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  AppColors.backgroundDark,
+                                ),
+                              ),
+                            )
+                          : Text(
+                              'PAY ₹${total.toInt()}',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.2,
                               ),
                             ),
-                          )
-                        : Text(
-                            'PAY ₹${total.toInt()}',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.2,
-                            ),
-                          ),
+                    ),
                   ),
                 ),
               ),
@@ -765,7 +771,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         children: [
           Text(label, style: TextStyle(color: Colors.grey[400], fontSize: 14)),
           Text(
-            '${isDiscount ? '-' : ''}₹${amount.toInt()}',
+            '${isDiscount ? '-' : ''}₹${amount.abs().toInt()}',
             style: TextStyle(
               color: isDiscount ? AppColors.primary : Colors.white,
               fontSize: 14,

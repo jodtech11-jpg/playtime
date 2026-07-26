@@ -41,7 +41,10 @@ class FeedProvider with ChangeNotifier {
         _paginationCursorReady = false;
         _feedItems = items;
         _isLoading = false;
-        _hasMore = items.length >= FirestoreService.feedPageSize;
+        final approvedItems = items
+            .where((item) => !item.isPendingReview)
+            .toList();
+        _hasMore = approvedItems.length >= FirestoreService.feedPageSize;
         notifyListeners();
 
         if (items.isEmpty) {
@@ -51,9 +54,17 @@ class FeedProvider with ChangeNotifier {
           return;
         }
 
+        final cursorItem = approvedItems.isEmpty ? null : approvedItems.last;
+        if (cursorItem == null) {
+          _lastDocument = null;
+          _paginationCursorReady = true;
+          notifyListeners();
+          return;
+        }
+
         FirebaseFirestore.instance
             .collection('posts')
-            .doc(items.last.id)
+            .doc(cursorItem.id)
             .get()
             .then((doc) {
               _lastDocument = doc;

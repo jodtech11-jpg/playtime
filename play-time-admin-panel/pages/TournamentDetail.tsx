@@ -10,9 +10,12 @@ import TournamentFormModal from '../components/modals/TournamentFormModal';
 import TeamRegistrationModal from '../components/modals/TeamRegistrationModal';
 import MatchManagementModal from '../components/modals/MatchManagementModal';
 import { useToast } from '../contexts/ToastContext';
+import { previewSingleEliminationBracket } from '../services/bracketService';
+import { generateTournamentBracket } from '../services/trustedAdminApi';
+import { getFirebaseErrorMessage } from '../utils/errorUtils';
 
 const TournamentDetail: React.FC = () => {
-  const { showInfo } = useToast();
+  const { showSuccess, showError } = useToast();
   const { tournamentId } = useParams<{ tournamentId: string }>();
   const navigate = useNavigate();
 
@@ -33,6 +36,8 @@ const TournamentDetail: React.FC = () => {
   const [editingMatch, setEditingMatch] = useState<TournamentMatch | null>(null);
   const [teamStatusFilter, setTeamStatusFilter] = useState<string>('All');
   const [matchStatusFilter, setMatchStatusFilter] = useState<string>('All');
+  const [showBracketPreview, setShowBracketPreview] = useState(false);
+  const [generatingBracket, setGeneratingBracket] = useState(false);
 
   const getSportName = (sportId: string) => {
     const sport = sports.find(s => s.id === sportId);
@@ -71,6 +76,29 @@ const TournamentDetail: React.FC = () => {
       totalRevenue: paidTeams * (tournament.entryFee || 0)
     };
   }, [tournament]);
+  const bracketPreview = useMemo(
+    () => tournament
+      ? previewSingleEliminationBracket(tournament.id, tournament.teams || [])
+      : [],
+    [tournament]
+  );
+
+  const handleGenerateBracket = async () => {
+    if (!tournament) return;
+    const eligibleTeams = (tournament.teams || [])
+      .filter((team) => team.status === 'Approved' || team.status === 'Paid')
+      .sort((left, right) => left.id.localeCompare(right.id));
+    try {
+      setGeneratingBracket(true);
+      await generateTournamentBracket(tournament.id, eligibleTeams.map((team) => team.id));
+      setShowBracketPreview(false);
+      showSuccess('Bracket generation requested successfully.');
+    } catch (error: any) {
+      showError(getFirebaseErrorMessage(error, 'Failed to generate bracket'));
+    } finally {
+      setGeneratingBracket(false);
+    }
+  };
 
   const handleGenerateReport = () => {
     if (!tournament) return;
@@ -605,18 +633,53 @@ const TournamentDetail: React.FC = () => {
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{tournament.bracketType || 'Single Elimination'} format</p>
               </div>
               <button
-                onClick={() =>
-                  showInfo(
-                    'Bracket generation is coming soon. Create matches manually in the Schedule tab for now.',
-                    8000
-                  )
-                }
+                onClick={() => setShowBracketPreview(true)}
+                disabled={bracketPreview.length === 0 || (tournament.matches?.length || 0) > 0}
                 className="px-4 py-2 bg-primary text-primary-content rounded-xl text-xs font-black uppercase tracking-widest hover:shadow-lg transition-all flex items-center gap-2"
+                title={(tournament.matches?.length || 0) > 0 ? 'Remove existing matches before regenerating the bracket' : undefined}
               >
-                <span className="material-symbols-outlined text-lg">auto_awesome</span> Generate Brackets
+                <span className="material-symbols-outlined text-lg">auto_awesome</span> Preview Bracket
               </button>
             </div>
             <div className="p-4 sm:p-8">
+              {showBracketPreview && (
+                <div className="mb-8 rounded-2xl border-2 border-primary/30 bg-primary/5 p-6">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h4 className="font-black text-gray-900 dark:text-gray-100">Deterministic single-elimination preview</h4>
+                      <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                        Eligible teams are seeded by stable team ID. BYEs fill the next power-of-two bracket.
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => setShowBracketPreview(false)} className="rounded-xl border px-4 py-2 text-xs font-black">Cancel</button>
+                      <button
+                        onClick={handleGenerateBracket}
+                        disabled={generatingBracket}
+                        className="rounded-xl bg-primary px-4 py-2 text-xs font-black text-primary-content disabled:opacity-50"
+                      >
+                        {generatingBracket ? 'Generating…' : 'Confirm generation'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-5 grid gap-4 lg:grid-cols-3">
+                    {bracketPreview.map((round) => (
+                      <div key={round.name}>
+                        <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-gray-500">{round.name}</p>
+                        <div className="space-y-2">
+                          {round.matches.map((match) => (
+                            <div key={match.id} className="rounded-xl border bg-white p-3 text-xs dark:bg-gray-800">
+                              <p className="font-bold">{match.teamAName}</p>
+                              <p className="my-1 text-[9px] font-black text-gray-400">VS</p>
+                              <p className="font-bold">{match.teamBName}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {filteredMatches.length > 0 ? (
                 <div className="space-y-6">
                   {['Finals', 'Semifinals', 'Quarterfinals', 'Round 1'].map((round) => {
@@ -667,7 +730,9 @@ const TournamentDetail: React.FC = () => {
                 <div className="text-center py-12 text-gray-500 dark:text-gray-400">
                   <span className="material-symbols-outlined text-6xl text-gray-300 dark:text-gray-600 mb-4 block">tournament</span>
                   <p className="text-sm font-medium">No matches created yet</p>
-                  <p className="text-xs mt-2">Create matches in the Schedule tab to see brackets</p>
+                  <p className="text-xs mt-2">
+                    Approve at least two teams, preview the deterministic bracket, then confirm generation.
+                  </p>
                 </div>
               )}
             </div>

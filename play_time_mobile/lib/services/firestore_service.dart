@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import '../models/venue.dart';
@@ -14,15 +16,13 @@ import '../models/quick_match.dart';
 import '../models/tournament_summary.dart';
 import '../models/engagement.dart';
 import 'quick_match_participation_service.dart';
+import 'poll_service.dart';
 import '../utils/booking_time_policy.dart';
 
 class FirestoreService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  /// Statuses counted for court availability (must match Firestore rules `isActiveBooking`).
-  static const List<String> activeBookingStatuses = ['Pending', 'Confirmed'];
-
-  /// Bookings query for slot availability — filters by active status so rules allow read.
+  /// Privacy-safe slot query. Full booking documents are never exposed here.
   static Query<Map<String, dynamic>> courtBookingsForAvailability({
     required String venueId,
     required String courtId,
@@ -30,10 +30,9 @@ class FirestoreService {
     DateTime? dayEnd,
   }) {
     var query = _firestore
-        .collection('bookings')
+        .collection('courtAvailability')
         .where('venueId', isEqualTo: venueId)
-        .where('courtId', isEqualTo: courtId)
-        .where('status', whereIn: activeBookingStatuses);
+        .where('courtId', isEqualTo: courtId);
     if (dayStart != null) {
       query = query.where(
         'startTime',
@@ -222,7 +221,6 @@ class FirestoreService {
       final batch = _firestore.batch();
       batch.update(ref, {
         'status': 'Cancelled',
-        if (paymentFailed) 'paymentStatus': 'Failed',
         'updatedAt': FieldValue.serverTimestamp(),
       });
       if (lockId != null && lockId.isNotEmpty) {
@@ -559,7 +557,6 @@ class FirestoreService {
         transaction.set(lockRef, {
           'venueId': venueId,
           'courtId': courtId,
-          'userId': bookingData['userId'],
           'startTime': bookingData['startTime'],
           'endTime': bookingData['endTime'],
           'bookingId': docRef.id,
@@ -767,6 +764,20 @@ class FirestoreService {
     }
   }
 
+  static Future<order_model.Order?> getOrderById(String orderId) async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null || orderId.isEmpty) return null;
+    try {
+      final document = await _firestore.collection('orders').doc(orderId).get();
+      final data = document.data();
+      if (data == null || data['userId'] != userId) return null;
+      return order_model.Order.fromFirestore(document.id, data);
+    } catch (error) {
+      debugPrint('Error fetching order: $error');
+      return null;
+    }
+  }
+
   static Future<String> createOrder(Map<String, dynamic> orderData) async {
     try {
       // Generate order number
@@ -796,44 +807,6 @@ class FirestoreService {
       });
     } catch (e) {
       debugPrint('Error updating order: $e');
-      rethrow;
-    }
-  }
-
-  static Future<void> updateProductInventory(
-    String productId,
-    int quantitySold,
-  ) async {
-    try {
-      final productRef = _firestore.collection('products').doc(productId);
-      await _firestore.runTransaction((transaction) async {
-        final productDoc = await transaction.get(productRef);
-        if (productDoc.exists) {
-          final data = productDoc.data() as Map<String, dynamic>;
-          final currentStock = data['stock'] as int? ?? 0;
-          if (quantitySold > currentStock) {
-            throw Exception(
-              'Insufficient stock: requested $quantitySold, available $currentStock',
-            );
-          }
-          final newStock = currentStock - quantitySold;
-
-          String newStatus = 'In Stock';
-          if (newStock <= 0) {
-            newStatus = 'Out of Stock';
-          } else if (newStock < 10) {
-            newStatus = 'Low Stock';
-          }
-
-          transaction.update(productRef, {
-            'stock': newStock,
-            'status': newStatus,
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-        }
-      });
-    } catch (e) {
-      debugPrint('Error updating product inventory: $e');
       rethrow;
     }
   }
@@ -941,17 +914,72 @@ class FirestoreService {
   static const int feedPageSize = 20;
 
   static Stream<List<MatchFeedItem>> getFeedItemsStream() {
-    return _firestore
+    final approvedQuery = _firestore
         .collection('posts')
         .where('status', isEqualTo: 'Approved')
         .orderBy('createdAt', descending: true)
-        .limit(feedPageSize)
-        .snapshots()
-        .map(
-          (snapshot) => snapshot.docs
-              .map((doc) => MatchFeedItem.fromFirestore(doc.id, doc.data()))
-              .toList(),
-        );
+        .limit(feedPageSize);
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) {
+      return approvedQuery.snapshots().map(
+        (snapshot) => snapshot.docs
+            .map((doc) => MatchFeedItem.fromFirestore(doc.id, doc.data()))
+            .toList(),
+      );
+    }
+
+    late StreamController<List<MatchFeedItem>> controller;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+    approvedSubscription;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+    pendingSubscription;
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> approved = [];
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> pending = [];
+
+    void emitCombinedFeed() {
+      final documents =
+          <String, QueryDocumentSnapshot<Map<String, dynamic>>>{
+            for (final document in approved) document.id: document,
+            for (final document in pending) document.id: document,
+          }.values.toList()..sort((a, b) {
+            final aTime = a.data()['createdAt'] as Timestamp?;
+            final bTime = b.data()['createdAt'] as Timestamp?;
+            return (bTime?.millisecondsSinceEpoch ?? 0).compareTo(
+              aTime?.millisecondsSinceEpoch ?? 0,
+            );
+          });
+      controller.add(
+        documents
+            .map(
+              (document) =>
+                  MatchFeedItem.fromFirestore(document.id, document.data()),
+            )
+            .toList(),
+      );
+    }
+
+    controller = StreamController<List<MatchFeedItem>>(
+      onListen: () {
+        approvedSubscription = approvedQuery.snapshots().listen((snapshot) {
+          approved = snapshot.docs;
+          emitCombinedFeed();
+        }, onError: controller.addError);
+        pendingSubscription = _firestore
+            .collection('posts')
+            .where('userId', isEqualTo: userId)
+            .where('status', isEqualTo: 'Pending')
+            .snapshots()
+            .listen((snapshot) {
+              pending = snapshot.docs;
+              emitCombinedFeed();
+            }, onError: controller.addError);
+      },
+      onCancel: () async {
+        await approvedSubscription?.cancel();
+        await pendingSubscription?.cancel();
+      },
+    );
+    return controller.stream;
   }
 
   static Future<List<MatchFeedItem>> getFeedItems({
@@ -994,8 +1022,12 @@ class FirestoreService {
         'userName': userName,
         'content': content,
         if (imageUrl != null) 'imageUrl': imageUrl,
+        if (imageUrl != null) 'images': [imageUrl],
         'venueId': venueId,
+        'type': 'Community',
         'status': 'Pending',
+        'isReported': false,
+        'reportCount': 0,
         'likes': 0,
         'comments': 0,
         'createdAt': FieldValue.serverTimestamp(),
@@ -1250,6 +1282,19 @@ class FirestoreService {
     }
   }
 
+  static Future<Map<String, dynamic>> getPublicSettings() async {
+    try {
+      final document = await _firestore
+          .collection('appSettings')
+          .doc('public')
+          .get();
+      return document.data() ?? const {};
+    } catch (error) {
+      debugPrint('Error fetching public settings: $error');
+      return const {};
+    }
+  }
+
   // ==================== ENGAGEMENT (vendor content for players) ====================
 
   static Future<List<QuickMatch>> getOpenQuickMatches({String? venueId}) async {
@@ -1362,33 +1407,11 @@ class FirestoreService {
     required String optionId,
     required String userId,
   }) async {
-    final ref = _firestore.collection('polls').doc(pollId);
-    await _firestore.runTransaction((tx) async {
-      final snap = await tx.get(ref);
-      if (!snap.exists) throw Exception('Poll not found');
-      final data = snap.data()!;
-      if (data['status'] != 'Active') throw Exception('Poll is closed');
-      final voted = List<String>.from(
-        data['votedUserIds'] as List? ?? const [],
-      );
-      if (voted.contains(userId)) throw Exception('You already voted');
-      final options = List<Map<String, dynamic>>.from(
-        (data['options'] as List? ?? const []).map(
-          (o) => Map<String, dynamic>.from(o as Map),
-        ),
-      );
-      final idx = options.indexWhere((o) => o['id'] == optionId);
-      if (idx < 0) throw Exception('Option not found');
-      options[idx]['votes'] =
-          ((options[idx]['votes'] as num?)?.toInt() ?? 0) + 1;
-      voted.add(userId);
-      tx.update(ref, {
-        'options': options,
-        'totalVotes': ((data['totalVotes'] as num?)?.toInt() ?? 0) + 1,
-        'votedUserIds': voted,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    });
+    final authenticatedUserId = FirebaseAuth.instance.currentUser?.uid;
+    if (authenticatedUserId == null || authenticatedUserId != userId) {
+      throw StateError('Your session has expired. Please sign in again.');
+    }
+    await PollService.vote(pollId: pollId, optionId: optionId);
   }
 
   static Future<List<FlashDealItem>> getActiveFlashDeals({

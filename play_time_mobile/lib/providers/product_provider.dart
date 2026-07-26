@@ -4,10 +4,12 @@ import '../services/firestore_service.dart';
 
 class ProductProvider with ChangeNotifier {
   List<Product> _products = [];
+  List<Map<String, String>> _categories = const [];
   bool _isLoading = false;
   String? _error;
 
   List<Product> get products => _products;
+  List<Map<String, String>> get categories => _categories;
   bool get isLoading => _isLoading;
   String? get error => _error;
 
@@ -21,7 +23,26 @@ class ProductProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      _products = await FirestoreService.getProducts();
+      final results = await Future.wait<Object>([
+        FirestoreService.getProducts(),
+        FirestoreService.getCategories(),
+      ]);
+      _products = results[0] as List<Product>;
+      _categories = (results[1] as List<Map<String, dynamic>>)
+          .map(
+            (category) => {
+              'id': category['id']?.toString() ?? '',
+              'name':
+                  category['name']?.toString() ??
+                  category['title']?.toString() ??
+                  '',
+            },
+          )
+          .where(
+            (category) =>
+                category['id']!.isNotEmpty && category['name']!.isNotEmpty,
+          )
+          .toList();
     } catch (e) {
       _error = 'Failed to load products: $e';
       debugPrint('Error loading products: $e');

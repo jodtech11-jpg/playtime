@@ -7,6 +7,7 @@ import '../widgets/bottom_nav.dart';
 import '../providers/team_provider.dart';
 import '../providers/venue_provider.dart';
 import '../providers/engagement_provider.dart';
+import '../providers/sport_provider.dart';
 import '../models/team.dart';
 import '../models/quick_match.dart';
 import '../widgets/create_team_modal.dart';
@@ -14,7 +15,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
 class TeamUpScreen extends StatefulWidget {
-  const TeamUpScreen({super.key});
+  final String? invitedTeamId;
+
+  const TeamUpScreen({super.key, this.invitedTeamId});
 
   @override
   State<TeamUpScreen> createState() => _TeamUpScreenState();
@@ -24,9 +27,23 @@ class _TeamUpScreenState extends State<TeamUpScreen> {
   int _activeTab = 0; // 0 = matches, 1 = teams
   final TextEditingController _teamNameController = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
-  String _matchType = 'doubles'; // 'singles' or 'doubles'
   bool _isSearchOpen = false;
   String _sortOrder = 'recent'; // 'recent' or 'oldest'
+  bool _handledTeamInvite = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_handledTeamInvite) return;
+    final teamId =
+        widget.invitedTeamId?.trim() ??
+        GoRouterState.of(context).uri.queryParameters['teamId']?.trim();
+    if (teamId == null || teamId.isEmpty) return;
+    _handledTeamInvite = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _showJoinSquadDialog(teamId);
+    });
+  }
 
   @override
   void dispose() {
@@ -344,78 +361,6 @@ class _TeamUpScreenState extends State<TeamUpScreen> {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // Match Type Selector
-          Container(
-            height: 48,
-            decoration: BoxDecoration(
-              color: AppColors.surfaceDark,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _matchType = 'singles';
-                      });
-                    },
-                    child: Container(
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: _matchType == 'singles'
-                            ? AppColors.primary
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        'SINGLES',
-                        style: TextStyle(
-                          color: _matchType == 'singles'
-                              ? AppColors.backgroundDark
-                              : Colors.grey[400],
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.25,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _matchType = 'doubles';
-                      });
-                    },
-                    child: Container(
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: _matchType == 'doubles'
-                            ? AppColors.primary
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        'DOUBLES',
-                        style: TextStyle(
-                          color: _matchType == 'doubles'
-                              ? AppColors.backgroundDark
-                              : Colors.grey[400],
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.25,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
           // Quick matches from vendors
           _buildQuickMatchesSection(),
           const SizedBox(height: 24),
@@ -1302,10 +1247,12 @@ class _TeamUpScreenState extends State<TeamUpScreen> {
             ),
           ),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.edit, color: AppColors.primary),
-              onPressed: () {},
-            ),
+            if (team.createdBy == FirebaseAuth.instance.currentUser?.uid)
+              IconButton(
+                tooltip: 'Edit squad',
+                icon: const Icon(Icons.edit, color: AppColors.primary),
+                onPressed: () => _showEditTeamDialog(team, provider),
+              ),
           ],
         ),
         body: SingleChildScrollView(
@@ -1436,12 +1383,14 @@ class _TeamUpScreenState extends State<TeamUpScreen> {
                   ElevatedButton.icon(
                     onPressed: () async {
                       final inviteUrl =
-                          'https://playtime.jodtech.in/#/team-up?teamId=${Uri.encodeComponent(team.id)}';
+                          'playtime://app/team/${Uri.encodeComponent(team.id)}';
                       await Clipboard.setData(ClipboardData(text: inviteUrl));
                       if (!sheetContext.mounted) return;
                       ScaffoldMessenger.of(sheetContext).showSnackBar(
                         const SnackBar(
-                          content: Text('Team invitation link copied.'),
+                          content: Text(
+                            'Invite copied. Share it with a player; opening it in Play Time will ask them to join.',
+                          ),
                         ),
                       );
                     },
@@ -1485,14 +1434,27 @@ class _TeamUpScreenState extends State<TeamUpScreen> {
                   ),
                   child: Row(
                     children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: Image.network(
-                          member.avatar,
-                          width: 48,
-                          height: 48,
-                          fit: BoxFit.cover,
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(16),
                         ),
+                        clipBehavior: Clip.antiAlias,
+                        child: member.avatar.isNotEmpty
+                            ? Image.network(
+                                member.avatar,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => const Icon(
+                                  Icons.person_rounded,
+                                  color: AppColors.primary,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.person_rounded,
+                                color: AppColors.primary,
+                              ),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
@@ -1500,7 +1462,12 @@ class _TeamUpScreenState extends State<TeamUpScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              member.name,
+                              member.name.isNotEmpty
+                                  ? member.name
+                                  : member.id ==
+                                        FirebaseAuth.instance.currentUser?.uid
+                                  ? 'You'
+                                  : 'Player',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 14,
@@ -1554,25 +1521,402 @@ class _TeamUpScreenState extends State<TeamUpScreen> {
                                 child: Text(role.toUpperCase()),
                               );
                             }).toList(),
-                        onChanged: (newRole) {
-                          if (newRole != null) {
-                            provider.updateMemberRole(
-                              team.id,
-                              member.id,
-                              newRole,
-                            );
-                          }
-                        },
+                        onChanged:
+                            team.createdBy ==
+                                FirebaseAuth.instance.currentUser?.uid
+                            ? (newRole) {
+                                if (newRole != null) {
+                                  provider.updateMemberRole(
+                                    team.id,
+                                    member.id,
+                                    newRole,
+                                  );
+                                }
+                              }
+                            : null,
                       ),
                     ],
                   ),
                 ),
               ),
+              const SizedBox(height: 16),
+              if (team.trainingAt != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: AppColors.primary.withValues(alpha: 0.22),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.event_available_rounded,
+                        color: AppColors.primary,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'NEXT TRAINING',
+                              style: TextStyle(
+                                color: AppColors.primary,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              DateFormat(
+                                'EEE, d MMM • h:mm a',
+                              ).format(team.trainingAt!),
+                              style: const TextStyle(
+                                color: AppColors.textPrimary,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            if (team.trainingVenue?.isNotEmpty == true)
+                              Text(
+                                team.trainingVenue!,
+                                style: const TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 12,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              if (team.trainingAt != null) const SizedBox(height: 12),
+              if (team.createdBy == FirebaseAuth.instance.currentUser?.uid)
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showTrainingDialog(team, provider),
+                    icon: const Icon(Icons.schedule_rounded),
+                    label: Text(
+                      team.trainingAt == null
+                          ? 'SCHEDULE TEAM TRAINING'
+                          : 'UPDATE TRAINING SCHEDULE',
+                    ),
+                  ),
+                )
+              else
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () =>
+                        _confirmLeaveTeam(team, provider, sheetContext),
+                    icon: const Icon(Icons.logout_rounded),
+                    label: const Text('LEAVE SQUAD'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.error,
+                      side: const BorderSide(color: AppColors.error),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _showJoinSquadDialog(String teamId) async {
+    final shouldJoin = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Join this squad?'),
+        content: const Text(
+          'Accept the invitation to add this squad to My Teams.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Not now'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Join squad'),
+          ),
+        ],
+      ),
+    );
+    if (shouldJoin != true || !mounted) return;
+    try {
+      await context.read<TeamProvider>().joinTeam(teamId);
+      if (!mounted) return;
+      setState(() => _activeTab = 1);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You joined the squad.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString()),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  Future<void> _showEditTeamDialog(Team team, TeamProvider provider) async {
+    final nameController = TextEditingController(text: team.name);
+    final sports = context
+        .read<SportProvider>()
+        .sports
+        .where((sport) => sport.isActive)
+        .map((sport) => sport.name)
+        .toList();
+    if (sports.isEmpty) sports.add(team.sport);
+    var selectedSport = sports.contains(team.sport) ? team.sport : sports.first;
+
+    final shouldSave = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Edit squad'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                maxLength: 50,
+                decoration: const InputDecoration(labelText: 'Squad name'),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: selectedSport,
+                decoration: const InputDecoration(labelText: 'Sport'),
+                items: sports
+                    .map(
+                      (sport) =>
+                          DropdownMenuItem(value: sport, child: Text(sport)),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setDialogState(() => selectedSport = value);
+                  }
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    final name = nameController.text.trim();
+    nameController.dispose();
+    if (shouldSave != true || name.isEmpty || !mounted) return;
+    try {
+      await provider.updateTeamDetails(
+        teamId: team.id,
+        name: name,
+        sport: selectedSport,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Squad updated.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not update squad: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  Future<void> _showTrainingDialog(Team team, TeamProvider provider) async {
+    var selectedDate =
+        team.trainingAt ?? DateTime.now().add(const Duration(days: 1));
+    var selectedTime = TimeOfDay.fromDateTime(selectedDate);
+    final venueController = TextEditingController(
+      text: team.trainingVenue ?? '',
+    );
+    final notesController = TextEditingController(
+      text: team.trainingNotes ?? '',
+    );
+
+    final shouldSave = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Team training'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.calendar_month_rounded),
+                  title: const Text('Date'),
+                  subtitle: Text(
+                    DateFormat('EEE, d MMM yyyy').format(selectedDate),
+                  ),
+                  onTap: () async {
+                    final value = await showDatePicker(
+                      context: dialogContext,
+                      initialDate: selectedDate,
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                    );
+                    if (value != null) {
+                      setDialogState(() => selectedDate = value);
+                    }
+                  },
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.schedule_rounded),
+                  title: const Text('Time'),
+                  subtitle: Text(selectedTime.format(context)),
+                  onTap: () async {
+                    final value = await showTimePicker(
+                      context: dialogContext,
+                      initialTime: selectedTime,
+                    );
+                    if (value != null) {
+                      setDialogState(() => selectedTime = value);
+                    }
+                  },
+                ),
+                TextField(
+                  controller: venueController,
+                  decoration: const InputDecoration(
+                    labelText: 'Venue or meeting point',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: notesController,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'Notes (optional)',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Save schedule'),
+            ),
+          ],
+        ),
+      ),
+    );
+    final venue = venueController.text.trim();
+    final notes = notesController.text.trim();
+    venueController.dispose();
+    notesController.dispose();
+    if (shouldSave != true || !mounted) return;
+
+    final trainingAt = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+      selectedTime.hour,
+      selectedTime.minute,
+    );
+    try {
+      await provider.scheduleTraining(
+        teamId: team.id,
+        trainingAt: trainingAt,
+        venue: venue,
+        notes: notes,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Training schedule saved.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not save training: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  Future<void> _confirmLeaveTeam(
+    Team team,
+    TeamProvider provider,
+    BuildContext sheetContext,
+  ) async {
+    final shouldLeave = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Leave squad?'),
+        content: Text('You will be removed from ${team.name}.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Leave'),
+          ),
+        ],
+      ),
+    );
+    if (shouldLeave != true || !mounted) return;
+    try {
+      await provider.leaveTeam(team.id);
+      if (!mounted || !sheetContext.mounted) return;
+      Navigator.pop(sheetContext);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('You left the squad.')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString()),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
   }
 
   void _showSettingsModal() {

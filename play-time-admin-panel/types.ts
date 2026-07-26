@@ -34,12 +34,15 @@ export interface User {
   email: string;
   phone?: string;
   role: Role | string;
-  status: 'Active' | 'Pending' | 'Inactive';
+  status: 'Active' | 'Pending' | 'Inactive' | 'Banned';
   avatar?: string;
   venueIds?: string[]; // For venue managers
   managedVenues?: string[]; // Venue IDs this manager manages
   customPermissions?: string[]; // Additional permissions beyond role
   walletBalance?: number; // User wallet balance
+  bannedAt?: any;
+  bannedBy?: string;
+  banReason?: string;
   level?: number; // User level/rank
   progress?: number; // User progress (0-100)
   streak?: number; // Daily streak count
@@ -282,8 +285,8 @@ export interface Invoice {
 export interface Payment {
   id: string;
   type: 'Online' | 'Offline';
-  direction: 'UserToVenue' | 'VenueToPlatform';
-  sourceType: 'Booking' | 'Membership' | 'Settlement';
+  direction: 'UserToVenue' | 'UserToPlatform' | 'VenueToPlatform';
+  sourceType: 'Booking' | 'Membership' | 'Settlement' | 'Order' | 'Wallet';
   sourceId: string; // Booking ID, Membership ID, or Invoice ID
   userId?: string; // For user payments
   venueId: string;
@@ -478,6 +481,8 @@ export interface Tournament {
   bracketType?: 'Single Elimination' | 'Double Elimination' | 'Round Robin' | 'Swiss';
   teams?: TournamentTeam[];
   matches?: TournamentMatch[];
+  bracketGeneratedAt?: any;
+  bracketGeneratedBy?: string;
   createdAt?: any;
   updatedAt?: any;
 }
@@ -513,6 +518,8 @@ export interface TournamentMatch {
   teamAName: string;
   teamBId: string;
   teamBName: string;
+  bracketSlot?: number;
+  nextMatchNumber?: number;
   courtId?: string;
   courtName?: string;
   scheduledTime?: any;
@@ -600,7 +607,7 @@ export interface Order {
     pincode: string;
     landmark?: string;
   };
-  paymentStatus: 'Pending' | 'Paid' | 'Failed' | 'Refunded' | 'Partially Refunded';
+  paymentStatus: 'Pending' | 'Paid' | 'Failed' | 'Refund Pending' | 'Refunded' | 'Partially Refunded';
   paymentMethod?: string;
   paymentTransactionId?: string; // Payment gateway transaction ID
   // Order tracking
@@ -623,6 +630,10 @@ export interface Order {
   refundAmount?: number;
   refundReason?: string;
   refundedAt?: any;
+  refundId?: string;
+  refundStatus?: 'Pending' | 'Processing' | 'Processed' | 'Failed';
+  refundRequestedAt?: any;
+  refundFailureReason?: string;
   // Venue association (if order is venue-specific)
   venueId?: string;
   venueName?: string;
@@ -761,12 +772,22 @@ export interface FlashDeal {
 // provider simply stay undefined (e.g. phoneNumberId for Razorpay).
 export interface IntegrationConfig {
   enabled: boolean;
-  status: 'Connected' | 'Disconnected' | 'Setup Required';
+  status: 'Connected' | 'Disconnected' | 'Setup Required' | 'Unhealthy' | 'Unknown';
   apiKey?: string;
   apiSecret?: string;
   webhookSecret?: string;
   phoneNumberId?: string;
   businessAccountId?: string;
+}
+
+export interface IntegrationHealth {
+  integration: 'razorpay' | 'whatsapp';
+  configured: boolean;
+  enabled: boolean;
+  healthy: boolean;
+  status: 'Connected' | 'Disconnected' | 'Setup Required' | 'Unhealthy' | 'Unknown';
+  checkedAt?: string;
+  message?: string;
 }
 
 export interface AppSettings {
@@ -804,6 +825,8 @@ export interface AppSettings {
   settlementFrequency?: 'daily' | 'weekly' | 'biweekly' | 'monthly'; // How often venues get paid
   minimumPayoutAmount?: number; // Minimum amount before payout
   enableAutoSettlement?: boolean; // Automatically process settlements
+  autoSettlementConfigured?: boolean; // True only when the server payout workflow is configured
+  allowVendorVenueSubscriptionManagement?: boolean; // Allow vendors to manage plans for assigned venues
   taxRate?: number; // Platform tax rate (%)
   enableGST?: boolean; // Enable GST
   gstNumber?: string; // GST registration number

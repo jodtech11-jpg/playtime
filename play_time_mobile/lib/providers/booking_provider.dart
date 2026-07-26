@@ -62,10 +62,8 @@ class BookingProvider with ChangeNotifier {
     required String sport,
     required DateTime startTime,
     required DateTime endTime,
-    required double amount,
     Court? courtOverride,
     String? venueImage,
-    bool skipPayment = false,
   }) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -109,7 +107,6 @@ class BookingProvider with ChangeNotifier {
         'court': courtName,
         'sport': sport,
         'userId': user.uid,
-        'user': user.displayName ?? user.email ?? 'User',
         'startTime': Timestamp.fromDate(startTime),
         'endTime': Timestamp.fromDate(endTime),
         'duration': endTime.difference(startTime).inMinutes / 60.0,
@@ -117,10 +114,8 @@ class BookingProvider with ChangeNotifier {
             '${startTime.day} ${_getMonthName(startTime.month)}, ${startTime.year}',
         'time':
             '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}',
-        'amount': amount,
-        'isFirstTimeBooking': isFirstTimeBooking,
-        'status': skipPayment ? 'Confirmed' : 'Pending',
-        'paymentStatus': skipPayment ? 'Paid' : 'Pending',
+        'status': 'Pending',
+        'paymentStatus': 'Pending',
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       };

@@ -23,6 +23,7 @@ import {
   isVenueSubscriptionMembership,
   isVenueSubscriptionPlan,
 } from '../utils/membershipScope';
+import { useAppSettings } from '../hooks/useAppSettings';
 
 export type MembershipsPageMode = 'venue' | 'platform';
 
@@ -34,7 +35,9 @@ interface MembershipsProps {
 const Memberships: React.FC<MembershipsProps> = ({ mode = 'venue' }) => {
   const isPlatformMode = mode === 'platform';
   const { user: currentUser, isSuperAdmin, isVenueManager, hasPermission } = useAuth();
-  const isVendorViewOnly = isVenueManager && !isSuperAdmin;
+  const { settings: appSettings } = useAppSettings(true);
+  const vendorPlanManagementEnabled = appSettings.allowVendorVenueSubscriptionManagement === true;
+  const isVendorViewOnly = isVenueManager && !isSuperAdmin && !vendorPlanManagementEnabled;
   const canOpenUserProfile = hasPermission('users.manage');
   const { showSuccess, showError } = useToast();
   const { openConfirm, confirmDialog } = useConfirmDialog();
@@ -367,7 +370,9 @@ const Memberships: React.FC<MembershipsProps> = ({ mode = 'venue' }) => {
     );
   }
 
-  const canManagePlans = isPlatformMode ? isSuperAdmin : !isVendorViewOnly;
+  const canManagePlans = isPlatformMode
+    ? isSuperAdmin
+    : isSuperAdmin || (isVenueManager && vendorPlanManagementEnabled);
 
   return (
     <div className="p-4 sm:p-8 space-y-6 sm:space-y-10 bg-slate-50 dark:bg-slate-900 min-h-full">

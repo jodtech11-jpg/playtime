@@ -94,7 +94,6 @@ class MembershipProvider with ChangeNotifier {
   Future<String> createMembership({
     required String planId,
     required String venueId,
-    required double price,
   }) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -136,7 +135,6 @@ class MembershipProvider with ChangeNotifier {
         'planId': planId,
         'planName': plan.name,
         'planType': plan.planType,
-        'price': price,
         'paymentStatus': 'Pending',
         'startDate': Timestamp.fromDate(now),
         'endDate': Timestamp.fromDate(endDate),
@@ -161,7 +159,6 @@ class MembershipProvider with ChangeNotifier {
     try {
       await FirestoreService.updateMembership(membershipId, {
         'status': 'Cancelled',
-        'paymentStatus': 'Failed',
       });
       await refreshMemberships();
     } catch (_) {
@@ -170,12 +167,11 @@ class MembershipProvider with ChangeNotifier {
   }
 
   /// Keep exactly one active Play Time Pro plan after an upgrade/downgrade.
-  Future<void> deactivateOtherPlatformMemberships(String activeMembershipId) async {
+  Future<void> deactivateOtherPlatformMemberships(
+    String activeMembershipId,
+  ) async {
     final previous = _memberships.where(
-      (m) =>
-          m.id != activeMembershipId &&
-          m.isActive &&
-          m.isPlatformMembership,
+      (m) => m.id != activeMembershipId && m.isActive && m.isPlatformMembership,
     );
     await Future.wait(
       previous.map(
@@ -197,7 +193,9 @@ class MembershipProvider with ChangeNotifier {
 
   Membership? getActivePlatformMembership() {
     try {
-      return _memberships.firstWhere((m) => m.isActive && m.isPlatformMembership);
+      return _memberships.firstWhere(
+        (m) => m.isActive && m.isPlatformMembership,
+      );
     } catch (_) {
       return null;
     }
@@ -205,9 +203,7 @@ class MembershipProvider with ChangeNotifier {
 
   Membership? getActiveVenueSubscription(String venueId) {
     try {
-      return _memberships.firstWhere(
-        (m) => m.isActive && m.venueId == venueId,
-      );
+      return _memberships.firstWhere((m) => m.isActive && m.venueId == venueId);
     } catch (_) {
       return null;
     }

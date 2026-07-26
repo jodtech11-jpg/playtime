@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class Team {
   final String id;
   final String name;
@@ -5,6 +7,10 @@ class Team {
   final String logo;
   final int matchesWon;
   final List<TeamMember> members;
+  final String createdBy;
+  final DateTime? trainingAt;
+  final String? trainingVenue;
+  final String? trainingNotes;
 
   Team({
     required this.id,
@@ -13,6 +19,10 @@ class Team {
     required this.logo,
     required this.matchesWon,
     required this.members,
+    this.createdBy = '',
+    this.trainingAt,
+    this.trainingVenue,
+    this.trainingNotes,
   });
 
   factory Team.fromJson(Map<String, dynamic> json) {
@@ -30,6 +40,9 @@ class Team {
 
   factory Team.fromFirestore(String id, Map<String, dynamic> data) {
     final members = data['members'] as List<dynamic>? ?? [];
+    final memberRoles = Map<String, dynamic>.from(
+      data['memberRoles'] as Map? ?? const {},
+    );
 
     return Team(
       id: id,
@@ -38,28 +51,45 @@ class Team {
       logo: data['logo'] as String? ?? '⚽',
       matchesWon: data['matchesWon'] as int? ?? 0,
       members: members.map((m) {
+        TeamMember member;
         if (m is Map<String, dynamic>) {
-          return TeamMember.fromJson(m);
+          member = TeamMember.fromJson(m);
         } else if (m is Map) {
-          return TeamMember.fromJson(Map<String, dynamic>.from(m));
+          member = TeamMember.fromJson(Map<String, dynamic>.from(m));
         } else if (m is String) {
           // If member is just a user ID, create a basic member
-          return TeamMember(
+          member = TeamMember(
             id: m,
             name: '',
             avatar: '',
             role: 'Member',
             status: 'Joined',
           );
+        } else {
+          member = TeamMember(
+            id: '',
+            name: '',
+            avatar: '',
+            role: 'Member',
+            status: 'Joined',
+          );
         }
+        final savedRole = memberRoles[member.id]?.toString();
+        if (savedRole == null || savedRole.isEmpty) return member;
         return TeamMember(
-          id: '',
-          name: '',
-          avatar: '',
-          role: 'Member',
-          status: 'Joined',
+          id: member.id,
+          name: member.name,
+          avatar: member.avatar,
+          role: savedRole,
+          status: member.status,
         );
       }).toList(),
+      createdBy: data['createdBy'] as String? ?? '',
+      trainingAt: data['trainingAt'] is Timestamp
+          ? (data['trainingAt'] as Timestamp).toDate()
+          : data['trainingAt'] as DateTime?,
+      trainingVenue: data['trainingVenue'] as String?,
+      trainingNotes: data['trainingNotes'] as String?,
     );
   }
 
@@ -71,6 +101,10 @@ class Team {
       'logo': logo,
       'matchesWon': matchesWon,
       'members': members.map((m) => m.toJson()).toList(),
+      'createdBy': createdBy,
+      'trainingAt': trainingAt,
+      'trainingVenue': trainingVenue,
+      'trainingNotes': trainingNotes,
     };
   }
 }

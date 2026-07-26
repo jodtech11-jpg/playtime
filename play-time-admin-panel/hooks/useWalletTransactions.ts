@@ -16,6 +16,9 @@ export interface WalletTransaction {
   amount: number;
   description: string;
   balanceAfter: number;
+  reason?: string;
+  adjustedBy?: string;
+  source?: 'TopUp' | 'Booking' | 'Refund' | 'AdminAdjustment';
   createdAt?: any;
 }
 
@@ -23,6 +26,7 @@ export const useWalletTransactions = (options: UseWalletTransactionsOptions = {}
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
@@ -84,8 +88,13 @@ export const useWalletTransactions = (options: UseWalletTransactionsOptions = {}
         unsubscribe();
       }
     };
-  }, [options.userId, options.type, options.limit, options.realtime]);
+  }, [options.userId, options.type, options.limit, options.realtime, refreshKey]);
 
-  return { transactions, loading, error };
+  return {
+    transactions,
+    loading,
+    error,
+    refresh: () => setRefreshKey((value) => value + 1),
+  };
 };
 

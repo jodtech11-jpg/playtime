@@ -82,8 +82,6 @@ Add to your `.env` file:
 ```env
 VITE_FIREBASE_VAPID_KEY=your-vapid-key-here
 VITE_FCM_CLOUD_FUNCTION_URL=https://your-cloud-function-url.com/send-notification
-# OR (not recommended for production)
-VITE_FCM_SERVER_KEY=your-server-key-here
 ```
 
 ### 2. Get VAPID Key

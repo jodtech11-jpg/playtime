@@ -83,11 +83,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           setLoading('loaded');
           return;
         }
-        if (userData.status === 'Inactive') {
+        if (userData.status === 'Inactive' || userData.status === 'Banned') {
           await signOutUser();
           setUser(null);
           setFirebaseUser(null);
-          setError('Your account has been deactivated. Please contact an administrator.');
+          setError(
+            userData.status === 'Banned'
+              ? 'Your account has been banned. Please contact an administrator.'
+              : 'Your account has been deactivated. Please contact an administrator.'
+          );
           setLoading('loaded');
           return;
         }
@@ -232,6 +236,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       !!user &&
       user.status !== 'Pending' &&
       user.status !== 'Inactive' &&
+      user.status !== 'Banned' &&
       user.role !== 'player',
     isSuperAdmin,
     // Venue managers and custom-role admins are both venue/vendor scoped.

@@ -18,11 +18,12 @@ import { formatRoleLabel } from '../utils/rbac';
 import { serverTimestamp } from 'firebase/firestore';
 import UserFormModal from '../components/modals/UserFormModal';
 import { getFirebaseErrorMessage } from '../utils/errorUtils';
+import { adjustUserWallet } from '../services/trustedAdminApi';
 
 const UserDetail: React.FC = () => {
   const { userId } = useParams<{ userId: string }>();
   const navigate = useNavigate();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, isSuperAdmin, hasPermission } = useAuth();
   const { showSuccess, showError } = useToast();
   const { users } = useUsers();
   const { venues } = useVenues({ realtime: true });
@@ -30,6 +31,9 @@ const UserDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [processing, setProcessing] = useState<string | null>(null);
+  const [walletAdjustmentType, setWalletAdjustmentType] = useState<'Credit' | 'Debit'>('Credit');
+  const [walletAdjustmentAmount, setWalletAdjustmentAmount] = useState('');
+  const [walletAdjustmentReason, setWalletAdjustmentReason] = useState('');
 
   // Get user bookings
   const { bookings: userBookings, loading: bookingsLoading } = useBookings({
@@ -54,11 +58,16 @@ const UserDetail: React.FC = () => {
   });
 
   // Get wallet transactions
-  const { transactions: walletTransactions, loading: transactionsLoading } = useWalletTransactions({
+  const {
+    transactions: walletTransactions,
+    loading: transactionsLoading,
+    refresh: refreshWalletTransactions,
+  } = useWalletTransactions({
     userId: userId,
     realtime: true,
     limit: 20
   });
+  const canAdjustWallet = isSuperAdmin || hasPermission('payments.manage');
 
   // Filter bookings and memberships for this user
   const filteredBookings = useMemo(() => {
@@ -236,6 +245,39 @@ const UserDetail: React.FC = () => {
       console.error('Error updating user status:', err);
       setProcessing(null);
       showError(`Failed to update user status: ${getFirebaseErrorMessage(err)}`);
+    }
+  };
+
+  const handleWalletAdjustment = async () => {
+    if (!user || !canAdjustWallet) return;
+    const amount = Number(walletAdjustmentAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      showError('Enter an adjustment amount greater than zero.');
+      return;
+    }
+    if (!walletAdjustmentReason.trim()) {
+      showError('A reason is required for the audit log.');
+      return;
+    }
+
+    try {
+      setProcessing('wallet');
+      await adjustUserWallet(
+        user.id,
+        walletAdjustmentType,
+        amount,
+        walletAdjustmentReason.trim()
+      );
+      const refreshedUser = await usersCollection.get(user.id) as User | null;
+      if (refreshedUser) setUser(refreshedUser);
+      setWalletAdjustmentAmount('');
+      setWalletAdjustmentReason('');
+      refreshWalletTransactions();
+      showSuccess(`Wallet ${walletAdjustmentType.toLowerCase()} recorded.`);
+    } catch (err: any) {
+      showError(getFirebaseErrorMessage(err, 'Failed to adjust wallet'));
+    } finally {
+      setProcessing(null);
     }
   };
 
@@ -565,9 +607,45 @@ const UserDetail: React.FC = () => {
 
           {/* Wallet Transactions */}
           <div className="ui-card overflow-hidden">
-            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3">
-              <div className="h-5 w-1 rounded-full bg-emerald-500"></div>
-              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none">Wallet Transactions</h3>
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="h-5 w-1 rounded-full bg-emerald-500"></div>
+                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none">Wallet Transactions</h3>
+              </div>
+              {canAdjustWallet && (
+                <div className="mt-5 grid grid-cols-1 md:grid-cols-[120px_140px_1fr_auto] gap-3">
+                  <select
+                    value={walletAdjustmentType}
+                    onChange={(event) => setWalletAdjustmentType(event.target.value as 'Credit' | 'Debit')}
+                    className="px-3 py-2 rounded-xl border border-slate-200 bg-white dark:bg-slate-900 text-sm"
+                  >
+                    <option value="Credit">Credit</option>
+                    <option value="Debit">Debit</option>
+                  </select>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={walletAdjustmentAmount}
+                    onChange={(event) => setWalletAdjustmentAmount(event.target.value)}
+                    placeholder="Amount"
+                    className="px-3 py-2 rounded-xl border border-slate-200 bg-white dark:bg-slate-900 text-sm"
+                  />
+                  <input
+                    value={walletAdjustmentReason}
+                    onChange={(event) => setWalletAdjustmentReason(event.target.value)}
+                    placeholder="Required audit reason"
+                    className="px-3 py-2 rounded-xl border border-slate-200 bg-white dark:bg-slate-900 text-sm"
+                  />
+                  <button
+                    onClick={handleWalletAdjustment}
+                    disabled={processing === 'wallet' || !walletAdjustmentAmount || !walletAdjustmentReason.trim()}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-black uppercase disabled:opacity-50"
+                  >
+                    {processing === 'wallet' ? 'Saving…' : 'Adjust'}
+                  </button>
+                </div>
+              )}
             </div>
             <div className="overflow-x-auto">
               {transactionsLoading ? (

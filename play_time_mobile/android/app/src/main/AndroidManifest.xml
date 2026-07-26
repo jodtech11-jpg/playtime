@@ -47,6 +47,22 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="playtime" android:host="app" android:pathPrefix="/booking" />
             </intent-filter>
+            <!-- Deep link: squad invitation (playtime://app/team/:id) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="playtime" android:host="app" android:pathPrefix="/team" />
+            </intent-filter>
+            <!-- Marketplace order notifications (playtime://app/order/:id). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="playtime" android:host="app" android:pathPrefix="/order" />
+            </intent-filter>
+            <!-- HTTPS App Links stay disabled until a verified production domain
+                 and assetlinks.json are available. Do not add a placeholder host. -->
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

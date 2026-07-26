@@ -31,9 +31,8 @@ GEMINI_API_KEY=your_gemini_api_key_here
 - Restart your development server after adding/updating environment variables
 - For production, set these variables in your hosting platform's environment settings
 
-## Current API Key
+## Key handling
 
-The current API key in use: `AIzaSyBjRhMJFCD1UGao0twXVlltce9p8ZjPt6c`
-
-**Please update this in your `.env` file and remove it from the codebase.**
+Do not paste real keys into documentation. Use the environment-specific value from the
+Firebase or Google Cloud console and apply browser-key API and referrer restrictions.
 

@@ -108,13 +108,14 @@ class Order {
   factory Order.fromFirestore(String id, Map<String, dynamic> data) {
     final itemsData = data['items'] as List<dynamic>? ?? [];
     final items = itemsData
+        .whereType<Map>()
         .map(
           (item) => OrderItem(
-            productId: item['productId'] as String,
-            productName: item['productName'] as String,
-            quantity: item['quantity'] as int,
-            price: (item['price'] as num).toDouble(),
-            image: item['image'] as String?,
+            productId: item['productId']?.toString() ?? '',
+            productName: item['productName']?.toString() ?? 'Product',
+            quantity: (item['quantity'] as num?)?.toInt() ?? 1,
+            price: (item['price'] as num?)?.toDouble() ?? 0,
+            image: item['image']?.toString(),
           ),
         )
         .toList();
@@ -123,13 +124,13 @@ class Order {
     if (data['shippingAddress'] != null) {
       final addr = data['shippingAddress'] as Map<String, dynamic>;
       shippingAddress = ShippingAddress(
-        name: addr['name'] as String,
-        phone: addr['phone'] as String,
-        address: addr['address'] as String,
-        city: addr['city'] as String,
-        state: addr['state'] as String,
-        pincode: addr['pincode'] as String,
-        landmark: addr['landmark'] as String?,
+        name: addr['name']?.toString() ?? '',
+        phone: addr['phone']?.toString() ?? '',
+        address: addr['address']?.toString() ?? '',
+        city: addr['city']?.toString() ?? '',
+        state: addr['state']?.toString() ?? '',
+        pincode: addr['pincode']?.toString() ?? '',
+        landmark: addr['landmark']?.toString(),
       );
     }
 
@@ -153,8 +154,10 @@ class Order {
       paymentTransactionId: data['paymentTransactionId'] as String?,
       venueId: data['venueId'] as String?,
       venueName: data['venueName'] as String?,
-      createdAt: data['createdAt'] != null
+      createdAt: data['createdAt'] is Timestamp
           ? (data['createdAt'] as Timestamp).toDate()
+          : data['createdAt'] is DateTime
+          ? data['createdAt'] as DateTime
           : null,
     );
   }

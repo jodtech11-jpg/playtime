@@ -13,11 +13,6 @@ class LanguageSettingsScreen extends StatelessWidget {
 
     final List<Map<String, String>> languages = [
       {'code': 'en', 'name': 'English', 'nativeName': 'English'},
-      {'code': 'hi', 'name': 'Hindi', 'nativeName': 'हिन्दी'},
-      {'code': 'ta', 'name': 'Tamil', 'nativeName': 'தமிழ்'},
-      {'code': 'te', 'name': 'Telugu', 'nativeName': 'తెలుగు'},
-      {'code': 'kn', 'name': 'Kannada', 'nativeName': 'ಕನ್ನಡ'},
-      {'code': 'ml', 'name': 'Malayalam', 'nativeName': 'മലയാളം'},
     ];
 
     return Scaffold(
@@ -66,7 +61,7 @@ class LanguageSettingsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Choose your preferred language for the app',
+              'Additional languages will appear after their translations are complete.',
               style: TextStyle(color: Colors.grey[400], fontSize: 14),
             ),
             const SizedBox(height: 24),
