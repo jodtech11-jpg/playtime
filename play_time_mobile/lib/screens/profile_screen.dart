@@ -1732,8 +1732,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 icon: Icons.groups_outlined,
                                 title: 'Team preferences',
                                 subtitle: 'Sports, matching, and availability',
-                                onTap: () =>
-                                    context.push('/team-preferences'),
+                                onTap: () => context.push('/team-preferences'),
                               ),
                               const SizedBox(height: 12),
                               _buildSettingsItem(

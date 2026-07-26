@@ -205,9 +205,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           }
         },
         onError: (error) async {
-          final chargedButNotRecorded = error
-              .toLowerCase()
-              .contains('payment successful');
+          final chargedButNotRecorded = error.toLowerCase().contains(
+            'payment successful',
+          );
           if (!chargedButNotRecorded) {
             try {
               await FirestoreService.updateOrder(orderId, {
@@ -707,49 +707,49 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       bottomNavigationBar: keyboardOpen
           ? null
           : Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: AppColors.backgroundDark.withValues(alpha: 0.95),
-          border: Border(
-            top: BorderSide(color: Colors.white.withValues(alpha: 0.05)),
-          ),
-        ),
-        child: SafeArea(
-          child: SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: ElevatedButton(
-              onPressed: _isProcessing ? null : _handleCheckout,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: AppColors.backgroundDark,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: AppColors.backgroundDark.withValues(alpha: 0.95),
+                border: Border(
+                  top: BorderSide(color: Colors.white.withValues(alpha: 0.05)),
                 ),
               ),
-              child: _isProcessing
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          AppColors.backgroundDark,
-                        ),
-                      ),
-                    )
-                  : Text(
-                      'PAY ₹${total.toInt()}',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.2,
+              child: SafeArea(
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: _isProcessing ? null : _handleCheckout,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: AppColors.backgroundDark,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
                       ),
                     ),
+                    child: _isProcessing
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                AppColors.backgroundDark,
+                              ),
+                            ),
+                          )
+                        : Text(
+                            'PAY ₹${total.toInt()}',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
-      ),
     );
   }
 

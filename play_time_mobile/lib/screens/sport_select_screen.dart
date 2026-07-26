@@ -802,9 +802,9 @@ class _QuickBookModalState extends State<_QuickBookModal> {
           }
         },
         onError: (error) async {
-          final chargedButNotRecorded = error
-              .toLowerCase()
-              .contains('payment successful');
+          final chargedButNotRecorded = error.toLowerCase().contains(
+            'payment successful',
+          );
           if (!chargedButNotRecorded) {
             try {
               await bookingProvider.cancelBooking(

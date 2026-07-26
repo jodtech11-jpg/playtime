@@ -358,7 +358,9 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
       setState(() => _isBooking = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('This slot is no longer available. Please choose another.'),
+          content: Text(
+            'This slot is no longer available. Please choose another.',
+          ),
           backgroundColor: AppColors.error,
         ),
       );
@@ -534,9 +536,9 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
           }
         },
         onError: (error) async {
-          final chargedButNotRecorded = error
-              .toLowerCase()
-              .contains('payment successful');
+          final chargedButNotRecorded = error.toLowerCase().contains(
+            'payment successful',
+          );
           unawaited(
             AnalyticsService.logPaymentFailed(
               bookingId: bookingId,
@@ -582,10 +584,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
       );
       // Cancel the pending booking
       try {
-        await bookingProvider.cancelBooking(
-          bookingId,
-          paymentFailed: true,
-        );
+        await bookingProvider.cancelBooking(bookingId, paymentFailed: true);
       } catch (cancelErr) {
         debugPrint('Failed to cancel booking after exception: $cancelErr');
       }
@@ -701,18 +700,20 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              ...matches.take(3).map(
-                (m) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _venueEventTile(
-                    icon: Icons.sports,
-                    title: m.sport,
-                    subtitle:
-                        '${m.currentPlayers}/${m.maxPlayers} players · ${m.time}',
-                    onTap: () => context.push('/team-up'),
+              ...matches
+                  .take(3)
+                  .map(
+                    (m) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _venueEventTile(
+                        icon: Icons.sports,
+                        title: m.sport,
+                        subtitle:
+                            '${m.currentPlayers}/${m.maxPlayers} players · ${m.time}',
+                        onTap: () => context.push('/team-up'),
+                      ),
+                    ),
                   ),
-                ),
-              ),
             ],
             if (tournaments.isNotEmpty) ...[
               const SizedBox(height: 8),
@@ -725,17 +726,19 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              ...tournaments.take(3).map(
-                (t) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _venueEventTile(
-                    icon: Icons.emoji_events,
-                    title: t.name,
-                    subtitle: '${t.sport} · Register in Team Up',
-                    onTap: () => context.push('/team-up'),
+              ...tournaments
+                  .take(3)
+                  .map(
+                    (t) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _venueEventTile(
+                        icon: Icons.emoji_events,
+                        title: t.name,
+                        subtitle: '${t.sport} · Register in Team Up',
+                        onTap: () => context.push('/team-up'),
+                      ),
+                    ),
                   ),
-                ),
-              ),
             ],
             if (deals.isNotEmpty) ...[
               const SizedBox(height: 8),
@@ -748,17 +751,19 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              ...deals.take(2).map(
-                (d) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _venueEventTile(
-                    icon: Icons.local_offer,
-                    title: d.title,
-                    subtitle: '₹${d.discountedPrice.toInt()}',
-                    onTap: () {},
+              ...deals
+                  .take(2)
+                  .map(
+                    (d) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _venueEventTile(
+                        icon: Icons.local_offer,
+                        title: d.title,
+                        subtitle: '₹${d.discountedPrice.toInt()}',
+                        onTap: () {},
+                      ),
+                    ),
                   ),
-                ),
-              ),
             ],
           ],
         );
@@ -909,8 +914,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
                         ),
                       ),
                       ElevatedButton(
-                        onPressed:
-                            (_isPurchasingSubscription || isCurrent)
+                        onPressed: (_isPurchasingSubscription || isCurrent)
                             ? null
                             : () => _purchaseVenueSubscription(plan, venue),
                         style: ElevatedButton.styleFrom(
@@ -1020,9 +1024,9 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
           }
         },
         onError: (error) async {
-          final chargedButNotRecorded = error
-              .toLowerCase()
-              .contains('payment successful');
+          final chargedButNotRecorded = error.toLowerCase().contains(
+            'payment successful',
+          );
           final pendingId = membershipId;
           if (!chargedButNotRecorded && pendingId != null) {
             await membershipProvider.cancelPendingMembership(pendingId);

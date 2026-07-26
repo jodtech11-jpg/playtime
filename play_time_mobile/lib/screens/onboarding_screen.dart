@@ -164,40 +164,40 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-          // Icon
-          Container(
-            width: 120,
-            height: 120,
-            decoration: BoxDecoration(
-              color: page.color.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(page.icon, size: 60, color: page.color),
-          ),
-          const SizedBox(height: 48),
-          // Title
-          Text(
-            page.title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.25,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          // Description
-          Text(
-            page.description,
-            style: TextStyle(
-              color: Colors.grey[400],
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              height: 1.5,
-            ),
-            textAlign: TextAlign.center,
-          ),
+              // Icon
+              Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  color: page.color.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(page.icon, size: 60, color: page.color),
+              ),
+              const SizedBox(height: 48),
+              // Title
+              Text(
+                page.title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.25,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              // Description
+              Text(
+                page.description,
+                style: TextStyle(
+                  color: Colors.grey[400],
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
             ],
           ),
         ),

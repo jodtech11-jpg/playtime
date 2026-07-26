@@ -117,92 +117,94 @@ class _LoginScreenState extends State<LoginScreen> {
               // Hero Section
               if (!keyboardOpen)
                 Expanded(
-                flex: 4,
-                child: Stack(
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: RadialGradient(
-                          center: const Alignment(0.45, -0.3),
-                          radius: 1.15,
-                          colors: [
-                            AppColors.primary.withValues(alpha: 0.26),
-                            const Color(0xFF102819),
-                            AppColors.backgroundDark,
-                          ],
+                  flex: 4,
+                  child: Stack(
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: RadialGradient(
+                            center: const Alignment(0.45, -0.3),
+                            radius: 1.15,
+                            colors: [
+                              AppColors.primary.withValues(alpha: 0.26),
+                              const Color(0xFF102819),
+                              AppColors.backgroundDark,
+                            ],
+                          ),
+                        ),
+                        child: Align(
+                          alignment: const Alignment(0.8, -0.45),
+                          child: Icon(
+                            Icons.sports_cricket_rounded,
+                            size: 180,
+                            color: Colors.white.withValues(alpha: 0.035),
+                          ),
                         ),
                       ),
-                      child: Align(
-                        alignment: const Alignment(0.8, -0.45),
-                        child: Icon(
-                          Icons.sports_cricket_rounded,
-                          size: 180,
-                          color: Colors.white.withValues(alpha: 0.035),
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.black.withValues(alpha: 0.3),
+                              Colors.transparent,
+                              AppColors.backgroundDark.withValues(alpha: 0.9),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.black.withValues(alpha: 0.3),
-                            Colors.transparent,
-                            AppColors.backgroundDark.withValues(alpha: 0.9),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            width: 64,
-                            height: 64,
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: AppColors.primary.withValues(alpha: 0.3),
+                      Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 64,
+                              height: 64,
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: AppColors.primary.withValues(
+                                    alpha: 0.3,
+                                  ),
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.sports_cricket,
+                                color: AppColors.primary,
+                                size: 32,
                               ),
                             ),
-                            child: const Icon(
-                              Icons.sports_cricket,
-                              color: AppColors.primary,
-                              size: 32,
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Play Time',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 32,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -1,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Play Time',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 32,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -1,
+                            const SizedBox(height: 4),
+                            Text(
+                              'BOOK. PLAY. REPEAT.',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.grey[300],
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.4,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'BOOK. PLAY. REPEAT.',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Colors.grey[300],
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.4,
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
               // Login Sheet
               Expanded(
                 flex: keyboardOpen ? 1 : 6,
