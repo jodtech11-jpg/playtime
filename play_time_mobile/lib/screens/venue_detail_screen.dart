@@ -172,6 +172,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
           user.uid,
           widget.venueId,
         );
+        if (!mounted) return;
         setState(() {
           _isFavorited = isFavorited;
         });
@@ -201,6 +202,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
       await FirestoreService.toggleFavoriteVenue(user.uid, widget.venueId);
     } catch (e) {
       // Revert on error
+      if (!mounted) return;
       setState(() {
         _isFavorited = !_isFavorited;
       });
@@ -252,6 +254,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
       }
 
       if (courts.isNotEmpty) {
+        if (!mounted) return;
         setState(() {
           _courts = courts;
           _selectedCourtId = courts.first.id;
@@ -265,7 +268,9 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
         ).showSnackBar(SnackBar(content: Text('Failed to load courts: $e')));
       }
     } finally {
-      setState(() => _isLoadingSlots = false);
+      if (mounted) {
+        setState(() => _isLoadingSlots = false);
+      }
     }
   }
 

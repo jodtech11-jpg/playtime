@@ -647,55 +647,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _addMoneyToWallet(double amount) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    try {
-      setState(() => _isUploading = true);
-
-      // Get current wallet balance
-      final profile = await FirestoreService.getUserProfile(user.uid);
-      final currentBalance = (profile?['walletBalance'] ?? 0.0).toDouble();
-      final newBalance = currentBalance + amount;
-
-      // Update wallet balance
-      await FirestoreService.updateUserProfile(user.uid, {
-        'walletBalance': newBalance,
-      });
-
-      // Create wallet transaction record
-      await FirestoreService.createWalletTransaction(
-        userId: user.uid,
-        type: 'Credit',
-        amount: amount,
-        description: 'Wallet top-up',
-        balanceAfter: newBalance,
-      );
-
-      setState(() {
-        _walletBalance = newBalance;
-        _isUploading = false;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('₹${amount.toInt()} added to wallet successfully!'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-      }
-    } catch (e) {
-      setState(() => _isUploading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to add money: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Secure wallet top-ups are not available yet. No charge was made.',
+        ),
+      ),
+    );
   }
 
   Future<void> _loadUserProfileImage() async {
