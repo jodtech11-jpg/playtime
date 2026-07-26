@@ -31,31 +31,8 @@ export const useCategories = (options: UseCategoriesOptions = {}) => {
           });
         }
 
-        if (options.realtime) {
-          unsubscribe = categoriesCollection.subscribeAll(
-            (data: Category[]) => {
-              // Sort by order if available, then by name
-              const sorted = [...data].sort((a, b) => {
-                if (a.order !== undefined && b.order !== undefined) {
-                  return a.order - b.order;
-                }
-                if (a.order !== undefined) return -1;
-                if (b.order !== undefined) return 1;
-                return a.name.localeCompare(b.name);
-              });
-              setCategories(sorted);
-              setLoading(false);
-            },
-            filters.length > 0 ? filters : undefined,
-            'order',
-            'asc'
-          );
-        } else {
-          const data = await categoriesCollection.getAll(
-            filters.length > 0 ? filters : undefined
-          ) as Category[];
-          // Sort by order if available, then by name
-          const sorted = [...data].sort((a, b) => {
+        const sortCategories = (data: Category[]) =>
+          [...data].sort((a, b) => {
             if (a.order !== undefined && b.order !== undefined) {
               return a.order - b.order;
             }
@@ -63,7 +40,23 @@ export const useCategories = (options: UseCategoriesOptions = {}) => {
             if (b.order !== undefined) return 1;
             return a.name.localeCompare(b.name);
           });
-          setCategories(sorted);
+
+        if (options.realtime) {
+          // Sort in memory — never orderBy('order') in Firestore. Documents
+          // missing `order` are excluded from orderBy queries, so newly created
+          // categories would never appear in Manage Categories.
+          unsubscribe = categoriesCollection.subscribeAll(
+            (data: Category[]) => {
+              setCategories(sortCategories(data));
+              setLoading(false);
+            },
+            filters.length > 0 ? filters : undefined
+          );
+        } else {
+          const data = await categoriesCollection.getAll(
+            filters.length > 0 ? filters : undefined
+          ) as Category[];
+          setCategories(sortCategories(data));
           setLoading(false);
         }
       } catch (err: any) {

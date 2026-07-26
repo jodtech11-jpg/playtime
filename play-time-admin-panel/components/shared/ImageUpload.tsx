@@ -97,19 +97,30 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
     filesMap: Map<string, ImageUploadFile>
   ) => {
     try {
-      // Compress if enabled
+      // Always upload as JPEG after compress — large PNGs (pngegg, etc.) often
+      // exceed Storage size rules and trigger storage/unauthorized.
+      const contentType = 'image/jpeg';
+
       let fileToUpload: File | Blob = file;
       if (compress) {
         try {
-          fileToUpload = await compressImage(file);
+          fileToUpload = await compressImage(file, 1600, 1600, 0.82, 'image/jpeg');
         } catch (error) {
           console.warn('Compression failed, using original file:', error);
           fileToUpload = file;
         }
       }
 
+      const maxBytes = maxSizeMB * 1024 * 1024;
+      if (fileToUpload.size > maxBytes) {
+        throw new Error(
+          `Image is still too large after compression (${(fileToUpload.size / (1024 * 1024)).toFixed(1)}MB). Please use a file under ${maxSizeMB}MB.`
+        );
+      }
+
       // Determine upload path
-      const fileName = `${Date.now()}_${file.name}`;
+      const safeBase = file.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9._-]/g, '_') || 'image';
+      const fileName = `${Date.now()}_${safeBase}.jpg`;
       const uploadPath = itemId
         ? `${folder}/${itemId}/${fileName}`
         : `${folder}/temp/${fileName}`;
@@ -129,7 +140,7 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
           }
         },
         {
-          contentType: file.type || 'image/jpeg',
+          contentType,
           customMetadata: {
             originalName: file.name,
             originalSize: file.size.toString()

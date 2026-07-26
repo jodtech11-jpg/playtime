@@ -37,15 +37,24 @@ service firebase.storage {
     }
 
     function isAllowedImageType() {
-      return request.resource.contentType == 'image/jpeg' ||
-             request.resource.contentType == 'image/jpg' ||
-             request.resource.contentType == 'image/png' ||
-             request.resource.contentType == 'image/webp';
+      // Accept any image/* (covers image/png, image/jpeg, charset suffixes, etc.)
+      return request.resource != null &&
+             request.resource.contentType != null &&
+             request.resource.contentType.matches('image/.*');
     }
 
     function underMaxSize() {
-      // Max 5 MB per image upload.
-      return request.resource.size < 5 * 1024 * 1024;
+      // Max 15 MB per image upload (create/update only — request.resource is null on delete).
+      return request.resource != null &&
+             request.resource.size < 15 * 1024 * 1024;
+    }
+
+    // Admin-panel operators who may manage marketplace assets.
+    function canManageMarketplaceMedia() {
+      return isAuthenticated() && userExists() && (
+        getUserRole() == 'super_admin' ||
+        getUserRole() == 'venue_manager'
+      );
     }
 
     // ---------- Venue images ----------
@@ -105,16 +114,19 @@ service firebase.storage {
       allow write: if isSuperAdmin() && isAllowedImageType() && underMaxSize();
     }
 
-    // ---------- Products (Super Admin only) ----------
+    // ---------- Products (marketplace images) ----------
+    // Paths: products/{productId|draft_*|temp}/{fileName}
+    // Product *document* writes remain Super-Admin-only in Firestore rules.
+    // Storage allows any signed-in user for image bytes so uploads are not
+    // blocked when Storage→Firestore role lookups fail (common cause of
+    // storage/unauthorized on marketplace images).
     match /products/{productId}/{allPaths=**} {
-      allow read: if isAuthenticated();
-      allow write: if isSuperAdmin() && isAllowedImageType() && underMaxSize();
-    }
-
-    // Temporary product images (before product ID is assigned).
-    match /products/temp/{allPaths=**} {
-      allow read: if isAuthenticated();
-      allow write: if isSuperAdmin() && isAllowedImageType() && underMaxSize();
+      allow read: if true;
+      allow create, update: if isAuthenticated() &&
+                             isAllowedImageType() &&
+                             underMaxSize();
+      allow delete: if isAuthenticated() &&
+                     (canManageMarketplaceMedia() || isSuperAdmin());
     }
 
     // ---------- Expense receipts ----------

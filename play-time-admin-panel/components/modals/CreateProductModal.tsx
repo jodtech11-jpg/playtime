@@ -34,9 +34,10 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
   const [isFeatured, setIsFeatured] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [draftUploadId, setDraftUploadId] = useState(() => `draft_${Date.now()}`);
 
   const { venues } = useVenues({ realtime: false });
-  const { categories } = useCategories({ activeOnly: true, realtime: false });
+  const { categories } = useCategories({ activeOnly: true, realtime: true });
 
   // Populate form when editing
   useEffect(() => {
@@ -55,7 +56,8 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
       setTags(editingProduct.tags?.join(', ') || '');
       setIsFeatured(editingProduct.isFeatured || false);
     } else {
-      // Reset form for new product
+      // Reset form for new product — fresh storage folder for uploads
+      setDraftUploadId(`draft_${Date.now()}`);
       setName('');
       setDescription('');
       setCategory('');
@@ -412,14 +414,16 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
                 Images * (At least one required)
               </label>
-              <p className="text-xs text-gray-500 mb-2">Accepted formats: JPG, PNG, or WebP · Max 5MB each</p>
+              <p className="text-xs text-gray-500 mb-2">
+                Accepted formats: JPG, PNG, or WebP · Max 10MB each (auto-compressed to JPG)
+              </p>
               <ImageUpload
                 value={imageUrls}
                 onChange={setImageUrls}
                 folder="products"
-                itemId={editingProduct?.id}
+                itemId={editingProduct?.id || draftUploadId}
                 maxImages={10}
-                maxSizeMB={5}
+                maxSizeMB={10}
                 compress={true}
                 multiple={true}
                 disabled={loading}

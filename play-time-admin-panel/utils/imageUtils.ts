@@ -3,6 +3,14 @@
  * Functions for image optimization, compression, and processing
  */
 
+/** Normalize browser MIME types to Storage-rule-friendly values. */
+export const normalizeImageContentType = (type?: string | null): string => {
+  const t = (type || '').toLowerCase().trim();
+  if (t === 'image/jpg' || t === 'image/pjpeg') return 'image/jpeg';
+  if (t === 'image/jpeg' || t === 'image/png' || t === 'image/webp') return t;
+  return 'image/jpeg';
+};
+
 /**
  * Compress image file
  * @param file - Image file to compress
@@ -15,10 +23,13 @@ export const compressImage = async (
   file: File,
   maxWidth: number = 1920,
   maxHeight: number = 1920,
-  quality: number = 0.8
+  quality: number = 0.8,
+  /** Force output MIME — JPEG shrinks large PNG assets (e.g. pngegg) reliably. */
+  outputType: string = 'image/jpeg'
 ): Promise<Blob> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
+    const mime = normalizeImageContentType(outputType || file.type);
     
     reader.onload = (e) => {
       const img = new Image();
@@ -45,6 +56,12 @@ export const compressImage = async (
           reject(new Error('Could not get canvas context'));
           return;
         }
+
+        // White background so transparent PNGs don't become black JPEG
+        if (mime === 'image/jpeg') {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
+        }
         
         ctx.drawImage(img, 0, 0, width, height);
         
@@ -52,12 +69,17 @@ export const compressImage = async (
         canvas.toBlob(
           (blob) => {
             if (blob) {
-              resolve(blob);
+              // Guarantee a typed Blob for Storage rules
+              if (!blob.type) {
+                resolve(new Blob([blob], { type: mime }));
+              } else {
+                resolve(blob);
+              }
             } else {
               reject(new Error('Failed to compress image'));
             }
           },
-          file.type || 'image/jpeg',
+          mime,
           quality
         );
       };
@@ -90,8 +112,17 @@ export const validateImageFile = (
   maxSizeMB: number = 5
 ): { valid: boolean; error?: string } => {
   // Check file type (jpg, png, webp only for marketplace/product uploads)
-  const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-  if (!validTypes.includes(file.type)) {
+  // Also accept empty type when extension looks valid (some OS/browser combos).
+  const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/pjpeg'];
+  const ext = file.name.split('.').pop()?.toLowerCase() || '';
+  const validExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext);
+  if (file.type && !validTypes.includes(file.type) && !(file.type.startsWith('image/') && validExt)) {
+    return {
+      valid: false,
+      error: 'Invalid file type. Please upload a JPG, PNG, or WebP image.'
+    };
+  }
+  if (!file.type && !validExt) {
     return {
       valid: false,
       error: 'Invalid file type. Please upload a JPG, PNG, or WebP image.'

@@ -29,7 +29,7 @@ const CategoryManagementModal: React.FC<CategoryManagementModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
-  const { showError } = useToast();
+  const { showError, showSuccess } = useToast();
   const { openConfirm, confirmDialog } = useConfirmDialog();
 
   useEffect(() => {
@@ -65,12 +65,29 @@ const CategoryManagementModal: React.FC<CategoryManagementModalProps> = ({
         throw new Error('Category name is required');
       }
 
+      const duplicate = categories.find(
+        (c) =>
+          c.name.trim().toLowerCase() === name.trim().toLowerCase() &&
+          c.id !== editingCategory?.id
+      );
+      if (duplicate) {
+        throw new Error('A category with this name already exists');
+      }
+
+      const maxOrder = categories.reduce(
+        (max, c) => (typeof c.order === 'number' && c.order > max ? c.order : max),
+        -1
+      );
+      const resolvedOrder = order.trim() !== ''
+        ? parseInt(order, 10)
+        : editingCategory?.order ?? maxOrder + 1;
+
       const categoryData: Omit<Category, 'id' | 'createdAt' | 'updatedAt'> = {
         name: name.trim(),
         description: description.trim() || undefined,
         icon: icon.trim() || undefined,
-        color: color,
-        order: order ? parseInt(order) : undefined,
+        color: color || '#10b981',
+        order: Number.isFinite(resolvedOrder) ? resolvedOrder : maxOrder + 1,
         isActive
       };
 
@@ -90,6 +107,9 @@ const CategoryManagementModal: React.FC<CategoryManagementModalProps> = ({
       resetForm();
       setEditingCategory(null);
       onUpdate();
+      showSuccess(
+        editingCategory ? 'Category updated successfully' : 'Category created successfully'
+      );
     } catch (err: any) {
       setError(getFirebaseErrorMessage(err) || 'Failed to save category');
     } finally {
