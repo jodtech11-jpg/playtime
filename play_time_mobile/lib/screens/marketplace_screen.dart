@@ -283,7 +283,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Join Pro Club',
+                'Play Time Pro',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 18,
@@ -292,7 +292,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
               ),
               SizedBox(height: 4),
               Text(
-                'Get 5% extra off every order',
+                'Platform membership — not venue subscriptions',
                 style: TextStyle(
                   color: Colors.grey,
                   fontSize: 12,

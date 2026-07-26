@@ -20,6 +20,7 @@ const MembershipPlanFormModal: React.FC<MembershipPlanFormModalProps> = ({
   const [formData, setFormData] = useState<Partial<MembershipPlan>>({
     name: '',
     venueId: '',
+    scope: 'venue',
     type: 'Monthly',
     price: 0,
     features: [],
@@ -31,9 +32,11 @@ const MembershipPlanFormModal: React.FC<MembershipPlanFormModalProps> = ({
 
   useEffect(() => {
     if (plan) {
+      const isPlatform = plan.scope === 'platform' || !plan.venueId;
       setFormData({
         name: plan.name || '',
         venueId: plan.venueId || '',
+        scope: isPlatform ? 'platform' : 'venue',
         type: plan.type || 'Monthly',
         price: plan.price || 0,
         features: plan.features || [],
@@ -43,6 +46,7 @@ const MembershipPlanFormModal: React.FC<MembershipPlanFormModalProps> = ({
       setFormData({
         name: '',
         venueId: venues.length > 0 ? venues[0].id : '',
+        scope: 'venue',
         type: 'Monthly',
         price: 0,
         features: [],
@@ -79,7 +83,15 @@ const MembershipPlanFormModal: React.FC<MembershipPlanFormModalProps> = ({
     setLoading(true);
 
     try {
-      await onSave(formData);
+      const isPlatform = formData.scope === 'platform';
+      if (!isPlatform && !formData.venueId) {
+        throw new Error('Please select a venue for this subscription plan');
+      }
+      await onSave({
+        ...formData,
+        scope: isPlatform ? 'platform' : 'venue',
+        venueId: isPlatform ? '' : formData.venueId,
+      });
       onClose();
     } catch (err: any) {
       console.error('Error saving membership plan:', err);
@@ -97,7 +109,7 @@ const MembershipPlanFormModal: React.FC<MembershipPlanFormModalProps> = ({
         {/* Header */}
         <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between z-10">
           <h2 className="text-2xl font-black text-gray-900">
-            {plan ? 'Edit Membership Plan' : 'Create New Membership Plan'}
+            {plan ? 'Edit Plan' : 'Create Plan'}
           </h2>
           <button
             onClick={onClose}
@@ -129,6 +141,28 @@ const MembershipPlanFormModal: React.FC<MembershipPlanFormModalProps> = ({
               />
             </div>
             <div>
+              <label className="block text-sm font-black text-gray-700 mb-2">Plan Audience *</label>
+              <select
+                value={formData.scope || 'venue'}
+                onChange={(e) => {
+                  const scope = e.target.value as 'platform' | 'venue';
+                  setFormData(prev => ({
+                    ...prev,
+                    scope,
+                    venueId: scope === 'platform' ? '' : (prev.venueId || (venues[0]?.id ?? '')),
+                  }));
+                }}
+                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                required
+              >
+                <option value="venue">Venue subscription (vendor)</option>
+                <option value="platform">Play Time Pro (player membership)</option>
+              </select>
+            </div>
+          </div>
+
+          {formData.scope !== 'platform' && (
+            <div>
               <label className="block text-sm font-black text-gray-700 mb-2">Venue *</label>
               <select
                 value={formData.venueId}
@@ -142,7 +176,7 @@ const MembershipPlanFormModal: React.FC<MembershipPlanFormModalProps> = ({
                 ))}
               </select>
             </div>
-          </div>
+          )}
 
           <div className="grid grid-cols-2 gap-6">
             <div>

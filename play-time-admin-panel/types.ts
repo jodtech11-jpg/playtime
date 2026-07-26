@@ -220,7 +220,10 @@ export interface Membership {
 
 export interface MembershipPlan {
   id: string;
-  venueId: string;
+  /** Empty / omitted for Play Time Pro (platform) plans. */
+  venueId?: string;
+  /** `platform` = player Pro membership; `venue` (default) = vendor subscription. */
+  scope?: 'platform' | 'venue';
   name: string;
   type: 'Monthly' | '6 Months' | 'Annual';
   price: number;

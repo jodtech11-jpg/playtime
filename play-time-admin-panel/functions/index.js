@@ -1095,8 +1095,12 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
       }
       if (membershipId) {
         await admin.firestore().collection('memberships').doc(membershipId).set({
+          status: 'Active',
           paymentStatus: 'Paid',
+          paymentMethod: 'Online',
+          paymentGateway: 'Razorpay',
           paymentTransactionId: transactionId,
+          paymentDate: now,
           razorpayOrderId,
           webhookVerifiedAt: now,
           updatedAt: now,

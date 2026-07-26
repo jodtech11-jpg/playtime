@@ -103,20 +103,65 @@ class PaymentService {
   }
 
   static void _handleExternalWallet(ExternalWalletResponse response) {
-    // Handle external wallet selection
-    if (_onPaymentError != null) {
-      _onPaymentError!('External wallet selected: ${response.walletName}');
+    // Wallet selection is not a failure — success/error events follow separately.
+    debugPrint('External wallet selected: ${response.walletName}');
+  }
+
+  static Future<String?> _platformRazorpayKey() async {
+    try {
+      final publicDoc = await FirebaseFirestore.instance
+          .collection('appSettings')
+          .doc('public')
+          .get();
+
+      if (publicDoc.exists) {
+        final publicData = publicDoc.data() ?? {};
+        final integrations =
+            publicData['integrations'] as Map<String, dynamic>?;
+        final publicRazorpay =
+            integrations?['razorpay'] as Map<String, dynamic>?;
+        final publicApiKey = publicRazorpay?['apiKey'] as String?;
+        if (publicApiKey != null && publicApiKey.isNotEmpty) {
+          return publicApiKey;
+        }
+      }
+
+      try {
+        final platformDoc = await FirebaseFirestore.instance
+            .collection('appSettings')
+            .doc('platform')
+            .get();
+        if (platformDoc.exists) {
+          final integrations =
+              platformDoc.data()?['integrations'] as Map<String, dynamic>?;
+          final platformRazorpay =
+              integrations?['razorpay'] as Map<String, dynamic>?;
+          final key = platformRazorpay?['apiKey'] as String?;
+          if (key != null && key.isNotEmpty) return key;
+        }
+      } on FirebaseException catch (e) {
+        if (e.code != 'permission-denied') rethrow;
+      }
+    } catch (e) {
+      debugPrint('Error fetching platform Razorpay key: $e');
     }
+    return null;
   }
 
   /// Get Razorpay **Key ID** for checkout (safe to embed in the client; never ship the API **secret**).
   /// Venues store only razorpay.enabled; key comes from venue legacy field or appSettings/integrations/razorpay.
+  /// Pass `platform` (or empty) for Play Time Pro / platform checkout.
   static Future<String?> getRazorpayKey(String venueId) async {
     try {
+      final normalizedVenueId = venueId.trim();
+      if (normalizedVenueId.isEmpty || normalizedVenueId == 'platform') {
+        return _platformRazorpayKey();
+      }
+
       // 1. Check if venue has Razorpay enabled
       final venueDoc = await FirebaseFirestore.instance
           .collection('venues')
-          .doc(venueId)
+          .doc(normalizedVenueId)
           .get();
 
       if (!venueDoc.exists) {
@@ -138,44 +183,8 @@ class PaymentService {
         return venueApiKey;
       }
 
-      // 3. Public integrations are readable by authenticated players.
-      final publicDoc = await FirebaseFirestore.instance
-          .collection('appSettings')
-          .doc('public')
-          .get();
-
-      if (publicDoc.exists) {
-        final publicData = publicDoc.data() ?? {};
-        final integrations =
-            publicData['integrations'] as Map<String, dynamic>?;
-        final publicRazorpay =
-            integrations?['razorpay'] as Map<String, dynamic>?;
-        final publicApiKey = publicRazorpay?['apiKey'] as String?;
-        if (publicApiKey != null && publicApiKey.isNotEmpty) {
-          return publicApiKey;
-        }
-      }
-
-      // 4. Legacy fallback. This document is admin-only in current rules, so
-      // permission-denied must not abort the otherwise valid public lookup.
-      try {
-        final platformDoc = await FirebaseFirestore.instance
-            .collection('appSettings')
-            .doc('platform')
-            .get();
-        if (platformDoc.exists) {
-          final integrations =
-              platformDoc.data()?['integrations'] as Map<String, dynamic>?;
-          final platformRazorpay =
-              integrations?['razorpay'] as Map<String, dynamic>?;
-          final key = platformRazorpay?['apiKey'] as String?;
-          if (key != null && key.isNotEmpty) return key;
-        }
-      } on FirebaseException catch (e) {
-        if (e.code != 'permission-denied') rethrow;
-      }
-
-      return null;
+      // 3. Fall back to platform public key
+      return _platformRazorpayKey();
     } catch (e) {
       debugPrint('Error fetching Razorpay key: $e');
       return null;
@@ -461,21 +470,27 @@ class PaymentService {
         return;
       }
 
-      // Get Razorpay key from venue
+      final isPlatformMembership =
+          venueId.trim().isEmpty || venueId.trim() == 'platform';
+
       final razorpayKey = await getRazorpayKey(venueId);
       if (razorpayKey == null) {
         onError(
-          'Razorpay is not configured for this venue. Please contact the venue manager.',
+          isPlatformMembership
+              ? 'Razorpay is not configured. Please try again later.'
+              : 'Razorpay is not configured for this venue. Please contact the venue manager.',
         );
         return;
       }
 
-      // Get venue name
-      final venueDoc = await FirebaseFirestore.instance
-          .collection('venues')
-          .doc(venueId)
-          .get();
-      final venueName = venueDoc.data()?['name'] as String? ?? 'Venue';
+      String venueName = 'Play Time Pro';
+      if (!isPlatformMembership) {
+        final venueDoc = await FirebaseFirestore.instance
+            .collection('venues')
+            .doc(venueId)
+            .get();
+        venueName = venueDoc.data()?['name'] as String? ?? 'Venue';
+      }
 
       final serverMembershipAmount = await _membershipAmountFromServer(
         membershipId,
@@ -505,9 +520,10 @@ class PaymentService {
               );
               return;
             }
-            // Idempotency check
+            // Idempotency — scoped to user so Firestore rules allow the query
             final existing = await FirebaseFirestore.instance
                 .collection('payments')
+                .where('userId', isEqualTo: userId)
                 .where('transactionId', isEqualTo: paymentId)
                 .limit(1)
                 .get();
@@ -516,18 +532,20 @@ class PaymentService {
               return;
             }
 
-            // Atomic batch: payment record + membership status update
+            // Atomic batch: payment record + activate membership
             final batch = FirebaseFirestore.instance.batch();
             final paymentRef = FirebaseFirestore.instance
                 .collection('payments')
                 .doc();
             batch.set(paymentRef, {
               'type': 'Online',
-              'direction': 'UserToVenue',
+              'direction': isPlatformMembership
+                  ? 'UserToPlatform'
+                  : 'UserToVenue',
               'sourceType': 'Membership',
               'sourceId': membershipId,
               'userId': userId,
-              'venueId': venueId,
+              'venueId': isPlatformMembership ? 'platform' : venueId,
               'amount': verifiedAmount,
               'paymentMethod': 'Razorpay',
               'paymentGateway': 'Razorpay',
@@ -541,24 +559,30 @@ class PaymentService {
                 .collection('memberships')
                 .doc(membershipId);
             batch.update(membershipRef, {
+              'status': 'Active',
               'paymentStatus': 'Paid',
+              'paymentMethod': 'Online',
+              'paymentGateway': 'Razorpay',
               'paymentTransactionId': paymentId,
+              'paymentDate': FieldValue.serverTimestamp(),
               'updatedAt': FieldValue.serverTimestamp(),
             });
             await batch.commit();
 
-            // Settlement is best-effort
-            try {
-              await _createSettlementAndInvoice(
-                venueId: venueId,
-                venueName: venueName,
-                type: 'Membership',
-                grossAmount: verifiedAmount,
-              );
-            } catch (e) {
-              debugPrint(
-                'Settlement creation failed for membership $membershipId: $e',
-              );
+            // Settlement is best-effort (venue subscriptions only)
+            if (!isPlatformMembership) {
+              try {
+                await _createSettlementAndInvoice(
+                  venueId: venueId,
+                  venueName: venueName,
+                  type: 'Membership',
+                  grossAmount: verifiedAmount,
+                );
+              } catch (e) {
+                debugPrint(
+                  'Settlement creation failed for membership $membershipId: $e',
+                );
+              }
             }
 
             onSuccess(paymentId);
@@ -571,15 +595,15 @@ class PaymentService {
         onError: onError,
       );
 
-      // Calculate amount in paise
       final amountInPaise = (serverMembershipAmount * 100).toInt();
 
-      // Create Razorpay options
       final options = {
         'key': razorpayKey,
         'amount': amountInPaise,
         'name': 'Play Time',
-        'description': 'Membership payment for $venueName',
+        'description': isPlatformMembership
+            ? 'Play Time Pro membership'
+            : 'Subscription payment for $venueName',
         'prefill': {
           'contact': userPhone ?? '',
           'email': userEmail ?? '',
@@ -587,13 +611,12 @@ class PaymentService {
         },
         'notes': {
           'membershipId': membershipId,
-          'venueId': venueId,
+          'venueId': isPlatformMembership ? 'platform' : venueId,
           'userId': userId,
         },
         'theme': {'color': '#0DF259'},
       };
 
-      // Open Razorpay checkout
       _razorpay.open(options);
     } catch (e) {
       onError('Failed to initiate payment: $e');
@@ -671,9 +694,10 @@ class PaymentService {
               );
               return;
             }
-            // Idempotency check
+            // Idempotency — scoped to user so Firestore rules allow the query
             final existing = await FirebaseFirestore.instance
                 .collection('payments')
+                .where('userId', isEqualTo: userId)
                 .where('transactionId', isEqualTo: paymentId)
                 .limit(1)
                 .get();

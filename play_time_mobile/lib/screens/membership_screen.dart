@@ -6,7 +6,6 @@ import '../theme/app_colors.dart';
 import '../providers/membership_provider.dart';
 import '../models/membership_plan.dart';
 import '../services/payment_service.dart';
-import '../providers/venue_provider.dart';
 import '../widgets/loading_widget.dart';
 import '../widgets/error_widget.dart';
 
@@ -241,69 +240,42 @@ class _MembershipScreenState extends State<MembershipScreen> {
                             );
                           }
 
-                          if (membershipProvider.plans.isEmpty) {
+                          // Player membership only — never list vendor venue subscriptions here.
+                          final plans = membershipProvider.platformPlans;
+
+                          if (plans.isEmpty) {
                             return const EmptyStateWidget(
                               icon: Icons.card_membership,
-                              title: 'No membership plans available',
-                              message: 'Check back later for new plans',
+                              title: 'No Play Time Pro plans yet',
+                              message:
+                                  'Venue subscriptions are listed on each venue page. Check back soon for platform Pro plans.',
                             );
                           }
 
                           final activeMemberships = membershipProvider
                               .memberships
-                              .where((m) => m.isActive)
+                              .where((m) => m.isActive && m.isPlatformMembership)
                               .toList();
 
                           return Column(
-                            children: membershipProvider.plans.asMap().entries.map((
-                              entry,
-                            ) {
+                            children: plans.asMap().entries.map((entry) {
                               final index = entry.key;
                               final plan = entry.value;
-                              // Mark exactly one plan as recommended: the middle-tier plan
-                              // (index 1 for 3+ plans, index 0 for 1-2 plans)
-                              final plans = membershipProvider.plans;
-                              final recommendedIndex = plans.length >= 3
-                                  ? 1
-                                  : 0;
+                              final recommendedIndex =
+                                  plans.length >= 3 ? 1 : 0;
                               final isRecommended = index == recommendedIndex;
-
-                              // Check if this plan is currently active
                               final isCurrentPlan = activeMemberships.any(
                                 (m) => m.planId == plan.id,
                               );
 
-                              // Find venue name if plan is venue-specific
-                              String? venueName;
-                              if (plan.venueId != null) {
-                                final venueProvider =
-                                    Provider.of<VenueProvider>(
-                                      context,
-                                      listen: false,
-                                    );
-                                try {
-                                  final venue = venueProvider.venues.firstWhere(
-                                    (v) => v.id == plan.venueId,
-                                  );
-                                  venueName = venue.name;
-                                } catch (_) {
-                                  venueName = 'Unknown Venue';
-                                }
-                              }
-
                               return Padding(
                                 padding: EdgeInsets.only(
-                                  bottom:
-                                      index <
-                                          membershipProvider.plans.length - 1
-                                      ? 16
-                                      : 0,
+                                  bottom: index < plans.length - 1 ? 16 : 0,
                                 ),
                                 child: _buildPlanCard(
                                   plan: plan,
                                   isRecommended: isRecommended,
                                   isCurrentPlan: isCurrentPlan,
-                                  venueName: venueName,
                                   onPurchase: () => _handlePurchase(plan),
                                 ),
                               );
@@ -441,6 +413,11 @@ class _MembershipScreenState extends State<MembershipScreen> {
     if (_isProcessing) return;
 
     setState(() => _isProcessing = true);
+    String? membershipId;
+    final membershipProvider = Provider.of<MembershipProvider>(
+      context,
+      listen: false,
+    );
 
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -456,42 +433,29 @@ class _MembershipScreenState extends State<MembershipScreen> {
         return;
       }
 
-      // Get venue ID (use first venue or allow selection)
-      final venueProvider = Provider.of<VenueProvider>(context, listen: false);
-      String? venueId = plan.venueId;
-
-      if (venueId == null || venueId.isEmpty) {
-        // If plan doesn't have venue, use first venue or show selection
-        if (venueProvider.venues.isNotEmpty) {
-          venueId = venueProvider.venues.first.id;
-        } else {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('No venues available'),
-                backgroundColor: AppColors.error,
+      if (!plan.isPlatformPlan) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Venue subscriptions are purchased from the venue page.',
               ),
-            );
-          }
-          return;
+              backgroundColor: AppColors.error,
+            ),
+          );
         }
+        return;
       }
 
-      // Create membership
-      final membershipProvider = Provider.of<MembershipProvider>(
-        context,
-        listen: false,
-      );
-      final membershipId = await membershipProvider.createMembership(
+      membershipId = await membershipProvider.createMembership(
         planId: plan.id,
-        venueId: venueId,
+        venueId: 'platform',
         price: plan.price,
       );
 
-      // Process payment
       await PaymentService.processMembershipPayment(
         membershipId: membershipId,
-        venueId: venueId,
+        venueId: 'platform',
         amount: plan.price,
         userId: user.uid,
         userName: user.displayName ?? user.email ?? 'User',
@@ -501,20 +465,22 @@ class _MembershipScreenState extends State<MembershipScreen> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Membership purchased successfully!'),
+                content: Text('Play Time Pro activated!'),
                 backgroundColor: AppColors.success,
               ),
             );
             context.pop();
           }
         },
-        onError: (error) {
+        onError: (error) async {
+          final pendingId = membershipId;
+          if (pendingId != null) {
+            await membershipProvider.cancelPendingMembership(pendingId);
+          }
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(
-                  'Payment failed: $error. Membership created but payment pending.',
-                ),
+                content: Text('Payment failed: $error'),
                 backgroundColor: AppColors.error,
                 duration: const Duration(seconds: 5),
               ),
@@ -523,6 +489,10 @@ class _MembershipScreenState extends State<MembershipScreen> {
         },
       );
     } catch (e) {
+      final pendingId = membershipId;
+      if (pendingId != null) {
+        await membershipProvider.cancelPendingMembership(pendingId);
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

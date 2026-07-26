@@ -73,7 +73,7 @@ const Sidebar: React.FC = () => {
   const baseNavItems = [
     { to: '/', icon: 'dashboard', label: 'Dashboard' },
     { to: '/bookings', icon: 'calendar_month', label: 'Bookings' },
-    { to: '/memberships', icon: 'groups', label: 'Memberships' },
+    { to: '/memberships', icon: 'groups', label: 'Subscriptions' },
     ...(hasPermission('financials.read') ? [{ to: '/financials', icon: 'payments', label: 'Financials' }] : []),
     { to: '/payments', icon: 'account_balance_wallet', label: 'Payments' },
     { to: '/notifications', icon: 'notifications_active', label: 'Notifications' },

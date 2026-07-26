@@ -85,4 +85,13 @@ class Membership {
 
   bool get isActive => status == 'Active' && endDate.isAfter(DateTime.now());
   bool get isExpired => endDate.isBefore(DateTime.now());
+
+  /// Play Time Pro (player) — not a vendor venue subscription.
+  bool get isPlatformMembership {
+    final v = venueId.trim();
+    return v.isEmpty || v == 'platform';
+  }
+
+  /// Vendor venue subscription purchase.
+  bool get isVenueSubscription => !isPlatformMembership;
 }

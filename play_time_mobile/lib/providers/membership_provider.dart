@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/membership_plan.dart';
 import '../models/membership.dart';
 import '../services/firestore_service.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 class MembershipProvider with ChangeNotifier {
   List<MembershipPlan> _plans = [];
@@ -15,6 +15,16 @@ class MembershipProvider with ChangeNotifier {
   StreamSubscription<List<Membership>>? _membershipsSubscription;
 
   List<MembershipPlan> get plans => _plans;
+
+  /// Play Time Pro plans only (player membership — not vendor subscriptions).
+  List<MembershipPlan> get platformPlans =>
+      _plans.where((p) => p.isPlatformPlan).toList();
+
+  /// Vendor subscription plans for a specific venue.
+  List<MembershipPlan> venueSubscriptionPlans(String venueId) => _plans
+      .where((p) => p.isVenueSubscription && p.venueId == venueId)
+      .toList();
+
   List<Membership> get memberships => _memberships;
   bool get isLoading => _isLoading;
   String? get error => _error;
@@ -26,7 +36,6 @@ class MembershipProvider with ChangeNotifier {
       _loadMemberships(user.uid);
     }
 
-    // Listen to auth state changes
     FirebaseAuth.instance.authStateChanges().listen((user) {
       if (user != null) {
         _loadMemberships(user.uid);
@@ -93,13 +102,11 @@ class MembershipProvider with ChangeNotifier {
         throw Exception('User not authenticated');
       }
 
-      // Get plan details
       final plan = await FirestoreService.getMembershipPlanById(planId);
       if (plan == null) {
         throw Exception('Membership plan not found');
       }
 
-      // Calculate dates based on plan type
       final now = DateTime.now();
       DateTime endDate;
       switch (plan.planType) {
@@ -107,7 +114,6 @@ class MembershipProvider with ChangeNotifier {
           endDate = now.add(const Duration(days: 30));
           break;
         case '6 Months':
-          // Use Duration to avoid month+day overflow (e.g. Aug 31 + 6 months)
           endDate = now.add(const Duration(days: 180));
           break;
         case 'Annual':
@@ -117,9 +123,16 @@ class MembershipProvider with ChangeNotifier {
           endDate = now.add(const Duration(days: 30));
       }
 
+      final resolvedVenueId = plan.isPlatformPlan
+          ? 'platform'
+          : (venueId.trim().isNotEmpty ? venueId : (plan.venueId ?? ''));
+      if (resolvedVenueId.isEmpty) {
+        throw Exception('This plan is missing a venue assignment');
+      }
+
       final membershipData = {
         'userId': user.uid,
-        'venueId': venueId,
+        'venueId': resolvedVenueId,
         'planId': planId,
         'planName': plan.name,
         'planType': plan.planType,
@@ -144,6 +157,18 @@ class MembershipProvider with ChangeNotifier {
     }
   }
 
+  Future<void> cancelPendingMembership(String membershipId) async {
+    try {
+      await FirestoreService.updateMembership(membershipId, {
+        'status': 'Cancelled',
+        'paymentStatus': 'Pending',
+      });
+      await refreshMemberships();
+    } catch (_) {
+      // Best-effort cleanup after payment failure
+    }
+  }
+
   Future<void> refreshMemberships() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
@@ -151,21 +176,31 @@ class MembershipProvider with ChangeNotifier {
     }
   }
 
-  Membership? getActiveMembership(String? venueId) {
+  Membership? getActivePlatformMembership() {
     try {
-      if (venueId != null) {
-        return _memberships.firstWhere(
-          (m) => m.venueId == venueId && m.isActive,
-          orElse: () => _memberships.firstWhere(
-            (m) => m.isActive,
-            orElse: () => _memberships.first,
-          ),
-        );
-      }
-      return _memberships.firstWhere((m) => m.isActive);
-    } catch (e) {
+      return _memberships.firstWhere((m) => m.isActive && m.isPlatformMembership);
+    } catch (_) {
       return null;
     }
+  }
+
+  Membership? getActiveVenueSubscription(String venueId) {
+    try {
+      return _memberships.firstWhere(
+        (m) => m.isActive && m.venueId == venueId,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// When [venueId] is null: active Play Time Pro only.
+  /// When set: active vendor subscription for that venue only.
+  Membership? getActiveMembership(String? venueId) {
+    if (venueId == null || venueId.isEmpty || venueId == 'platform') {
+      return getActivePlatformMembership();
+    }
+    return getActiveVenueSubscription(venueId);
   }
 
   bool hasActiveMembership(String? venueId) {

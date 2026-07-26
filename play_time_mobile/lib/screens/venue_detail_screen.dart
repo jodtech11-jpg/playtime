@@ -10,8 +10,10 @@ import '../theme/app_colors.dart';
 import '../constants/app_strings.dart';
 import '../providers/venue_provider.dart';
 import '../providers/booking_provider.dart';
+import '../providers/membership_provider.dart';
 import '../models/venue.dart';
 import '../models/court.dart';
+import '../models/membership_plan.dart';
 import '../services/firestore_service.dart';
 import '../services/payment_service.dart';
 import '../models/booking.dart';
@@ -42,6 +44,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
   int _bookingDurationMinutes = 60;
   Venue? _venue;
   bool _isLoadingVenue = true;
+  bool _isPurchasingSubscription = false;
 
   List<Map<String, dynamic>> get _dates {
     final days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -565,6 +568,245 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
     return months[month - 1];
   }
 
+  Widget _buildVenueSubscriptionsSection(Venue venue) {
+    return Consumer<MembershipProvider>(
+      builder: (context, membershipProvider, _) {
+        final plans = membershipProvider.venueSubscriptionPlans(venue.id);
+        if (plans.isEmpty) return const SizedBox.shrink();
+
+        final active = membershipProvider.getActiveVenueSubscription(venue.id);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Subscriptions',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Venue plans for discounted or priority access at ${venue.name}.',
+              style: TextStyle(
+                color: Colors.grey[400],
+                fontSize: 13,
+                height: 1.4,
+              ),
+            ),
+            if (active != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.primary.withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Text(
+                  'Active: ${active.planName} · expires ${_formatSubscriptionDate(active.endDate)}',
+                  style: const TextStyle(
+                    color: AppColors.primary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            ...plans.map((plan) {
+              final isCurrent = active?.planId == plan.id;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceDark,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isCurrent
+                          ? AppColors.primary.withValues(alpha: 0.5)
+                          : Colors.white.withValues(alpha: 0.08),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              plan.name,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '₹${plan.price.toInt()} · ${plan.planType}',
+                              style: TextStyle(
+                                color: Colors.grey[400],
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      ElevatedButton(
+                        onPressed:
+                            (_isPurchasingSubscription || isCurrent)
+                            ? null
+                            : () => _purchaseVenueSubscription(plan, venue),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: AppColors.backgroundDark,
+                          disabledBackgroundColor: Colors.white.withValues(
+                            alpha: 0.08,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: Text(
+                          isCurrent ? 'ACTIVE' : 'SUBSCRIBE',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ],
+        );
+      },
+    );
+  }
+
+  String _formatSubscriptionDate(DateTime date) {
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${date.day} ${months[date.month - 1]}, ${date.year}';
+  }
+
+  Future<void> _purchaseVenueSubscription(
+    MembershipPlan plan,
+    Venue venue,
+  ) async {
+    if (_isPurchasingSubscription) return;
+    setState(() => _isPurchasingSubscription = true);
+
+    String? membershipId;
+    final membershipProvider = Provider.of<MembershipProvider>(
+      context,
+      listen: false,
+    );
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please login to subscribe'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+        return;
+      }
+
+      if (plan.venueId == null || plan.venueId != venue.id) {
+        throw Exception('This subscription belongs to another venue');
+      }
+
+      membershipId = await membershipProvider.createMembership(
+        planId: plan.id,
+        venueId: venue.id,
+        price: plan.price,
+      );
+
+      await PaymentService.processMembershipPayment(
+        membershipId: membershipId,
+        venueId: venue.id,
+        amount: plan.price,
+        userId: user.uid,
+        userName: user.displayName ?? user.email ?? 'User',
+        userEmail: user.email,
+        userPhone: user.phoneNumber,
+        onSuccess: (_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Subscription activated!'),
+                backgroundColor: AppColors.success,
+              ),
+            );
+          }
+        },
+        onError: (error) async {
+          final pendingId = membershipId;
+          if (pendingId != null) {
+            await membershipProvider.cancelPendingMembership(pendingId);
+          }
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Payment failed: $error'),
+                backgroundColor: AppColors.error,
+                duration: const Duration(seconds: 5),
+              ),
+            );
+          }
+        },
+      );
+    } catch (e) {
+      final pendingId = membershipId;
+      if (pendingId != null) {
+        await membershipProvider.cancelPendingMembership(pendingId);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to subscribe: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isPurchasingSubscription = false);
+      }
+    }
+  }
+
   Widget _buildDurationChip({
     required String label,
     required int minutes,
@@ -923,6 +1165,8 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
                       height: 1.6,
                     ),
                   ),
+                  const SizedBox(height: 32),
+                  _buildVenueSubscriptionsSection(venue),
                   const SizedBox(height: 32),
                   const Text(
                     'Select Date & Time',

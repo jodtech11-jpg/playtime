@@ -326,7 +326,7 @@ const Memberships: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-none">Memberships</h1>
+          <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-none">Subscriptions</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-3 font-medium">
             {isVendorViewOnly
               ? 'View membership status and expiry dates for your venue.'
@@ -349,7 +349,7 @@ const Memberships: React.FC = () => {
       <div className="space-y-6">
         <div className="flex items-center gap-3">
           <div className="h-6 w-1 rounded-full bg-primary"></div>
-          <h2 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] leading-none">Membership Plans</h2>
+          <h2 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] leading-none">Subscription &amp; Pro Plans</h2>
         </div>
         {plans.length === 0 ? (
           <div className="ui-card p-16 text-center border-dashed">
