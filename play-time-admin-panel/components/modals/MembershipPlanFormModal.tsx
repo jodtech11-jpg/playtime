@@ -8,19 +8,22 @@ interface MembershipPlanFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (planData: Partial<MembershipPlan>) => Promise<void>;
+  /** Locks the form to player Pro or venue subscription plans. */
+  forcedScope?: 'platform' | 'venue';
 }
 
 const MembershipPlanFormModal: React.FC<MembershipPlanFormModalProps> = ({
   plan,
   isOpen,
   onClose,
-  onSave
+  onSave,
+  forcedScope
 }) => {
   const { venues } = useVenues();
   const [formData, setFormData] = useState<Partial<MembershipPlan>>({
     name: '',
     venueId: '',
-    scope: 'venue',
+    scope: forcedScope || 'venue',
     type: 'Monthly',
     price: 0,
     features: [],
@@ -32,10 +35,13 @@ const MembershipPlanFormModal: React.FC<MembershipPlanFormModalProps> = ({
 
   useEffect(() => {
     if (plan) {
-      const isPlatform = plan.scope === 'platform' || !plan.venueId;
+      const isPlatform =
+        forcedScope === 'platform' ||
+        plan.scope === 'platform' ||
+        !plan.venueId;
       setFormData({
         name: plan.name || '',
-        venueId: plan.venueId || '',
+        venueId: isPlatform ? '' : plan.venueId || '',
         scope: isPlatform ? 'platform' : 'venue',
         type: plan.type || 'Monthly',
         price: plan.price || 0,
@@ -43,17 +49,18 @@ const MembershipPlanFormModal: React.FC<MembershipPlanFormModalProps> = ({
         isActive: plan.isActive !== undefined ? plan.isActive : true
       });
     } else {
+      const scope = forcedScope || 'venue';
       setFormData({
         name: '',
-        venueId: venues.length > 0 ? venues[0].id : '',
-        scope: 'venue',
+        venueId: scope === 'platform' ? '' : (venues.length > 0 ? venues[0].id : ''),
+        scope,
         type: 'Monthly',
         price: 0,
         features: [],
         isActive: true
       });
     }
-  }, [plan, isOpen, venues]);
+  }, [plan, isOpen, venues, forcedScope]);
 
   const handleInputChange = (field: keyof MembershipPlan, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -109,7 +116,13 @@ const MembershipPlanFormModal: React.FC<MembershipPlanFormModalProps> = ({
         {/* Header */}
         <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between z-10">
           <h2 className="text-2xl font-black text-gray-900">
-            {plan ? 'Edit Plan' : 'Create Plan'}
+            {plan
+              ? forcedScope === 'platform'
+                ? 'Edit Play Time Pro Plan'
+                : 'Edit Subscription Plan'
+              : forcedScope === 'platform'
+                ? 'Create Play Time Pro Plan'
+                : 'Create Subscription Plan'}
           </h2>
           <button
             onClick={onClose}
@@ -140,28 +153,37 @@ const MembershipPlanFormModal: React.FC<MembershipPlanFormModalProps> = ({
                 placeholder="e.g., Rookie Pass"
               />
             </div>
-            <div>
-              <label className="block text-sm font-black text-gray-700 mb-2">Plan Audience *</label>
-              <select
-                value={formData.scope || 'venue'}
-                onChange={(e) => {
-                  const scope = e.target.value as 'platform' | 'venue';
-                  setFormData(prev => ({
-                    ...prev,
-                    scope,
-                    venueId: scope === 'platform' ? '' : (prev.venueId || (venues[0]?.id ?? '')),
-                  }));
-                }}
-                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
-                required
-              >
-                <option value="venue">Venue subscription (vendor)</option>
-                <option value="platform">Play Time Pro (player membership)</option>
-              </select>
-            </div>
+            {!forcedScope && (
+              <div>
+                <label className="block text-sm font-black text-gray-700 mb-2">Plan Audience *</label>
+                <select
+                  value={formData.scope || 'venue'}
+                  onChange={(e) => {
+                    const scope = e.target.value as 'platform' | 'venue';
+                    setFormData(prev => ({
+                      ...prev,
+                      scope,
+                      venueId: scope === 'platform' ? '' : (prev.venueId || (venues[0]?.id ?? '')),
+                    }));
+                  }}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                  required
+                >
+                  <option value="venue">Venue subscription (vendor)</option>
+                  <option value="platform">Play Time Pro (player membership)</option>
+                </select>
+              </div>
+            )}
+            {forcedScope === 'platform' && (
+              <div className="flex items-end">
+                <div className="w-full px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-100 text-sm font-bold text-emerald-700">
+                  Play Time Pro — player membership (platform-wide)
+                </div>
+              </div>
+            )}
           </div>
 
-          {formData.scope !== 'platform' && (
+          {formData.scope !== 'platform' && forcedScope !== 'platform' && (
             <div>
               <label className="block text-sm font-black text-gray-700 mb-2">Venue *</label>
               <select

@@ -17,8 +17,22 @@ import { serverTimestamp, Timestamp } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { sendNotificationToAudience } from '../services/notificationService';
 import { getFirebaseErrorMessage } from '../utils/errorUtils';
+import {
+  isPlatformMembership,
+  isPlatformPlan,
+  isVenueSubscriptionMembership,
+  isVenueSubscriptionPlan,
+} from '../utils/membershipScope';
 
-const Memberships: React.FC = () => {
+export type MembershipsPageMode = 'venue' | 'platform';
+
+interface MembershipsProps {
+  /** `venue` = vendor subscriptions; `platform` = Play Time Pro player memberships. */
+  mode?: MembershipsPageMode;
+}
+
+const Memberships: React.FC<MembershipsProps> = ({ mode = 'venue' }) => {
+  const isPlatformMode = mode === 'platform';
   const { user: currentUser, isSuperAdmin, isVenueManager, hasPermission } = useAuth();
   const isVendorViewOnly = isVenueManager && !isSuperAdmin;
   const canOpenUserProfile = hasPermission('users.manage');
@@ -34,12 +48,28 @@ const Memberships: React.FC = () => {
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
 
   // Fetch data
-  const { plans, loading: plansLoading } = useMembershipPlans({ realtime: true });
-  const { memberships, loading: membershipsLoading } = useMemberships({ realtime: true });
+  const { plans: allPlans, loading: plansLoading } = useMembershipPlans({ realtime: true });
+  const { memberships: allMemberships, loading: membershipsLoading } = useMemberships({ realtime: true });
   const { users, loading: usersLoading } = useUsers({ searchTerm, limit: 100 });
   const { venues } = useVenues();
   const navigate = useNavigate();
   const [showExportDropdown, setShowExportDropdown] = useState(false);
+
+  const plans = useMemo(
+    () =>
+      allPlans.filter((p) =>
+        isPlatformMode ? isPlatformPlan(p) : isVenueSubscriptionPlan(p)
+      ),
+    [allPlans, isPlatformMode]
+  );
+
+  const memberships = useMemo(
+    () =>
+      allMemberships.filter((m) =>
+        isPlatformMode ? isPlatformMembership(m) : isVenueSubscriptionMembership(m)
+      ),
+    [allMemberships, isPlatformMode]
+  );
 
   // Close dropdown when clicking outside
   React.useEffect(() => {
@@ -107,11 +137,13 @@ const Memberships: React.FC = () => {
         userName: user?.name || 'Unknown User',
         userEmail: user?.email || '',
         userAvatar: user?.avatar,
-        venueName: venue?.name || 'Unknown Venue',
+        venueName: isPlatformMode
+          ? 'Play Time Pro'
+          : venue?.name || membership.venueName || 'Unknown Venue',
         planDetails: plan
       };
     });
-  }, [filteredMemberships, users, venues, plans]);
+  }, [filteredMemberships, users, venues, plans, isPlatformMode]);
 
   // Handle plan operations
   const handleCreatePlan = () => {
@@ -121,12 +153,13 @@ const Memberships: React.FC = () => {
 
   // Register "New Entry" handler for Header button
   useEffect(() => {
-    if (isVendorViewOnly) return;
+    if (isVendorViewOnly && !isPlatformMode) return;
+    if (isPlatformMode && !isSuperAdmin) return;
     setNewEntryHandler(handleCreatePlan);
     return () => {
       unsetNewEntryHandler();
     };
-  }, [setNewEntryHandler, unsetNewEntryHandler, isVendorViewOnly]);
+  }, [setNewEntryHandler, unsetNewEntryHandler, isVendorViewOnly, isPlatformMode, isSuperAdmin]);
 
   const handleEditPlan = (plan: MembershipPlan) => {
     setSelectedPlan(plan);
@@ -210,6 +243,7 @@ const Memberships: React.FC = () => {
         endDate: Timestamp.fromDate(endDate),
         // Financials only count paid memberships; activation implies payment received
         ...(membership.paymentStatus !== 'Paid' ? { paymentStatus: 'Paid' } : {}),
+        ...(isPlatformMode ? { venueId: 'platform' } : {}),
         updatedAt: serverTimestamp()
       });
 
@@ -217,8 +251,10 @@ const Memberships: React.FC = () => {
       try {
         await sendNotificationToAudience({
           id: `membership_activated_${membershipId}_${Date.now()}`,
-          title: 'Membership Activated! 🎉',
-          body: `Your ${membership.planName} membership at ${membership.venueName} is now active. Enjoy your perks!`,
+          title: isPlatformMode ? 'Play Time Pro Activated! 🎉' : 'Subscription Activated! 🎉',
+          body: isPlatformMode
+            ? `Your ${membership.planName} Play Time Pro membership is now active. Enjoy your perks!`
+            : `Your ${membership.planName} subscription at ${membership.venueName || 'the venue'} is now active. Enjoy your perks!`,
           type: 'Membership',
           targetAudience: 'Specific Users',
           targetUserIds: [membership.userId],
@@ -229,10 +265,9 @@ const Memberships: React.FC = () => {
         });
       } catch (notifError) {
         console.error('Error sending membership activation notification:', notifError);
-        // Don't show error to user as membership was still activated successfully
       }
 
-      showSuccess('Membership activated successfully');
+      showSuccess(isPlatformMode ? 'Player membership activated' : 'Subscription activated successfully');
     } catch (error: any) {
       console.error('Error activating membership:', error);
       showError('Failed to activate membership: ' + getFirebaseErrorMessage(error));
@@ -243,10 +278,10 @@ const Memberships: React.FC = () => {
 
   const handleCancelMembership = (membershipId: string) => {
     openConfirm({
-      title: 'Cancel membership?',
+      title: isPlatformMode ? 'Cancel player membership?' : 'Cancel subscription?',
       message: 'The member will lose active access for this record.',
       variant: 'warning',
-      confirmLabel: 'Cancel membership',
+      confirmLabel: isPlatformMode ? 'Cancel membership' : 'Cancel subscription',
       onConfirm: async () => {
         try {
           setProcessing(membershipId);
@@ -320,36 +355,55 @@ const Memberships: React.FC = () => {
     );
   }
 
+  // Platform management is super-admin only
+  if (isPlatformMode && !isSuperAdmin) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[50vh]">
+        <div className="text-center space-y-3">
+          <span className="material-symbols-outlined text-4xl text-slate-300">lock</span>
+          <p className="text-sm font-bold text-slate-500">Only Super Admins can manage player memberships.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const canManagePlans = isPlatformMode ? isSuperAdmin : !isVendorViewOnly;
+
   return (
     <div className="p-4 sm:p-8 space-y-6 sm:space-y-10 bg-slate-50 dark:bg-slate-900 min-h-full">
       {/* Header */}
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-none">Subscriptions</h1>
+          <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-none">
+            {isPlatformMode ? 'Player Memberships' : 'Subscriptions'}
+          </h1>
           <p className="text-slate-500 dark:text-slate-400 mt-3 font-medium">
-            {isVendorViewOnly
-              ? 'View membership status and expiry dates for your venue.'
-              : 'Manage membership plans and member subscriptions.'}
+            {isPlatformMode
+              ? 'Manage Play Time Pro plans and player memberships (platform-wide).'
+              : isVendorViewOnly
+                ? 'View subscription status and expiry dates for your venue.'
+                : 'Manage venue subscription plans and subscriber records.'}
           </p>
         </div>
-        {!isVendorViewOnly && (
+        {canManagePlans && (
         <button
           onClick={handleCreatePlan}
           className="flex items-center gap-2 rounded-xl bg-primary hover:bg-primary/90 px-6 py-3 text-white text-sm font-black shadow-lg shadow-primary/20 transition-all active:scale-95"
         >
           <span className="material-symbols-outlined text-[20px]">add_card</span>
-          Add Plan
+          {isPlatformMode ? 'Add Pro Plan' : 'Add Plan'}
         </button>
         )}
       </div>
 
-      {/* Membership Plans — super admin only */}
-      {!isVendorViewOnly && (
+      {/* Plans */}
+      {canManagePlans && (
       <div className="space-y-6">
         <div className="flex items-center gap-3">
           <div className="h-6 w-1 rounded-full bg-primary"></div>
-          <h2 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] leading-none">Subscription &amp; Pro Plans</h2>
+          <h2 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] leading-none">
+            {isPlatformMode ? 'Play Time Pro Plans' : 'Venue Subscription Plans'}
+          </h2>
         </div>
         {plans.length === 0 ? (
           <div className="ui-card p-16 text-center border-dashed">
@@ -357,12 +411,16 @@ const Memberships: React.FC = () => {
               <span className="material-symbols-outlined text-4xl">card_membership</span>
             </div>
             <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2 tracking-tight">No Plans Found</h3>
-            <p className="text-slate-500 dark:text-slate-400 mb-8 max-w-sm mx-auto font-medium">Create your first membership plan to get started.</p>
+            <p className="text-slate-500 dark:text-slate-400 mb-8 max-w-sm mx-auto font-medium">
+              {isPlatformMode
+                ? 'Create a Play Time Pro plan so players can purchase platform membership in the app.'
+                : 'Create your first venue subscription plan to get started.'}
+            </p>
             <button
               onClick={handleCreatePlan}
               className="px-8 py-3.5 bg-primary text-white rounded-xl text-sm font-black hover:bg-primary/90 shadow-xl shadow-primary/20 transition-all"
             >
-              Add First Plan
+              {isPlatformMode ? 'Add First Pro Plan' : 'Add First Plan'}
             </button>
           </div>
         ) : (
@@ -437,7 +495,9 @@ const Memberships: React.FC = () => {
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6">
           <div className="flex items-center gap-3">
             <div className="h-6 w-1 rounded-full bg-primary"></div>
-            <h2 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] leading-none">Members</h2>
+            <h2 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] leading-none">
+              {isPlatformMode ? 'Pro Members' : 'Subscribers'}
+            </h2>
           </div>
 
           <div className="flex flex-wrap items-center gap-3 bg-white dark:bg-slate-800 p-2 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
@@ -522,11 +582,11 @@ const Memberships: React.FC = () => {
               <tr>
                 <th className="px-6 py-5">Member</th>
                 <th className="px-6 py-5">Plan</th>
-                <th className="px-6 py-5">Venue</th>
+                <th className="px-6 py-5">{isPlatformMode ? 'Scope' : 'Venue'}</th>
                 <th className="px-6 py-5">Joined</th>
                 <th className="px-6 py-5">Expires</th>
                 <th className="px-6 py-5">Status</th>
-                {!isVendorViewOnly && <th className="px-6 py-5 text-right">Actions</th>}
+                {canManagePlans && <th className="px-6 py-5 text-right">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
@@ -556,7 +616,9 @@ const Memberships: React.FC = () => {
                       <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-md text-[10px] font-black uppercase tracking-widest">{member.planName}</span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-xs font-bold text-slate-600 dark:text-slate-400">{member.venueName}</span>
+                      <span className={`text-xs font-bold ${isPlatformMode ? 'text-primary' : 'text-slate-600 dark:text-slate-400'}`}>
+                        {member.venueName}
+                      </span>
                     </td>
                     <td className="px-6 py-4">
                       <span className="text-xs font-bold text-slate-500">{member.createdAt ? formatDate(member.createdAt) : 'SYSTEM'}</span>
@@ -576,7 +638,7 @@ const Memberships: React.FC = () => {
                         {member.status}
                       </div>
                     </td>
-                    {!isVendorViewOnly && (
+                    {canManagePlans && (
                     <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">
                         {member.status === 'Pending' && (
@@ -630,7 +692,7 @@ const Memberships: React.FC = () => {
                                     className="w-full px-4 py-3 text-[10px] font-black uppercase tracking-widest text-rose-500 hover:bg-rose-50 rounded-lg flex items-center gap-2"
                                   >
                                     <span className="material-symbols-outlined text-lg">cancel</span>
-                                    Cancel Membership
+                                    {isPlatformMode ? 'Cancel Membership' : 'Cancel Subscription'}
                                   </button>
                                 </>
                               )}
@@ -652,11 +714,13 @@ const Memberships: React.FC = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={isVendorViewOnly ? 6 : 7} className="px-6 py-20 text-center">
+                  <td colSpan={canManagePlans ? 7 : 6} className="px-6 py-20 text-center">
                     <div className="size-20 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center mx-auto mb-4 text-slate-300">
                       <span className="material-symbols-outlined text-4xl">folder_off</span>
                     </div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No members found</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      {isPlatformMode ? 'No Pro members found' : 'No subscribers found'}
+                    </p>
                   </td>
                 </tr>
               )}
@@ -665,7 +729,7 @@ const Memberships: React.FC = () => {
         </div>
       </div>
 
-      {/* Membership Plan Form Modal */}
+      {/* Plan Form Modal */}
       <MembershipPlanFormModal
         plan={selectedPlan}
         isOpen={isPlanModalOpen}
@@ -674,6 +738,7 @@ const Memberships: React.FC = () => {
           setSelectedPlan(null);
         }}
         onSave={handleSavePlan}
+        forcedScope={isPlatformMode ? 'platform' : 'venue'}
       />
       {confirmDialog}
     </div>

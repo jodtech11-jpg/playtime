@@ -119,6 +119,8 @@ const Header: React.FC = () => {
       'flash-deals': 'Flash Deals',
       'activity-log': 'Activity log',
       'user-manual': 'User manual',
+      'memberships': 'Subscriptions',
+      'player-memberships': 'Player Memberships',
     };
 
     if (first === 'users' && second) {
@@ -223,7 +225,8 @@ const Header: React.FC = () => {
       'marketing': 'New Campaign',
       'marketplace': 'New Product',
       'notifications': 'Send Notification',
-      'memberships': 'New Membership',
+      'memberships': 'New Subscription Plan',
+      'player-memberships': 'New Pro Plan',
       'frontend-cms': 'Add Page',
     };
     return textMap[path] || 'New Entry';

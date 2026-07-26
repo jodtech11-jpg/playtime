@@ -81,6 +81,7 @@ const Sidebar: React.FC = () => {
 
   // Super Admin only menu items (excluding venues which is now nested)
   const superAdminNavItems = [
+    { to: '/player-memberships', icon: 'workspace_premium', label: 'Player Memberships' },
     { to: '/activity-log', icon: 'history', label: 'Activity log' },
     { to: '/moderation', icon: 'shield', label: 'Moderation' },
     { to: '/marketing', icon: 'campaign', label: 'Marketing & Offers' },

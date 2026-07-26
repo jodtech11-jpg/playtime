@@ -14,6 +14,7 @@ import Venues from './pages/Venues';
 import VenueDetail from './pages/VenueDetail';
 import CourtManagement from './pages/CourtManagement';
 import Memberships from './pages/Memberships';
+import PlayerMemberships from './pages/PlayerMemberships';
 import Financials from './pages/Financials';
 import Staff from './pages/Staff';
 import Users from './pages/Users';
@@ -85,7 +86,8 @@ const AppRoutes: React.FC = () => {
                 <Route path="/venues" element={<VenueProtectedRoute><Venues /></VenueProtectedRoute>} />
                 <Route path="/venues/:venueId" element={<VenueProtectedRoute><VenueDetail /></VenueProtectedRoute>} />
                 <Route path="/venues/courts" element={<VenueProtectedRoute><CourtManagement /></VenueProtectedRoute>} />
-              <Route path="/memberships" element={<ProtectedRoute><Memberships /></ProtectedRoute>} />
+              <Route path="/memberships" element={<ProtectedRoute><Memberships mode="venue" /></ProtectedRoute>} />
+              <Route path="/player-memberships" element={<ProtectedRoute requireSuperAdmin><PlayerMemberships /></ProtectedRoute>} />
               <Route path="/financials" element={<ProtectedRoute requiredPermissions={['financials.read']}><Financials /></ProtectedRoute>} />
               <Route path="/staff" element={<ProtectedRoute><Staff /></ProtectedRoute>} />
               <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
