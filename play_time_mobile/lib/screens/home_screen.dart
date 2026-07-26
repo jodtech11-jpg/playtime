@@ -1677,6 +1677,8 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
         return 'Sort: Price (High to Low)';
       case 'distance':
         return 'Sort: Distance';
+      case 'name':
+        return 'Sort: Name (A–Z)';
       default:
         return 'Sort: Best Rated';
     }
@@ -1723,6 +1725,11 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                     ),
                     const SizedBox(height: 16),
                     _buildSortOption('rating', 'Best Rated', Icons.star),
+                    _buildSortOption(
+                      'name',
+                      'Name: A to Z',
+                      Icons.sort_by_alpha,
+                    ),
                     _buildSortOption(
                       'price',
                       'Price: Low to High',

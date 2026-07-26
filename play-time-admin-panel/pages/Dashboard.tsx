@@ -87,7 +87,7 @@ const Dashboard: React.FC = () => {
 
     // Calculate pending payments in date range
     const pendingPayments = bookings
-      .filter(b => b.paymentStatus === 'Pending')
+      .filter(b => b.status === 'Pending' && b.paymentStatus === 'Pending')
       .reduce((sum, b) => sum + (b.amount || 0), 0);
 
     // Calculate active memberships count

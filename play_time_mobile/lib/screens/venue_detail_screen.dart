@@ -407,6 +407,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
         startTime: startTime,
         endTime: endTime,
         amount: bookingAmount,
+        courtOverride: selectedCourt,
         venueImage: venue.image,
         skipPayment: false, // Will process payment after booking creation
       );
@@ -503,25 +504,38 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
           }
         },
         onError: (error) async {
+          final chargedButNotRecorded = error
+              .toLowerCase()
+              .contains('payment successful');
           unawaited(
             AnalyticsService.logPaymentFailed(
               bookingId: bookingId,
               reason: error,
             ),
           );
-          // Cancel the pending booking so it doesn't orphan
-          try {
-            await bookingProvider.cancelBooking(bookingId);
-          } catch (cancelErr) {
-            debugPrint(
-              'Failed to cancel booking after payment error: $cancelErr',
-            );
+          // Never cancel a booking when Razorpay charged successfully but the
+          // local status write failed; the verified webhook will reconcile it.
+          if (!chargedButNotRecorded) {
+            try {
+              await bookingProvider.cancelBooking(
+                bookingId,
+                paymentFailed: true,
+              );
+            } catch (cancelErr) {
+              debugPrint(
+                'Failed to cancel booking after payment error: $cancelErr',
+              );
+            }
           }
           if (mounted) {
             setState(() => _isBooking = false);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Payment failed: $error. Please try again.'),
+                content: Text(
+                  chargedButNotRecorded
+                      ? '$error Keep your payment receipt; the booking will be reconciled automatically.'
+                      : 'Payment failed: $error. Please try again.',
+                ),
                 backgroundColor: AppColors.error,
                 duration: const Duration(seconds: 5),
               ),
@@ -538,7 +552,10 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
       );
       // Cancel the pending booking
       try {
-        await bookingProvider.cancelBooking(bookingId);
+        await bookingProvider.cancelBooking(
+          bookingId,
+          paymentFailed: true,
+        );
       } catch (cancelErr) {
         debugPrint('Failed to cancel booking after exception: $cancelErr');
       }
@@ -973,14 +990,21 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
           }
         },
         onError: (error) async {
+          final chargedButNotRecorded = error
+              .toLowerCase()
+              .contains('payment successful');
           final pendingId = membershipId;
-          if (pendingId != null) {
+          if (!chargedButNotRecorded && pendingId != null) {
             await membershipProvider.cancelPendingMembership(pendingId);
           }
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Payment failed: $error'),
+                content: Text(
+                  chargedButNotRecorded
+                      ? '$error Keep your receipt; the subscription will be reconciled automatically.'
+                      : 'Payment failed: $error',
+                ),
                 backgroundColor: AppColors.error,
                 duration: const Duration(seconds: 5),
               ),

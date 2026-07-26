@@ -39,6 +39,19 @@ const QuickMatchFormModal: React.FC<QuickMatchFormModalProps> = ({
   const { courts, loading: courtsLoading } = useCourts({ venueId: selectedVenueId, realtime: false });
 
   const selectedVenue = venues.find((v) => v.id === selectedVenueId);
+  // Legacy venues may keep courts embedded on the venue document while newer
+  // courts live in the top-level `courts` collection. Merge both so Quick
+  // Match creation never shows an empty court list.
+  const availableCourts = useMemo(() => {
+    const merged = new Map<string, typeof courts[number]>();
+    [...(selectedVenue?.courts || []), ...courts].forEach((court) => {
+      const key = court.id || `${court.name}-${court.sport}`;
+      merged.set(key, court);
+    });
+    return Array.from(merged.values()).sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    );
+  }, [selectedVenue?.courts, courts]);
   const venueSports = useMemo(
     () => getSportsForVenue(selectedVenue, allSports),
     [selectedVenue, allSports]
@@ -117,7 +130,7 @@ const QuickMatchFormModal: React.FC<QuickMatchFormModalProps> = ({
 
       const venue = venues.find(v => v.id === formData.venueId);
       const sport = findSport(formData.sportId, allSports);
-      const selectedCourt = courts.find(c => c.id === formData.courtId);
+      const selectedCourt = availableCourts.find(c => c.id === formData.courtId);
 
       const [hours, minutes] = formData.time.split(':').map(Number);
       const matchDate = parseLocalDateTime(formData.date, hours, minutes);
@@ -271,7 +284,7 @@ const QuickMatchFormModal: React.FC<QuickMatchFormModalProps> = ({
                 disabled={courtsLoading}
               >
                 <option value="">No specific court</option>
-                {courts
+                {availableCourts
                   .filter((court) => courtMatchesSport(court.sport, formData.sportId, allSports))
                   .map((court) => (
                     <option key={court.id} value={court.id}>

@@ -204,7 +204,10 @@ class FirestoreService {
     }
   }
 
-  static Future<void> cancelBooking(String bookingId) async {
+  static Future<void> cancelBooking(
+    String bookingId, {
+    bool paymentFailed = false,
+  }) async {
     try {
       final ref = _firestore.collection('bookings').doc(bookingId);
       final snap = await ref.get();
@@ -212,6 +215,7 @@ class FirestoreService {
       final batch = _firestore.batch();
       batch.update(ref, {
         'status': 'Cancelled',
+        if (paymentFailed) 'paymentStatus': 'Failed',
         'updatedAt': FieldValue.serverTimestamp(),
       });
       if (lockId != null && lockId.isNotEmpty) {
@@ -276,6 +280,7 @@ class FirestoreService {
     required String courtId,
     required DateTime startTime,
     required DateTime endTime,
+    Court? courtOverride,
   }) async {
     try {
       final snapshot = await courtBookingsForAvailability(
@@ -297,7 +302,7 @@ class FirestoreService {
       }
 
       // Check court availability schedule
-      final court = await getCourtById(courtId);
+      final court = courtOverride ?? await getCourtById(courtId);
       if (court == null) return false;
 
       const days = [
@@ -336,8 +341,9 @@ class FirestoreService {
       return true;
     } catch (e) {
       debugPrint('isSlotAvailable error: $e');
-      // On query failure, conservatively block the slot to prevent overbooking
-      return false;
+      // A backend/index/permission failure is not the same as a real conflict.
+      // Let the UI show a useful verification error.
+      rethrow;
     }
   }
 
@@ -1237,9 +1243,48 @@ class FirestoreService {
         query = query.where('venueId', isEqualTo: venueId);
       }
       final snapshot = await query.limit(50).get();
-      final matches = snapshot.docs
-          .map((doc) => QuickMatch.fromFirestore(doc.id, doc.data()))
-          .toList();
+      final courtNameCache = <String, String?>{};
+      final embeddedCourtsByVenue = <String, List<dynamic>>{};
+      final matches = <QuickMatch>[];
+      for (final doc in snapshot.docs) {
+        final data = Map<String, dynamic>.from(doc.data());
+        final courtId = data['courtId'] as String?;
+        final existingName = data['courtName'] as String?;
+        if (courtId != null &&
+            courtId.isNotEmpty &&
+            (existingName == null || existingName.isEmpty)) {
+          if (!courtNameCache.containsKey(courtId)) {
+            final court = await getCourtById(courtId);
+            courtNameCache[courtId] = court?.name;
+          }
+          String? resolvedName = courtNameCache[courtId];
+
+          // Legacy courts can exist only inside the venue document.
+          if (resolvedName == null) {
+            final matchVenueId = data['venueId'] as String? ?? '';
+            if (matchVenueId.isNotEmpty) {
+              if (!embeddedCourtsByVenue.containsKey(matchVenueId)) {
+                final venueDoc = await _firestore
+                    .collection('venues')
+                    .doc(matchVenueId)
+                    .get();
+                embeddedCourtsByVenue[matchVenueId] =
+                    venueDoc.data()?['courts'] as List<dynamic>? ?? const [];
+              }
+              for (final raw in embeddedCourtsByVenue[matchVenueId]!) {
+                if (raw is Map && raw['id'] == courtId) {
+                  resolvedName = raw['name'] as String?;
+                  break;
+                }
+              }
+            }
+          }
+          if (resolvedName != null && resolvedName.isNotEmpty) {
+            data['courtName'] = resolvedName;
+          }
+        }
+        matches.add(QuickMatch.fromFirestore(doc.id, data));
+      }
       matches.sort((a, b) {
         final ad = a.date ?? DateTime(1970);
         final bd = b.date ?? DateTime(1970);

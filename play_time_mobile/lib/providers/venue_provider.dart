@@ -143,7 +143,7 @@ class VenueProvider with ChangeNotifier {
     double? maxPrice,
     List<String>? amenities,
     String? sport,
-    String? sortBy, // 'price', 'rating', 'distance'
+    String? sortBy, // 'name', 'price', 'rating', 'distance'
   }) {
     var filtered = List<Venue>.from(_venues);
 
@@ -181,6 +181,11 @@ class VenueProvider with ChangeNotifier {
     // Sort
     if (sortBy != null) {
       switch (sortBy) {
+        case 'name':
+          filtered.sort(
+            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+          );
+          break;
         case 'price':
           filtered.sort((a, b) {
             final priceA = a.price ?? 0;

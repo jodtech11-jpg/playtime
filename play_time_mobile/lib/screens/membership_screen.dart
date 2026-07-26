@@ -276,6 +276,9 @@ class _MembershipScreenState extends State<MembershipScreen> {
                                   plan: plan,
                                   isRecommended: isRecommended,
                                   isCurrentPlan: isCurrentPlan,
+                                  isChangingPlan:
+                                      activeMemberships.isNotEmpty &&
+                                      !isCurrentPlan,
                                   onPurchase: () => _handlePurchase(plan),
                                 ),
                               );
@@ -461,7 +464,13 @@ class _MembershipScreenState extends State<MembershipScreen> {
         userName: user.displayName ?? user.email ?? 'User',
         userEmail: user.email,
         userPhone: user.phoneNumber,
-        onSuccess: (paymentId) {
+        onSuccess: (paymentId) async {
+          final purchasedId = membershipId;
+          if (purchasedId != null) {
+            await membershipProvider.deactivateOtherPlatformMemberships(
+              purchasedId,
+            );
+          }
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -473,14 +482,21 @@ class _MembershipScreenState extends State<MembershipScreen> {
           }
         },
         onError: (error) async {
+          final chargedButNotRecorded = error
+              .toLowerCase()
+              .contains('payment successful');
           final pendingId = membershipId;
-          if (pendingId != null) {
+          if (!chargedButNotRecorded && pendingId != null) {
             await membershipProvider.cancelPendingMembership(pendingId);
           }
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Payment failed: $error'),
+                content: Text(
+                  chargedButNotRecorded
+                      ? '$error Keep your receipt; membership will be reconciled automatically.'
+                      : 'Payment failed: $error',
+                ),
                 backgroundColor: AppColors.error,
                 duration: const Duration(seconds: 5),
               ),
@@ -512,6 +528,7 @@ class _MembershipScreenState extends State<MembershipScreen> {
     required MembershipPlan plan,
     required bool isRecommended,
     bool isCurrentPlan = false,
+    bool isChangingPlan = false,
     String? venueName,
     required VoidCallback onPurchase,
   }) {
@@ -724,6 +741,8 @@ class _MembershipScreenState extends State<MembershipScreen> {
                           child: Text(
                             isCurrentPlan
                                 ? 'CURRENT PLAN'
+                                : isChangingPlan
+                                ? 'CHANGE TO ${plan.name.toUpperCase()}'
                                 : 'SELECT ${plan.name.toUpperCase()}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,

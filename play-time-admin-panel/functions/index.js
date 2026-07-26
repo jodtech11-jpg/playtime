@@ -1086,6 +1086,7 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
     if (event === 'payment.captured' || event === 'order.paid') {
       if (bookingId) {
         await admin.firestore().collection('bookings').doc(bookingId).set({
+          status: 'Confirmed',
           paymentStatus: 'Paid',
           paymentTransactionId: transactionId,
           razorpayOrderId,
@@ -1145,20 +1146,32 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
       }
     } else if (event === 'payment.failed') {
       if (bookingId) {
-        await admin.firestore().collection('bookings').doc(bookingId).set({
-          paymentStatus: 'Pending',
+        const bookingRef = admin.firestore().collection('bookings').doc(bookingId);
+        const bookingSnap = await bookingRef.get();
+        await bookingRef.set({
+          status: 'Cancelled',
+          paymentStatus: 'Failed',
+          paymentFailedAt: now,
           updatedAt: now,
         }, {merge: true});
+        const slotLockId = bookingSnap.data()?.slotLockId;
+        if (slotLockId) {
+          await admin.firestore().collection('booking_slot_locks').doc(slotLockId).delete();
+        }
       }
       if (membershipId) {
         await admin.firestore().collection('memberships').doc(membershipId).set({
-          paymentStatus: 'Pending',
+          status: 'Cancelled',
+          paymentStatus: 'Failed',
+          paymentFailedAt: now,
           updatedAt: now,
         }, {merge: true});
       }
       if (marketplaceOrderId) {
         await admin.firestore().collection('orders').doc(marketplaceOrderId).set({
-          paymentStatus: 'Pending',
+          status: 'Cancelled',
+          paymentStatus: 'Failed',
+          paymentFailedAt: now,
           updatedAt: now,
         }, {merge: true});
       }

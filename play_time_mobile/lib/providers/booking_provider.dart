@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/booking.dart';
+import '../models/court.dart';
 import '../services/firestore_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -61,6 +62,7 @@ class BookingProvider with ChangeNotifier {
     required DateTime startTime,
     required DateTime endTime,
     required double amount,
+    Court? courtOverride,
     String? venueImage,
     bool skipPayment = false,
   }) async {
@@ -86,6 +88,7 @@ class BookingProvider with ChangeNotifier {
         courtId: courtId,
         startTime: startTime,
         endTime: endTime,
+        courtOverride: courtOverride,
       );
 
       if (!isAvailable) {
@@ -134,9 +137,15 @@ class BookingProvider with ChangeNotifier {
     }
   }
 
-  Future<void> cancelBooking(String bookingId) async {
+  Future<void> cancelBooking(
+    String bookingId, {
+    bool paymentFailed = false,
+  }) async {
     try {
-      await FirestoreService.cancelBooking(bookingId);
+      await FirestoreService.cancelBooking(
+        bookingId,
+        paymentFailed: paymentFailed,
+      );
       await refreshBookings();
     } catch (e) {
       _error = 'Failed to cancel booking: $e';

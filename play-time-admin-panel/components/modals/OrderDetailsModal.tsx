@@ -194,7 +194,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   };
 
   const statusOptions: Order['status'][] = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled', 'Refunded'];
-  const paymentStatusOptions: Order['paymentStatus'][] = ['Pending', 'Paid', 'Refunded', 'Partially Refunded'];
+  const paymentStatusOptions: Order['paymentStatus'][] = ['Pending', 'Paid', 'Failed', 'Refunded', 'Partially Refunded'];
 
   return (
     <>
@@ -268,7 +268,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                   </select>
                   <span className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border ${
                     paymentStatus === 'Paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                    paymentStatus === 'Refunded' || paymentStatus === 'Partially Refunded' ? 'bg-red-50 text-red-700 border-red-100' :
+                    paymentStatus === 'Failed' || paymentStatus === 'Refunded' || paymentStatus === 'Partially Refunded' ? 'bg-red-50 text-red-700 border-red-100' :
                     'bg-amber-50 text-amber-700 border-amber-100'
                   }`}>
                     {paymentStatus}

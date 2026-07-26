@@ -60,6 +60,7 @@ export const useBookings = (options: UseBookingsOptions = {}) => {
         if (isVenueManager) {
           if (managedVenues.length === 0) {
             setBookings([]);
+            setError('No managed venue is assigned to this vendor account.');
             setLoading(false);
             return;
           }
@@ -97,7 +98,7 @@ export const useBookings = (options: UseBookingsOptions = {}) => {
         }
 
         // Filter by status
-        if (options.status) {
+        if (options.status && !isVenueManager) {
           filters.push({
             field: 'status',
             operator: '==',
@@ -106,7 +107,7 @@ export const useBookings = (options: UseBookingsOptions = {}) => {
         }
 
         // Filter by sport
-        if (options.sport) {
+        if (options.sport && !isVenueManager) {
           filters.push({
             field: 'sport',
             operator: '==',
@@ -116,7 +117,7 @@ export const useBookings = (options: UseBookingsOptions = {}) => {
 
         // Filter by date range
         const dateRange = dateRangeRef.current;
-        if (dateRange) {
+        if (dateRange && !isVenueManager) {
           filters.push({
             field: 'startTime',
             operator: '>=',
@@ -129,28 +130,64 @@ export const useBookings = (options: UseBookingsOptions = {}) => {
           });
         }
 
+        const filterAndSort = (data: Booking[], direction: 'asc' | 'desc') => {
+          const filtered = data.filter((booking) => {
+            if (options.status && booking.status !== options.status) return false;
+            if (options.sport && booking.sport !== options.sport) return false;
+            if (dateRange) {
+              const millis =
+                booking.startTime?.toMillis?.() ??
+                booking.startTime?.toDate?.()?.getTime?.() ??
+                new Date(booking.startTime ?? 0).getTime();
+              if (
+                millis < dateRange.start.getTime() ||
+                millis > dateRange.end.getTime()
+              ) {
+                return false;
+              }
+            }
+            return true;
+          });
+          const toMillis = (value: any) =>
+            value?.toMillis?.() ??
+            value?.toDate?.()?.getTime?.() ??
+            new Date(value ?? 0).getTime();
+          return filtered.sort((a, b) =>
+            direction === 'asc'
+              ? toMillis(a.startTime) - toMillis(b.startTime)
+              : toMillis(b.startTime) - toMillis(a.startTime)
+          );
+        };
+
         if (options.realtime) {
-          // Real-time subscription
+          // Sort in memory. Combining venueId `in` / status filters with
+          // orderBy(startTime) requires composite indexes and caused vendor
+          // booking lists to fail completely when an index was missing.
           unsubscribe = bookingsCollection.subscribeAll(
             (data: Booking[]) => {
               if (!mounted) return;
-              setBookings(data);
+              setBookings(filterAndSort(data, 'asc'));
               setLoading(false);
             },
             filters.length > 0 ? filters : undefined,
-            'startTime',
-            'asc'
+            undefined,
+            undefined,
+            (subscriptionError: any) => {
+              if (!mounted) return;
+              setError(getFirebaseErrorMessage(subscriptionError, 'Failed to fetch bookings'));
+              setLoading(false);
+            }
           );
         } else {
           // One-time fetch
           const data = await bookingsCollection.getAll(
             filters.length > 0 ? filters : undefined,
-            'startTime',
-            'desc',
+            undefined,
+            undefined,
             options.limit
           ) as Booking[];
           if (!mounted) return;
-          setBookings(data as Booking[]);
+          setBookings(filterAndSort(data, 'desc'));
           setLoading(false);
         }
       } catch (err: any) {

@@ -115,7 +115,14 @@ const Marketplace: React.FC = () => {
 
     // Payment status filter
     if (paymentStatusFilter !== 'All') {
-      filtered = filtered.filter(o => o.paymentStatus === paymentStatusFilter);
+      filtered = filtered.filter(o => {
+        // Legacy failed checkouts were saved as Cancelled + Pending.
+        const effectivePaymentStatus =
+          o.status === 'Cancelled' && o.paymentStatus === 'Pending'
+            ? 'Failed'
+            : o.paymentStatus;
+        return effectivePaymentStatus === paymentStatusFilter;
+      });
     }
 
     // Search filter
@@ -140,6 +147,10 @@ const Marketplace: React.FC = () => {
       
       return {
         ...order,
+        paymentStatus:
+          order.status === 'Cancelled' && order.paymentStatus === 'Pending'
+            ? 'Failed' as const
+            : order.paymentStatus,
         userName: user?.name || order.userName || 'Unknown User',
         userInitials: (user?.name || order.userName || 'U').split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2),
         itemsText,
@@ -677,6 +688,7 @@ const Marketplace: React.FC = () => {
                 <option value="All">All Payment Status</option>
                 <option value="Pending">Pending</option>
                 <option value="Paid">Paid</option>
+                <option value="Failed">Failed</option>
                 <option value="Refunded">Refunded</option>
                 <option value="Partially Refunded">Partially Refunded</option>
               </select>
@@ -759,7 +771,7 @@ const Marketplace: React.FC = () => {
                       <td className="px-8 py-6">
                         <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
                           order.paymentStatus === 'Paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                          order.paymentStatus === 'Refunded' || order.paymentStatus === 'Partially Refunded' ? 'bg-red-50 text-red-700 border-red-100' :
+                          order.paymentStatus === 'Failed' || order.paymentStatus === 'Refunded' || order.paymentStatus === 'Partially Refunded' ? 'bg-red-50 text-red-700 border-red-100' :
                           'bg-amber-50 text-amber-700 border-amber-100'
                         }`}>
                           {order.paymentStatus}

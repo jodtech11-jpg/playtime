@@ -37,6 +37,7 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
   final Map<String, bool> _showComments = {};
   final Map<String, TextEditingController> _commentControllers = {};
   final Map<String, StreamSubscription> _commentSubscriptions = {};
+  final Map<String, StreamSubscription<List<String>>> _likeSubscriptions = {};
 
   // _postContentController and _isCreatingPost removed as they are now handled in CreatePostModal
   String _sortBy = 'recent'; // 'recent', 'likes', 'comments'
@@ -60,7 +61,26 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
     for (var subscription in _commentSubscriptions.values) {
       subscription.cancel();
     }
+    for (var subscription in _likeSubscriptions.values) {
+      subscription.cancel();
+    }
     super.dispose();
+  }
+
+  void _ensureLikeSubscription(String postId, String userId) {
+    if (_likeSubscriptions.containsKey(postId)) return;
+    _likeSubscriptions[postId] = SocialService.getPostLikesStream(postId).listen(
+      (userIds) {
+        if (!mounted) return;
+        setState(() {
+          _postLikes[postId] = userIds.length;
+          _likedPosts[postId] = userIds.contains(userId);
+        });
+      },
+      onError: (Object error) {
+        debugPrint('Error loading likes for post $postId: $error');
+      },
+    );
   }
 
   Future<void> _loadLikeStatuses() async {
@@ -69,6 +89,7 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
 
     final feedProvider = Provider.of<FeedProvider>(context, listen: false);
     for (final item in feedProvider.feedItems) {
+      _ensureLikeSubscription(item.id, user.uid);
       if (!_likedPosts.containsKey(item.id)) {
         final hasLiked = await SocialService.hasUserLiked(item.id, user.uid);
         if (mounted) {
@@ -90,6 +111,9 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
     final itemsToLoad = items
         .where((item) => !_likedPosts.containsKey(item.id))
         .toList();
+    for (final item in items) {
+      _ensureLikeSubscription(item.id, user.uid);
+    }
     if (itemsToLoad.isEmpty) return;
 
     // Load all at once

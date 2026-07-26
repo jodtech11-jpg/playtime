@@ -161,12 +161,31 @@ class MembershipProvider with ChangeNotifier {
     try {
       await FirestoreService.updateMembership(membershipId, {
         'status': 'Cancelled',
-        'paymentStatus': 'Pending',
+        'paymentStatus': 'Failed',
       });
       await refreshMemberships();
     } catch (_) {
       // Best-effort cleanup after payment failure
     }
+  }
+
+  /// Keep exactly one active Play Time Pro plan after an upgrade/downgrade.
+  Future<void> deactivateOtherPlatformMemberships(String activeMembershipId) async {
+    final previous = _memberships.where(
+      (m) =>
+          m.id != activeMembershipId &&
+          m.isActive &&
+          m.isPlatformMembership,
+    );
+    await Future.wait(
+      previous.map(
+        (membership) => FirestoreService.updateMembership(membership.id, {
+          'status': 'Cancelled',
+          'cancelReason': 'Plan changed',
+        }),
+      ),
+    );
+    await refreshMemberships();
   }
 
   Future<void> refreshMemberships() async {

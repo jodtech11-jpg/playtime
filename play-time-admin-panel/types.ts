@@ -116,7 +116,7 @@ export interface Booking {
   duration: number; // in hours
   status: 'Pending' | 'Confirmed' | 'Cancelled' | 'Completed';
   amount: number;
-  paymentStatus: 'Pending' | 'Paid' | 'Refunded';
+  paymentStatus: 'Pending' | 'Paid' | 'Failed' | 'Refunded';
   paymentMethod?: 'Online' | 'Offline' | 'Cash';
   paymentGateway?: 'Razorpay' | 'Other';
   paymentTransactionId?: string; // Razorpay payment ID or transaction reference
@@ -206,7 +206,7 @@ export interface Membership {
   venueName?: string; // Denormalized venue name stored at creation time
   planType: 'Monthly' | '6 Months' | 'Annual';
   price: number;
-  paymentStatus?: 'Pending' | 'Paid' | 'Refunded';
+  paymentStatus?: 'Pending' | 'Paid' | 'Failed' | 'Refunded';
   paymentMethod?: 'Online' | 'Offline' | 'Cash';
   paymentGateway?: 'Razorpay' | 'Other';
   paymentTransactionId?: string; // Razorpay payment ID or transaction reference
@@ -600,7 +600,7 @@ export interface Order {
     pincode: string;
     landmark?: string;
   };
-  paymentStatus: 'Pending' | 'Paid' | 'Refunded' | 'Partially Refunded';
+  paymentStatus: 'Pending' | 'Paid' | 'Failed' | 'Refunded' | 'Partially Refunded';
   paymentMethod?: string;
   paymentTransactionId?: string; // Payment gateway transaction ID
   // Order tracking

@@ -330,7 +330,11 @@ class _TeamUpScreenState extends State<TeamUpScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _buildTeamDetailModal(team, teamProvider),
+      useSafeArea: true,
+      builder: (sheetContext) => SizedBox(
+        height: MediaQuery.sizeOf(sheetContext).height * 0.94,
+        child: _buildTeamDetailModal(team, teamProvider, sheetContext),
+      ),
     );
   }
 
@@ -1253,8 +1257,13 @@ class _TeamUpScreenState extends State<TeamUpScreen> {
     );
   }
 
-  Widget _buildTeamDetailModal(Team team, TeamProvider provider) {
-    return Positioned.fill(
+  Widget _buildTeamDetailModal(
+    Team team,
+    TeamProvider provider,
+    BuildContext sheetContext,
+  ) {
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       child: Scaffold(
         backgroundColor: AppColors.backgroundDark,
         appBar: AppBar(
@@ -1269,7 +1278,7 @@ class _TeamUpScreenState extends State<TeamUpScreen> {
               ),
               child: const Icon(Icons.arrow_back, color: Colors.white),
             ),
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(sheetContext),
           ),
           title: const Text(
             'Manage Squad',
@@ -1413,7 +1422,7 @@ class _TeamUpScreenState extends State<TeamUpScreen> {
                   ),
                   ElevatedButton.icon(
                     onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      ScaffoldMessenger.of(sheetContext).showSnackBar(
                         const SnackBar(
                           content: Text('Invitation link copied!'),
                         ),
@@ -1572,7 +1581,7 @@ class _TeamUpScreenState extends State<TeamUpScreen> {
                 width: double.infinity,
                 child: OutlinedButton(
                   onPressed: () {
-                    Navigator.pop(context);
+                    Navigator.pop(sheetContext);
                   },
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: Colors.red),

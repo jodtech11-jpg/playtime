@@ -205,17 +205,24 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           }
         },
         onError: (error) async {
-          try {
-            await FirestoreService.updateOrder(orderId, {
-              'status': 'Cancelled',
-              'paymentStatus': 'Pending',
-            });
-          } catch (_) {}
+          final chargedButNotRecorded = error
+              .toLowerCase()
+              .contains('payment successful');
+          if (!chargedButNotRecorded) {
+            try {
+              await FirestoreService.updateOrder(orderId, {
+                'status': 'Cancelled',
+                'paymentStatus': 'Failed',
+              });
+            } catch (_) {}
+          }
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
-                  'Payment failed: ${friendlyErrorMessage(error, fallback: error)}',
+                  chargedButNotRecorded
+                      ? '$error Keep your receipt; the order will be reconciled automatically.'
+                      : 'Payment failed: ${friendlyErrorMessage(error, fallback: error)}',
                 ),
                 backgroundColor: AppColors.error,
                 duration: const Duration(seconds: 5),

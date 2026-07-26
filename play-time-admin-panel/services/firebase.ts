@@ -965,8 +965,8 @@ export const bookingsCollection = {
   update: (bookingId: string, data: any) => updateDocument('bookings', bookingId, data),
   delete: (bookingId: string) => deleteDocument('bookings', bookingId),
   subscribe: (bookingId: string, callback: any) => subscribeToDocument('bookings', bookingId, callback),
-  subscribeAll: (callback: any, filters?: any[], orderByField?: string, orderDirection?: 'asc' | 'desc') => 
-    subscribeToCollection('bookings', callback, filters, orderByField, orderDirection)
+  subscribeAll: (callback: any, filters?: any[], orderByField?: string, orderDirection?: 'asc' | 'desc', errorCallback?: (error: any) => void) =>
+    subscribeToCollection('bookings', callback, filters, orderByField, orderDirection, errorCallback)
 };
 
 // Memberships Collection
@@ -1237,8 +1237,8 @@ export const ordersCollection = {
   create: (data: any) => createDocument('orders', data),
   update: (orderId: string, data: any) => updateDocument('orders', orderId, data),
   delete: (orderId: string) => deleteDocument('orders', orderId),
-  subscribeAll: (callback: any, filters?: any[], orderByField?: string, orderDirection?: 'asc' | 'desc') => 
-    subscribeToCollection('orders', callback, filters, orderByField, orderDirection)
+  subscribeAll: (callback: any, filters?: any[], orderByField?: string, orderDirection?: 'asc' | 'desc', errorCallback?: (error: any) => void) =>
+    subscribeToCollection('orders', callback, filters, orderByField, orderDirection, errorCallback)
 };
 
 // Quick Matches Collection
