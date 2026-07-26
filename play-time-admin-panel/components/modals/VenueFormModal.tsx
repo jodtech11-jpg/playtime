@@ -48,6 +48,7 @@ const VenueFormModal: React.FC<VenueFormModalProps> = ({
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [draftUploadId, setDraftUploadId] = useState(() => `draft_${Date.now()}`);
 
   useEffect(() => {
     if (venue) {
@@ -82,6 +83,7 @@ const VenueFormModal: React.FC<VenueFormModalProps> = ({
         staffIds: venue.staffIds || []
       });
     } else {
+      setDraftUploadId(`draft_${Date.now()}`);
       setFormData({
         name: '',
         address: '',
@@ -461,14 +463,16 @@ const VenueFormModal: React.FC<VenueFormModalProps> = ({
               </div>
 
               <div className="ui-card p-6 bg-slate-50 dark:bg-slate-800/30 border-dashed">
-                <p className="text-xs text-slate-500 mb-3">Accepted formats: JPG, PNG, or WebP · Max 5MB each</p>
+                <p className="text-xs text-slate-500 mb-3">
+                  Accepted formats: JPG, PNG, or WebP · Max 10MB each (auto-compressed to JPG)
+                </p>
                 <ImageUpload
                   value={formData.images || []}
                   onChange={handleImagesChange}
                   folder="venues"
-                  itemId={venue?.id}
+                  itemId={venue?.id || draftUploadId}
                   maxImages={10}
-                  maxSizeMB={5}
+                  maxSizeMB={10}
                   compress={true}
                   multiple={true}
                   disabled={loading}

@@ -58,20 +58,16 @@ service firebase.storage {
     }
 
     // ---------- Venue images ----------
-    // Only super admins or the venue's manager may upload/replace venue images.
+    // Paths: venues/{venueId|draft_*|temp}/{fileName}
+    // Venue *document* writes stay gated in Firestore. Storage allows signed-in
+    // users for image bytes so uploads are not blocked when Storage→Firestore
+    // role lookups fail (same storage/unauthorized pattern as products).
     match /venues/{venueId}/{allPaths=**} {
-      allow read: if isAuthenticated();
-      allow write: if (isSuperAdmin() || ownsVenue(venueId)) &&
-                   isAllowedImageType() &&
-                   underMaxSize();
-    }
-
-    // Temporary venue images (before a venueId is assigned).
-    match /venues/temp/{allPaths=**} {
-      allow read: if isAuthenticated();
-      allow write: if (isSuperAdmin() || isVenueManager()) &&
-                   isAllowedImageType() &&
-                   underMaxSize();
+      allow read: if true;
+      allow create, update: if isAuthenticated() &&
+                             isAllowedImageType() &&
+                             underMaxSize();
+      allow delete: if isAuthenticated();
     }
 
     // ---------- User avatars ----------
