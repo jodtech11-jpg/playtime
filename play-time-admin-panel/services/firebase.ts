@@ -1392,9 +1392,12 @@ export const walletTransactionsCollection = {
 // App Settings Collection (Single document: 'platform')
 export const appSettingsCollection = {
   get: () => getDocument('appSettings', 'platform'),
+  getPublic: () => getDocument('appSettings', 'public'),
   update: (data: any) => updateDocument('appSettings', 'platform', data),
   subscribe: (callback: any) => subscribeToDocument('appSettings', 'platform', callback),
-  create: (data: any) => setDocument('appSettings', 'platform', data)
+  subscribePublic: (callback: any) => subscribeToDocument('appSettings', 'public', callback),
+  create: (data: any) => setDocument('appSettings', 'platform', data),
+  updatePublic: (data: any) => setDocument('appSettings', 'public', data)
 };
 
 // Landing Page Content Collection (Single document: 'landing')

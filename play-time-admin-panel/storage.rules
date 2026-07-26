@@ -25,17 +25,6 @@ service firebase.storage {
       return isAuthenticated() && userExists() && getUserRole() == 'venue_manager';
     }
 
-    function getManagedVenues() {
-      return userExists() ?
-             firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.managedVenues :
-             [];
-    }
-
-    function ownsVenue(venueId) {
-      return isSuperAdmin() ||
-             (isVenueManager() && venueId in getManagedVenues());
-    }
-
     function isAllowedImageType() {
       // Accept any image/* (covers image/png, image/jpeg, charset suffixes, etc.)
       return request.resource != null &&

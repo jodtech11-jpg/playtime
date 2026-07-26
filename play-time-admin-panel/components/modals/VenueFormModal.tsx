@@ -536,13 +536,13 @@ const VenueFormModal: React.FC<VenueFormModalProps> = ({
                           }
                         }));
                       }}
-                      disabled={!settings.integrations?.razorpay?.apiKey || !settings.integrations?.razorpay?.apiSecret}
+                      disabled={!settings.integrations?.razorpay?.apiKey}
                       className="sr-only peer"
                     />
                     <div className="w-14 h-7 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-7 peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:rounded-full after:h-[20px] after:w-[20px] after:transition-all peer-checked:bg-indigo-600 peer-disabled:opacity-30"></div>
                   </label>
 
-                  {!settings.integrations?.razorpay?.apiKey || !settings.integrations?.razorpay?.apiSecret ? (
+                  {!settings.integrations?.razorpay?.apiKey ? (
                     <span className="flex items-center gap-1.5 px-3 py-1 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 rounded-full text-[8px] font-black uppercase tracking-widest border border-rose-100 dark:border-rose-800">
                       <span className="material-symbols-outlined text-[10px]">warning</span>
                       Global Config Missing

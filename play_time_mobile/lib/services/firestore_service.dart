@@ -13,6 +13,7 @@ import '../models/order.dart' as order_model;
 import '../models/quick_match.dart';
 import '../models/tournament_summary.dart';
 import '../models/engagement.dart';
+import 'quick_match_participation_service.dart';
 
 class FirestoreService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -1297,26 +1298,8 @@ class FirestoreService {
     }
   }
 
-  static Future<void> joinQuickMatch(String matchId, String userId) async {
-    final ref = _firestore.collection('quickMatches').doc(matchId);
-    await _firestore.runTransaction((tx) async {
-      final snap = await tx.get(ref);
-      if (!snap.exists) throw Exception('Match not found');
-      final data = snap.data()!;
-      final playerIds = List<String>.from(
-        data['playerIds'] as List? ?? const [],
-      );
-      if (playerIds.contains(userId)) return;
-      final maxPlayers = (data['maxPlayers'] as num?)?.toInt() ?? 0;
-      if (playerIds.length >= maxPlayers) throw Exception('Match is full');
-      playerIds.add(userId);
-      tx.update(ref, {
-        'playerIds': playerIds,
-        'currentPlayers': playerIds.length,
-        'status': playerIds.length >= maxPlayers ? 'Full' : 'Open',
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    });
+  static Future<void> joinQuickMatch(String matchId) async {
+    await QuickMatchParticipationService.join(matchId);
   }
 
   static Future<List<TournamentSummary>> getOpenTournaments({

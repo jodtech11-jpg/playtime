@@ -118,7 +118,7 @@ const Settings: React.FC = () => {
 
     const currentIntegration = formData.integrations?.[integration];
     const hasCredentials = integration === 'razorpay' 
-      ? !!(currentIntegration?.apiKey && currentIntegration?.apiSecret)
+      ? !!currentIntegration?.apiKey
       : !!(currentIntegration?.apiKey && currentIntegration?.phoneNumberId && currentIntegration?.businessAccountId);
 
     if (enabled && !hasCredentials) {
@@ -170,7 +170,7 @@ const Settings: React.FC = () => {
     // Determine if credentials are complete
     let hasCredentials = false;
     if (selectedIntegration === 'razorpay') {
-      hasCredentials = !!(config.apiKey && config.apiSecret);
+      hasCredentials = !!config.apiKey;
     } else if (selectedIntegration === 'whatsapp') {
       hasCredentials = !!(config.apiKey && config.phoneNumberId && config.businessAccountId);
     }
@@ -1070,7 +1070,7 @@ const Settings: React.FC = () => {
                 
                 // Determine status based on configuration
                 const hasCredentials = api.key === 'razorpay' 
-                  ? !!(integration?.apiKey && integration?.apiSecret)
+                  ? !!integration?.apiKey
                   : !!(integration?.apiKey && integration?.phoneNumberId && integration?.businessAccountId);
                 
                 const status = isEnabled && hasCredentials 

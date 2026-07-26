@@ -60,10 +60,6 @@ const IntegrationConfigModal: React.FC<IntegrationConfigModalProps> = ({
       const initialData = {
         ...currentConfig,
         // Clear password/secret fields so user must re-enter (or we'll preserve existing)
-        ...(integration === 'razorpay' && {
-          apiSecret: '',
-          webhookSecret: currentConfig.webhookSecret ? '' : undefined
-        }),
         ...(integration === 'whatsapp' && {
           apiKey: ''
         })
@@ -96,10 +92,8 @@ const IntegrationConfigModal: React.FC<IntegrationConfigModalProps> = ({
         // Preserve existing secret values if new ones aren't provided
         ...(integration === 'razorpay' && {
           apiKey: formData.apiKey || currentConfig.apiKey,
-          apiSecret: formData.apiSecret || currentConfig.apiSecret,
-          webhookSecret: (formData.webhookSecret !== undefined 
-            ? (formData.webhookSecret || currentConfig.webhookSecret)
-            : currentConfig.webhookSecret) ?? ''
+          apiSecret: undefined,
+          webhookSecret: undefined
         }),
         ...(integration === 'whatsapp' && {
           apiKey: formData.apiKey || currentConfig.apiKey,
@@ -110,7 +104,7 @@ const IntegrationConfigModal: React.FC<IntegrationConfigModalProps> = ({
       
       // Validate required fields based on integration type
       if (integration === 'razorpay') {
-        if (!mergedConfig.apiKey || !mergedConfig.apiSecret) {
+        if (!mergedConfig.apiKey) {
           showWarning('Please fill in all required fields');
           setSaving(false);
           return;
@@ -152,7 +146,7 @@ const IntegrationConfigModal: React.FC<IntegrationConfigModalProps> = ({
       // Basic validation
       let isValid = false;
       if (integration === 'razorpay') {
-        isValid = !!(formData.apiKey && formData.apiSecret);
+        isValid = !!formData.apiKey;
       } else if (integration === 'whatsapp') {
         isValid = !!(formData.apiKey && formData.phoneNumberId && formData.businessAccountId);
       }
@@ -176,27 +170,11 @@ const IntegrationConfigModal: React.FC<IntegrationConfigModalProps> = ({
       fields: [
         {
           key: 'apiKey' as const,
-          label: 'API Key',
+          label: 'Key ID',
           type: 'text',
           placeholder: 'rzp_live_... or rzp_test_...',
           required: true,
-          help: 'Your Razorpay API Key from the dashboard'
-        },
-        {
-          key: 'apiSecret' as const,
-          label: 'API Secret',
-          type: 'password',
-          placeholder: 'Enter API Secret',
-          required: true,
-          help: 'Your Razorpay API Secret (keep this secure)'
-        },
-        {
-          key: 'webhookSecret' as const,
-          label: 'Webhook Secret (Optional)',
-          type: 'password',
-          placeholder: 'Enter Webhook Secret',
-          required: false,
-          help: 'Webhook secret for verifying payment callbacks'
+          help: 'Public checkout Key ID only. Never enter an API or webhook secret here.'
         }
       ]
     },
@@ -325,8 +303,8 @@ const IntegrationConfigModal: React.FC<IntegrationConfigModalProps> = ({
               <div>
                 <p className="text-xs font-black text-amber-900 uppercase tracking-widest mb-1">Security Notice</p>
                 <p className="text-xs text-amber-800">
-                  API credentials are stored securely in Firestore. Only super admins can view and modify these settings.
-                  Never share your API keys or secrets with unauthorized personnel.
+                  Only the public Razorpay Key ID is stored in Firestore. API and webhook secrets
+                  must be managed with server-side secret storage and never entered in this panel.
                 </p>
               </div>
             </div>

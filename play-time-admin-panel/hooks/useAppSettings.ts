@@ -73,7 +73,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 export const useAppSettings = (realtime: boolean = true) => {
-  const { user } = useAuth();
+  const { user, isSuperAdmin } = useAuth();
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -87,9 +87,19 @@ export const useAppSettings = (realtime: boolean = true) => {
         setError(null);
 
         if (realtime) {
-          unsubscribe = appSettingsCollection.subscribe((data: AppSettings | null) => {
+          const subscribe = isSuperAdmin
+            ? appSettingsCollection.subscribe
+            : appSettingsCollection.subscribePublic;
+          unsubscribe = subscribe((data: AppSettings | null) => {
             if (data) {
-              setSettings(data);
+              setSettings({
+                ...DEFAULT_SETTINGS,
+                ...data,
+                integrations: {
+                  ...DEFAULT_SETTINGS.integrations,
+                  ...data.integrations
+                }
+              });
             } else {
               // If settings don't exist, use defaults
               setSettings(DEFAULT_SETTINGS);
@@ -97,9 +107,20 @@ export const useAppSettings = (realtime: boolean = true) => {
             setLoading(false);
           });
         } else {
-          const data = await appSettingsCollection.get() as AppSettings | null;
+          const data = await (
+            isSuperAdmin
+              ? appSettingsCollection.get()
+              : appSettingsCollection.getPublic()
+          ) as AppSettings | null;
           if (data) {
-            setSettings(data);
+            setSettings({
+              ...DEFAULT_SETTINGS,
+              ...data,
+              integrations: {
+                ...DEFAULT_SETTINGS.integrations,
+                ...data.integrations
+              }
+            });
           } else {
             setSettings(DEFAULT_SETTINGS);
           }
@@ -120,16 +141,35 @@ export const useAppSettings = (realtime: boolean = true) => {
         unsubscribe();
       }
     };
-  }, [realtime]);
+  }, [realtime, isSuperAdmin]);
 
   const updateSettings = async (updates: Partial<AppSettings>) => {
     try {
+      const razorpay = updates.integrations?.razorpay;
+      const safeRazorpay = razorpay
+        ? {
+            enabled: razorpay.enabled,
+            status: razorpay.status,
+            apiKey: razorpay.apiKey
+          }
+        : undefined;
+      const sanitizedUpdates: Partial<AppSettings> = {
+        ...updates,
+        ...(updates.integrations
+          ? {
+              integrations: {
+                ...updates.integrations,
+                ...(safeRazorpay ? { razorpay: safeRazorpay } : {})
+              }
+            }
+          : {})
+      };
       const currentSettings = await appSettingsCollection.get() as AppSettings | null;
       
       if (currentSettings) {
         // Update existing settings
         await appSettingsCollection.update({
-          ...updates,
+          ...sanitizedUpdates,
           updatedBy: user?.id,
           updatedAt: serverTimestamp()
         });
@@ -137,10 +177,18 @@ export const useAppSettings = (realtime: boolean = true) => {
         // Create settings if they don't exist
         await appSettingsCollection.create({
           ...DEFAULT_SETTINGS,
-          ...updates,
+          ...sanitizedUpdates,
           updatedBy: user?.id,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
+        });
+      }
+
+      if (safeRazorpay) {
+        await appSettingsCollection.updatePublic({
+          integrations: {
+            razorpay: safeRazorpay
+          }
         });
       }
     } catch (err: any) {

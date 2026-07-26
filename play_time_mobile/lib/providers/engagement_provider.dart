@@ -97,8 +97,8 @@ class EngagementProvider with ChangeNotifier {
     unawaited(loadAll(venueId: normalized));
   }
 
-  Future<void> joinMatch(String matchId, String userId) async {
-    await FirestoreService.joinQuickMatch(matchId, userId);
+  Future<void> joinMatch(String matchId) async {
+    await FirestoreService.joinQuickMatch(matchId);
     await refresh();
   }
 

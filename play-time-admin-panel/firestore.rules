@@ -569,9 +569,8 @@ service cloud.firestore {
     // ---------- App Settings ----------
     match /appSettings/{settingsId} {
       allow read: if isAuthenticated() && (
-        isSuperAdmin() ||
-        isVenueManager() ||
-        settingsId == 'public'
+        settingsId == 'public' ||
+        (settingsId == 'platform' && isSuperAdmin())
       );
       allow create, update, delete: if isAuthenticated() && isSuperAdmin();
     }

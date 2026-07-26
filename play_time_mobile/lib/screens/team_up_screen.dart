@@ -642,7 +642,7 @@ class _TeamUpScreenState extends State<TeamUpScreen> {
                       ? null
                       : () async {
                           try {
-                            await engagement.joinMatch(match.id, userId);
+                            await engagement.joinMatch(match.id);
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(

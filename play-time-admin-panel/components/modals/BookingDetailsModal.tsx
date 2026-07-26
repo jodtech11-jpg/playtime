@@ -23,12 +23,6 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
   onCancel,
   sports = []
 }) => {
-  // Older failed checkouts were stored as Cancelled + Pending. Present the
-  // actual outcome instead of implying payment is still awaiting action.
-  const effectivePaymentStatus =
-    booking.status === 'Cancelled' && booking.paymentStatus === 'Pending'
-      ? 'Failed'
-      : booking.paymentStatus;
   const [resolvedUserName, setResolvedUserName] = useState('');
 
   useEffect(() => {
@@ -67,6 +61,12 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
 
   if (!isOpen || !booking) return null;
 
+  // Older failed checkouts were stored as Cancelled + Pending. Present the
+  // actual outcome instead of implying payment is still awaiting action.
+  const effectivePaymentStatus =
+    booking.status === 'Cancelled' && booking.paymentStatus === 'Pending'
+      ? 'Failed'
+      : booking.paymentStatus;
   const statusColors = getStatusColor(booking.status);
   const sportName = resolveSportName(booking.sport, sports);
   const bookingRef = formatBookingReference(booking.id);
