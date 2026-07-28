@@ -11,8 +11,9 @@ function createBackend(seed = {}, overrides = {}) {
   const admin = createAdmin(db);
   const functions = {
     https: {onRequest: (handler) => handler},
-    config: () => ({razorpay: {webhook_secret: 'webhook-secret'}}),
   };
+  process.env.RAZORPAY_WEBHOOK_SECRET =
+    process.env.RAZORPAY_WEBHOOK_SECRET || 'webhook-secret';
   const backend = createPaymentBackend({
     admin,
     functions,

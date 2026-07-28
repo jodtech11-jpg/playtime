@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Booking, Sport, Venue } from '../../types';
 import { formatTime } from '../../utils/dateUtils';
 import BookingEventCard from './BookingEventCard';
@@ -8,7 +8,9 @@ import {
   getMonthDays,
   getWeekDays,
   layoutOverlaps,
+  MAX_VISIBLE_LANES,
   sameDay,
+  type LayoutOverflow,
 } from './calendarUtils';
 
 type ViewMode = 'day' | 'week' | 'month';
@@ -128,6 +130,7 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({
             hours={hours}
             startHour={startHour}
             sports={sports}
+            maxVisibleLanes={viewMode === 'week' ? MAX_VISIBLE_LANES : 3}
             getUserName={getUserName}
             onBookingClick={onBookingClick}
           />
@@ -142,18 +145,25 @@ const TimeGrid: React.FC<{
   hours: number[];
   startHour: number;
   sports: Sport[];
+  maxVisibleLanes: number;
   getUserName: (booking: Booking) => string;
   onBookingClick: (booking: Booking) => void;
-}> = ({ columns, hours, startHour, sports, getUserName, onBookingClick }) => {
+}> = ({ columns, hours, startHour, sports, maxVisibleLanes, getUserName, onBookingClick }) => {
+  const [overflowMenu, setOverflowMenu] = useState<{
+    columnId: string;
+    overflow: LayoutOverflow;
+    anchorTop: number;
+  } | null>(null);
+
   const safeColumns = columns.length
     ? columns
     : [{ id: 'empty', label: 'No courts', sublabel: 'Select a venue', bookings: [] }];
-  const gridTemplateColumns = `72px repeat(${safeColumns.length}, minmax(150px, 1fr))`;
+  const gridTemplateColumns = `72px repeat(${safeColumns.length}, minmax(160px, 1fr))`;
   const bodyHeight = Math.max(hours.length * SLOT_HEIGHT, 480);
 
   return (
     <div className="h-full max-h-[72vh] overflow-auto scrollbar-visible">
-      <div className="min-w-max" style={{ width: `max(100%, ${72 + safeColumns.length * 150}px)` }}>
+      <div className="min-w-max" style={{ width: `max(100%, ${72 + safeColumns.length * 160}px)` }}>
         <div
           className="sticky top-0 z-40 grid border-b border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800"
           style={{ gridTemplateColumns }}
@@ -186,39 +196,141 @@ const TimeGrid: React.FC<{
               </div>
             ))}
           </div>
-          {safeColumns.map((column) => (
-            <div
-              key={column.id}
-              className="relative border-r border-slate-100 bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_63px,rgba(148,163,184,0.18)_64px)] dark:border-slate-700"
-              style={{ height: bodyHeight }}
-              role="gridcell"
-            >
-              {layoutOverlaps(column.bookings).map(({ booking, lane, laneCount }) => {
-                const start = calendarDate(booking.startTime);
-                const end = calendarDate(booking.endTime);
-                const top = ((start.getHours() + start.getMinutes() / 60) - startHour) * SLOT_HEIGHT + 3;
-                const height = Math.max(((end.getTime() - start.getTime()) / 3600000) * SLOT_HEIGHT - 6, 42);
-                const width = 100 / laneCount;
-                return (
-                  <BookingEventCard
-                    key={booking.id}
-                    booking={booking}
-                    sports={sports}
-                    userName={getUserName(booking)}
-                    onClick={() => onBookingClick(booking)}
-                    compact={height < 64 || laneCount > 1}
-                    className="absolute z-10"
-                    style={{
-                      top,
-                      height,
-                      left: `calc(${lane * width}% + 3px)`,
-                      width: `calc(${width}% - 6px)`,
-                    }}
-                  />
-                );
-              })}
-            </div>
-          ))}
+          {safeColumns.map((column) => {
+            const { items, overflows } = layoutOverlaps(column.bookings, maxVisibleLanes);
+            return (
+              <div
+                key={column.id}
+                className="relative border-r border-slate-100 bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_63px,rgba(148,163,184,0.18)_64px)] dark:border-slate-700"
+                style={{ height: bodyHeight }}
+                role="gridcell"
+              >
+                {items.map(({ booking, lane, laneCount }) => {
+                  const start = calendarDate(booking.startTime);
+                  const end = calendarDate(booking.endTime);
+                  const startHourFloat = start.getHours() + start.getMinutes() / 60;
+                  const durationHours = Math.max(
+                    (end.getTime() - start.getTime()) / 3600000,
+                    0.5
+                  );
+                  const top = (startHourFloat - startHour) * SLOT_HEIGHT + 2;
+                  const height = Math.max(durationHours * SLOT_HEIGHT - 4, 48);
+                  const width = 100 / laneCount;
+                  return (
+                    <BookingEventCard
+                      key={booking.id}
+                      booking={booking}
+                      sports={sports}
+                      userName={getUserName(booking)}
+                      onClick={() => {
+                        setOverflowMenu(null);
+                        onBookingClick(booking);
+                      }}
+                      compact={height < 70 || laneCount > 1}
+                      className="absolute z-10"
+                      style={{
+                        top,
+                        height,
+                        left: `calc(${lane * width}% + 2px)`,
+                        width: `calc(${width}% - 4px)`,
+                      }}
+                    />
+                  );
+                })}
+
+                {overflows.map((overflow) => {
+                  const start = new Date(overflow.startMs);
+                  const end = new Date(overflow.endMs);
+                  const startHourFloat = start.getHours() + start.getMinutes() / 60;
+                  const durationHours = Math.max(
+                    (end.getTime() - start.getTime()) / 3600000,
+                    0.5
+                  );
+                  const top = (startHourFloat - startHour) * SLOT_HEIGHT + 2;
+                  const height = Math.max(durationHours * SLOT_HEIGHT - 4, 48);
+                  const laneCount = maxVisibleLanes + 1;
+                  const width = 100 / laneCount;
+                  const lane = maxVisibleLanes;
+                  const isOpen =
+                    overflowMenu?.columnId === column.id &&
+                    overflowMenu.overflow.id === overflow.id;
+
+                  return (
+                    <div key={overflow.id}>
+                      <button
+                        type="button"
+                        title={`${overflow.bookings.length} more bookings`}
+                        aria-label={`Show ${overflow.bookings.length} more bookings`}
+                        aria-expanded={isOpen}
+                        onClick={() =>
+                          setOverflowMenu(
+                            isOpen
+                              ? null
+                              : { columnId: column.id, overflow, anchorTop: top }
+                          )
+                        }
+                        className="absolute z-20 flex items-center justify-center rounded-md border border-slate-300 bg-white/95 px-1 text-[10px] font-black text-slate-700 shadow-sm hover:border-primary hover:text-primary focus-visible:ring-2 focus-visible:ring-primary dark:border-slate-600 dark:bg-slate-800/95 dark:text-slate-200"
+                        style={{
+                          top,
+                          height,
+                          left: `calc(${lane * width}% + 2px)`,
+                          width: `calc(${width}% - 4px)`,
+                          minHeight: 48,
+                        }}
+                      >
+                        +{overflow.bookings.length}
+                      </button>
+
+                      {isOpen && (
+                        <div
+                          className="absolute z-40 w-[min(220px,calc(100%-8px))] rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-600 dark:bg-slate-800"
+                          style={{
+                            top: Math.min(top + 8, bodyHeight - 160),
+                            right: 4,
+                          }}
+                        >
+                          <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                            <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                              {overflow.bookings.length} more
+                            </p>
+                            <button
+                              type="button"
+                              className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                              aria-label="Close overflow list"
+                              onClick={() => setOverflowMenu(null)}
+                            >
+                              ×
+                            </button>
+                          </div>
+                          <ul className="max-h-48 space-y-1 overflow-y-auto">
+                            {overflow.bookings.map((booking) => (
+                              <li key={booking.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOverflowMenu(null);
+                                    onBookingClick(booking);
+                                  }}
+                                  className="flex w-full flex-col rounded-lg px-2 py-1.5 text-left hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-primary dark:hover:bg-slate-700"
+                                >
+                                  <span className="truncate text-xs font-bold text-slate-800 dark:text-white">
+                                    {getUserName(booking)}
+                                  </span>
+                                  <span className="truncate text-[10px] font-semibold text-slate-500">
+                                    {formatTime(booking.startTime)} · {booking.court} · {booking.status}
+                                  </span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

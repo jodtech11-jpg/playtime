@@ -165,6 +165,13 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
     return court.pricePerHour;
   }
 
+  String _formatPriceLabel(double amount) {
+    if (amount == amount.roundToDouble()) {
+      return '₹${amount.toInt()}';
+    }
+    return '₹${amount.toStringAsFixed(2)}';
+  }
+
   Future<void> _loadFavoriteStatus() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
@@ -196,11 +203,35 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
     }
 
     try {
+      final wasFavorited = _isFavorited;
       setState(() {
         _isFavorited = !_isFavorited;
       });
 
       await FirestoreService.toggleFavoriteVenue(user.uid, widget.venueId);
+      if (!mounted) return;
+      final bottomInset = MediaQuery.of(context).padding.bottom;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            wasFavorited ? 'Removed from favorites' : 'Saved to favorites',
+          ),
+          backgroundColor: wasFavorited
+              ? AppColors.surfaceDark
+              : AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          margin: EdgeInsets.fromLTRB(16, 0, 16, 24 + bottomInset),
+          duration: Duration(seconds: wasFavorited ? 2 : 4),
+          action: wasFavorited
+              ? null
+              : SnackBarAction(
+                  label: 'VIEW',
+                  textColor: Colors.white,
+                  onPressed: () => context.push('/favorites'),
+                ),
+        ),
+      );
     } catch (e) {
       // Revert on error
       if (!mounted) return;
@@ -1761,7 +1792,11 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
                         textBaseline: TextBaseline.alphabetic,
                         children: [
                           Text(
-                            '₹${(_selectedCourt != null ? _priceForDuration(_selectedCourt!) : venue.price ?? 0).toInt()}',
+                            _formatPriceLabel(
+                              _selectedCourt != null
+                                  ? _priceForDuration(_selectedCourt!)
+                                  : (venue.price ?? 0),
+                            ),
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 24,

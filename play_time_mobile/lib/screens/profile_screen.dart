@@ -42,6 +42,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final TextEditingController _phoneController = TextEditingController();
   Map<String, dynamic>? _userProfileData;
   int _totalBookings = 0;
+  int _favoriteCount = 0;
   int _totalTeams = 0;
   int _winRate = 0;
   bool _isLoadingStats = true;
@@ -76,6 +77,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final profile = await FirestoreService.getUserProfile(user.uid);
         final bookings = await FirestoreService.getUserBookings(user.uid);
         final teams = await FirestoreService.getUserTeams(user.uid);
+        final favorites = await FirestoreService.getUserFavorites(user.uid);
 
         // Calculate detailed statistics
         final completedBookings = bookings
@@ -113,6 +115,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _emailController.text = user.email ?? '';
           _phoneController.text = profile?['phone'] ?? user.phoneNumber ?? '';
           _totalBookings = bookings.length;
+          _favoriteCount = favorites.length;
           _totalTeams = teams.length;
           _winRate = completionRate;
           _totalMatches = completedBookings.length;
@@ -1795,6 +1798,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 title: 'My orders',
                                 subtitle: 'Track marketplace purchases',
                                 onTap: () => context.push('/orders'),
+                              ),
+                              const SizedBox(height: 12),
+                              _buildSettingsItem(
+                                icon: Icons.favorite_outline_rounded,
+                                title: 'Favorite venues',
+                                subtitle: _favoriteCount == 0
+                                    ? 'Save arenas you love'
+                                    : '$_favoriteCount saved venue${_favoriteCount == 1 ? '' : 's'}',
+                                onTap: () async {
+                                  await context.push('/favorites');
+                                  if (!mounted) return;
+                                  final user =
+                                      FirebaseAuth.instance.currentUser;
+                                  if (user == null) return;
+                                  final favorites =
+                                      await FirestoreService.getUserFavorites(
+                                        user.uid,
+                                      );
+                                  if (!mounted) return;
+                                  setState(
+                                    () => _favoriteCount = favorites.length,
+                                  );
+                                },
                               ),
                               const SizedBox(height: 12),
                               _buildSettingsItem(

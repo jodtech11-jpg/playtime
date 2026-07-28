@@ -1270,11 +1270,10 @@ exports.onReportCreated = onDocumentCreated('reports/{reportId}', async (event) 
 // ---------------------------------------------------------------------------
 
 function getRazorpayCredentials() {
+  // firebase-functions v7 removed functions.config(); use .env / Secret Manager only.
   return {
-    keyId: process.env.RAZORPAY_KEY_ID ||
-      (functions.config().razorpay && functions.config().razorpay.key_id) || '',
-    keySecret: process.env.RAZORPAY_KEY_SECRET ||
-      (functions.config().razorpay && functions.config().razorpay.key_secret) || '',
+    keyId: process.env.RAZORPAY_KEY_ID || '',
+    keySecret: process.env.RAZORPAY_KEY_SECRET || '',
   };
 }
 
@@ -1360,8 +1359,7 @@ exports.createWalletTopUpOrder = functions.https.onRequest(async (req, res) => {
 
 /**
  * Razorpay webhooks — verifies HMAC-SHA256 of the raw body using the configured secret.
- * Set with: `firebase functions:config:set razorpay.webhook_secret="<secret>"`
- * or env `RAZORPAY_WEBHOOK_SECRET`.
+ * Set env `RAZORPAY_WEBHOOK_SECRET` in functions/.env (or Secret Manager).
  * Register this URL in Razorpay Dashboard → Webhooks.
  */
 exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
@@ -1375,10 +1373,9 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
     return;
   }
 
-  const secret = process.env.RAZORPAY_WEBHOOK_SECRET ||
-    (functions.config().razorpay && functions.config().razorpay.webhook_secret);
+  const secret = process.env.RAZORPAY_WEBHOOK_SECRET || '';
   if (!secret) {
-    console.warn('razorpay webhook_secret not set (env RAZORPAY_WEBHOOK_SECRET or functions config)');
+    console.warn('razorpay webhook_secret not set (env RAZORPAY_WEBHOOK_SECRET)');
     res.status(503).json({error: 'Webhook secret not configured'});
     return;
   }
@@ -1780,14 +1777,11 @@ async function writeUserProfile(uid, profile) {
 function getFirebaseWebApiKey() {
   return process.env.WEB_API_KEY ||
     process.env.FIREBASE_WEB_API_KEY ||
-    (functions.config().app && functions.config().app.firebase_api_key) ||
     '';
 }
 
 function getAdminPanelLoginUrl() {
-  return process.env.ADMIN_PANEL_URL ||
-    (functions.config().app && functions.config().app.admin_panel_url) ||
-    '';
+  return process.env.ADMIN_PANEL_URL || '';
 }
 
 /** Send password-reset email via Firebase Identity Toolkit REST API. */

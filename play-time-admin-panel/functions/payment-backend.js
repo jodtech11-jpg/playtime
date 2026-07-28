@@ -253,6 +253,13 @@ module.exports = function createPaymentBackend({
     const {court, venue, venueId} = await courtForBooking(booking);
     const hours = (end.getTime() - start.getTime()) / 3600000;
     const expectedAmountPaise = toPaise(Number(court.pricePerHour) * hours);
+    // Razorpay rejects charges below ₹1.
+    if (expectedAmountPaise < 100) {
+      throw httpError(
+        'This court rate is too low for online payment. Ask the venue to set a price of at least ₹1 for this slot.',
+        409,
+      );
+    }
     return {ref, data: booking, venue, venueId, expectedAmountPaise};
   }
 
@@ -728,8 +735,8 @@ module.exports = function createPaymentBackend({
       res.status(405).send('Method Not Allowed');
       return;
     }
-    const secret = process.env.RAZORPAY_WEBHOOK_SECRET ||
-      (functions.config().razorpay && functions.config().razorpay.webhook_secret);
+    // firebase-functions v7 removed functions.config(); use .env / Secret Manager only.
+    const secret = process.env.RAZORPAY_WEBHOOK_SECRET || '';
     if (!secret) {
       res.status(503).json({error: 'Webhook secret not configured'});
       return;

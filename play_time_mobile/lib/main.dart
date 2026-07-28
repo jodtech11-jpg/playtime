@@ -23,6 +23,7 @@ import 'screens/map_view_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/membership_screen.dart';
 import 'screens/bookings_screen.dart';
+import 'screens/favorites_screen.dart';
 import 'screens/booking_pass_screen.dart';
 import 'screens/sport_select_screen.dart';
 import 'screens/checkout_screen.dart';
@@ -293,6 +294,10 @@ GoRouter _createRouter(String initialLocation) => GoRouter(
     GoRoute(
       path: '/bookings',
       builder: (context, state) => const BookingsScreen(),
+    ),
+    GoRoute(
+      path: '/favorites',
+      builder: (context, state) => const FavoritesScreen(),
     ),
     GoRoute(
       path: '/booking-pass',

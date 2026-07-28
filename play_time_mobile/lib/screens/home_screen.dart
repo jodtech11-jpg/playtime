@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -31,6 +33,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with RouteAware {
   String _activeCategory = 'All';
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _arenasSectionKey = GlobalKey();
   bool _isFilterOpen = false;
   double _maxPrice = 1500;
   List<String> _selectedAmenities = [];
@@ -38,6 +42,7 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
   String _sortBy = 'rating'; // Default sort by rating
   String? _userName;
   Set<String> _favoriteVenueIds = {};
+  bool _showFavoritesOnly = false;
 
   @override
   void didChangeDependencies() {
@@ -51,6 +56,8 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
   @override
   void didPopNext() {
     _searchController.clear();
+    _loadFavorites();
+    _applyFavoritesQueryFromRoute();
     setState(() {});
   }
 
@@ -67,6 +74,98 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
     _searchController.addListener(() {
       setState(() {});
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _applyFavoritesQueryFromRoute();
+    });
+  }
+
+  void _applyFavoritesQueryFromRoute() {
+    final favoritesQuery = GoRouterState.of(
+      context,
+    ).uri.queryParameters['favorites'];
+    if (favoritesQuery == '1' || favoritesQuery == 'true') {
+      unawaited(_openFavoritesView());
+    }
+  }
+
+  Future<void> _openFavoritesView() async {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    unawaited(HapticFeedback.selectionClick());
+    setState(() {
+      _showFavoritesOnly = true;
+      // Favorites view should not be empty just because search/filters are on.
+      _searchController.clear();
+      _activeCategory = 'All';
+      _selectedSport = 'All';
+      _selectedAmenities = [];
+      _maxPrice = 1500;
+    });
+    await Future<void>.delayed(Duration.zero);
+    if (!mounted) return;
+    final sectionContext = _arenasSectionKey.currentContext;
+    if (sectionContext != null && sectionContext.mounted) {
+      await Scrollable.ensureVisible(
+        sectionContext,
+        duration: const Duration(milliseconds: 380),
+        curve: Curves.easeOutCubic,
+        alignment: 0.08,
+      );
+    } else if (_scrollController.hasClients) {
+      await _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent * 0.35,
+        duration: const Duration(milliseconds: 380),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  void _toggleFavoritesFilter() {
+    unawaited(HapticFeedback.selectionClick());
+    if (_showFavoritesOnly) {
+      setState(() => _showFavoritesOnly = false);
+      return;
+    }
+    if (_favoriteVenueIds.isEmpty) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Tap the heart on a venue to save favorites'),
+          backgroundColor: AppColors.surfaceDark,
+          behavior: SnackBarBehavior.floating,
+          margin: _snackBarMargin,
+        ),
+      );
+      return;
+    }
+    unawaited(_openFavoritesView());
+  }
+
+  EdgeInsets get _snackBarMargin {
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    // Keep actions above the docked FAB + bottom nav.
+    return EdgeInsets.fromLTRB(16, 0, 16, 88 + bottomInset);
+  }
+
+  void _showFavoriteSnackBar({required bool saved}) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(saved ? 'Saved to favorites' : 'Removed from favorites'),
+        backgroundColor: saved ? AppColors.success : AppColors.surfaceDark,
+        behavior: SnackBarBehavior.floating,
+        margin: _snackBarMargin,
+        duration: Duration(seconds: saved ? 4 : 2),
+        action: saved
+            ? SnackBarAction(
+                label: 'VIEW',
+                textColor: Colors.white,
+                onPressed: () => context.push('/favorites'),
+              )
+            : null,
+      ),
+    );
   }
 
   Future<void> _loadUserData() async {
@@ -140,6 +239,11 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
       } catch (e) {
         debugPrint('FCM topic update failed: $e');
       }
+      if (!mounted) return;
+      if (_showFavoritesOnly && _favoriteVenueIds.isEmpty) {
+        setState(() => _showFavoritesOnly = false);
+      }
+      _showFavoriteSnackBar(saved: !isFavorited);
     } catch (e) {
       await _loadFavorites();
       if (mounted) {
@@ -156,6 +260,7 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
   @override
   void dispose() {
     appRouteObserver.unsubscribe(this);
+    _scrollController.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -347,6 +452,7 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                 },
                 color: AppColors.primary,
                 child: SingleChildScrollView(
+                  controller: _scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -818,21 +924,93 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                       const SizedBox(height: 24),
                       // Nearby Venues Section
                       Padding(
+                        key: _arenasSectionKey,
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text(
-                                  'Nearby Arenas',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w900,
+                                Expanded(
+                                  child: Text(
+                                    _showFavoritesOnly
+                                        ? 'Favorite Arenas'
+                                        : 'Nearby Arenas',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.w900,
+                                    ),
                                   ),
                                 ),
+                                Semantics(
+                                  button: true,
+                                  label: _showFavoritesOnly
+                                      ? 'Show all venues'
+                                      : 'Show favorite venues',
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: _toggleFavoritesFilter,
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: AnimatedContainer(
+                                        duration: const Duration(
+                                          milliseconds: 200,
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 8,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: _showFavoritesOnly
+                                              ? AppColors.primary
+                                              : AppColors.surfaceDark,
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          border: Border.all(
+                                            color: _showFavoritesOnly
+                                                ? AppColors.primary
+                                                : Colors.white.withValues(
+                                                    alpha: 0.08,
+                                                  ),
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              _showFavoritesOnly
+                                                  ? Icons.favorite_rounded
+                                                  : Icons
+                                                        .favorite_border_rounded,
+                                              size: 16,
+                                              color: _showFavoritesOnly
+                                                  ? AppColors.backgroundDark
+                                                  : Colors.white,
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              _showFavoritesOnly
+                                                  ? 'All venues'
+                                                  : (_favoriteVenueIds.isEmpty
+                                                        ? 'Favorites'
+                                                        : 'Favorites (${_favoriteVenueIds.length})'),
+                                              style: TextStyle(
+                                                color: _showFavoritesOnly
+                                                    ? AppColors.backgroundDark
+                                                    : Colors.white,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
                                 GestureDetector(
                                   onTap: _showSortOptions,
                                   child: Row(
@@ -909,25 +1087,65 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                                       sortBy: _sortBy,
                                     );
 
-                                final venues = filteredVenues;
+                                final venues = _showFavoritesOnly
+                                    ? filteredVenues
+                                          .where(
+                                            (venue) => _favoriteVenueIds
+                                                .contains(venue.id),
+                                          )
+                                          .toList()
+                                    : filteredVenues;
 
                                 if (venues.isEmpty) {
+                                  final hasFavorites =
+                                      _favoriteVenueIds.isNotEmpty;
                                   return EmptyStateWidget(
-                                    icon: Icons.location_off,
-                                    title: 'No venues found',
-                                    message:
-                                        'Try adjusting your filters or search query',
+                                    icon: _showFavoritesOnly
+                                        ? Icons.favorite_border_rounded
+                                        : Icons.location_off,
+                                    title: _showFavoritesOnly
+                                        ? (hasFavorites
+                                              ? 'No favorites match'
+                                              : 'No favorite venues yet')
+                                        : 'No venues found',
+                                    message: _showFavoritesOnly
+                                        ? (hasFavorites
+                                              ? 'Clear filters or tap All venues to browse again'
+                                              : 'Tap the heart on a venue card to save it here')
+                                        : 'Try adjusting your filters or search query',
                                   );
                                 }
 
-                                return ListView.builder(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  itemCount: venues.length,
-                                  itemBuilder: (context, index) {
-                                    final venue = venues[index];
-                                    return _buildVenueCard(venue);
-                                  },
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (_showFavoritesOnly)
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          bottom: 12,
+                                        ),
+                                        child: Text(
+                                          '${venues.length} saved venue${venues.length == 1 ? '' : 's'}',
+                                          style: TextStyle(
+                                            color: Colors.white.withValues(
+                                              alpha: 0.65,
+                                            ),
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ListView.builder(
+                                      shrinkWrap: true,
+                                      physics:
+                                          const NeverScrollableScrollPhysics(),
+                                      itemCount: venues.length,
+                                      itemBuilder: (context, index) {
+                                        final venue = venues[index];
+                                        return _buildVenueCard(venue);
+                                      },
+                                    ),
+                                  ],
                                 );
                               },
                             ),
@@ -1146,53 +1364,45 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                     ),
                   ),
                 ),
-                // Favorite on image (visible on any photo)
+                // Single favorite control (image overlay only)
                 Positioned(
                   top: 16,
                   left: 16,
-                  child: GestureDetector(
-                    onTap: () => _toggleFavorite(venue.id),
-                    child: ClipRRect(
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () {
+                        unawaited(HapticFeedback.lightImpact());
+                        unawaited(_toggleFavorite(venue.id));
+                      },
                       borderRadius: BorderRadius.circular(16),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.45),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.2),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                isFavorited
-                                    ? Icons.favorite_rounded
-                                    : Icons.favorite_border_rounded,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            width: 44,
+                            height: 44,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.45),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
                                 color: isFavorited
-                                    ? AppColors.primary
-                                    : Colors.white,
-                                size: 20,
+                                    ? AppColors.primary.withValues(alpha: 0.7)
+                                    : Colors.white.withValues(alpha: 0.2),
                               ),
-                              if (venue.reviews != null &&
-                                  venue.reviews! > 0) ...[
-                                const SizedBox(width: 6),
-                                Text(
-                                  '${venue.reviews}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              ],
-                            ],
+                            ),
+                            child: Icon(
+                              isFavorited
+                                  ? Icons.favorite_rounded
+                                  : Icons.favorite_border_rounded,
+                              color: isFavorited
+                                  ? AppColors.primary
+                                  : Colors.white,
+                              size: 22,
+                            ),
                           ),
                         ),
                       ),
@@ -1380,57 +1590,28 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                     ],
                   ),
                   const SizedBox(height: 24),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () => _navigateToVenueDetail(venue.id),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            foregroundColor: AppColors.backgroundDark,
-                            padding: const EdgeInsets.symmetric(vertical: 18),
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                          ),
-                          child: const Text(
-                            'BOOK PASS',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.25,
-                            ),
-                          ),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => _navigateToVenueDetail(venue.id),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: AppColors.backgroundDark,
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      GestureDetector(
-                        onTap: () => _toggleFavorite(venue.id),
-                        child: Container(
-                          width: 56,
-                          height: 56,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.05),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: isFavorited
-                                  ? AppColors.primary.withValues(alpha: 0.5)
-                                  : Colors.white.withValues(alpha: 0.08),
-                            ),
-                          ),
-                          child: Icon(
-                            isFavorited
-                                ? Icons.favorite_rounded
-                                : Icons.favorite_border_rounded,
-                            color: isFavorited
-                                ? AppColors.primary
-                                : Colors.white,
-                            size: 26,
-                          ),
+                      child: const Text(
+                        'BOOK PASS',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.25,
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 ],
               ),

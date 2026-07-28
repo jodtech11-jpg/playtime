@@ -1309,6 +1309,7 @@ class FirestoreService {
       final courtNameCache = <String, String?>{};
       final embeddedCourtsByVenue = <String, List<dynamic>>{};
       final matches = <QuickMatch>[];
+      final now = DateTime.now();
       for (final doc in snapshot.docs) {
         final data = Map<String, dynamic>.from(doc.data());
         final courtId = data['courtId'] as String?;
@@ -1346,7 +1347,12 @@ class FirestoreService {
             data['courtName'] = resolvedName;
           }
         }
-        matches.add(QuickMatch.fromFirestore(doc.id, data));
+        final match = QuickMatch.fromFirestore(doc.id, data);
+        // Hide ended matches that were never closed in admin.
+        if (match.date != null && match.date!.isBefore(now.subtract(const Duration(hours: 3)))) {
+          continue;
+        }
+        matches.add(match);
       }
       matches.sort((a, b) {
         final ad = a.date ?? DateTime(1970);

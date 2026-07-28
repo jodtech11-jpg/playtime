@@ -564,6 +564,41 @@ class _QuickBookModalState extends State<_QuickBookModal> {
     }
   }
 
+  /// Courts may store sport as a display name or as a sports-collection id.
+  bool _courtMatchesSelectedSport(Court court) {
+    final selected = widget.selectedSport?.trim();
+    if (selected == null || selected.isEmpty) return true;
+
+    final selectedLower = selected.toLowerCase();
+    final courtSport = court.sport.trim();
+    if (courtSport.toLowerCase() == selectedLower) return true;
+
+    final sportProvider = context.read<SportProvider>();
+    final byId = sportProvider.getSportById(courtSport);
+    if (byId != null && byId.name.toLowerCase() == selectedLower) {
+      return true;
+    }
+
+    final selectedSport = sportProvider.getSportByName(selected);
+    if (selectedSport != null && courtSport == selectedSport.id) {
+      return true;
+    }
+
+    return false;
+  }
+
+  String _courtDisplayLabel(Court court) {
+    final sportProvider = context.read<SportProvider>();
+    final resolved =
+        sportProvider.getSportById(court.sport)?.name ??
+        (court.sport.length > 24 ? 'Court' : court.sport);
+    final sportLabel = resolved.trim().isEmpty ? 'Court' : resolved;
+    final price = court.pricePerHour == court.pricePerHour.roundToDouble()
+        ? court.pricePerHour.toInt().toString()
+        : court.pricePerHour.toStringAsFixed(1);
+    return '${court.name} ($sportLabel) · ₹$price/hr';
+  }
+
   Future<void> _loadCourts() async {
     if (_selectedVenue == null) return;
 
@@ -597,18 +632,16 @@ class _QuickBookModalState extends State<_QuickBookModal> {
       }
 
       if (courts.isNotEmpty) {
-        final filteredCourts = widget.selectedSport != null
-            ? courts
-                  .where(
-                    (court) =>
-                        court.sport.toLowerCase() ==
-                        widget.selectedSport!.toLowerCase(),
-                  )
-                  .toList()
-            : courts;
+        final filteredCourts = courts
+            .where(_courtMatchesSelectedSport)
+            .toList();
+        // Prefer sport-matched courts; only fall back if none match.
         final activeCourts = filteredCourts.isNotEmpty
             ? filteredCourts
             : courts;
+        activeCourts.sort(
+          (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+        );
 
         setState(() {
           _courts = activeCourts;
@@ -1057,9 +1090,7 @@ class _QuickBookModalState extends State<_QuickBookModal> {
                         items: _courts.map((court) {
                           return DropdownMenuItem<String>(
                             value: court.id,
-                            child: Text(
-                              '${court.name} (${court.sport}) · ₹${court.pricePerHour.toInt()}/hr',
-                            ),
+                            child: Text(_courtDisplayLabel(court)),
                           );
                         }).toList(),
                         onChanged: _onCourtChanged,

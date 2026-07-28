@@ -541,11 +541,17 @@ service cloud.firestore {
       );
       allow update: if isAuthenticated() && (
         isSuperAdmin() ||
-        (ownsVendorResource() && vendorManagesVenueOnResource())
+        (ownsVendorResource() && vendorManagesVenueOnResource()) ||
+        (resource.data.venueId != null && ownsVenue(resource.data.venueId)) ||
+        resource.data.createdBy == request.auth.uid
       );
+      // Vendors must be able to delete venue matches even when legacy docs
+      // are missing vendorId (older creates only set createdBy / venueId).
       allow delete: if isAuthenticated() && (
         isSuperAdmin() ||
-        ownsVendorResource()
+        ownsVendorResource() ||
+        (resource.data.venueId != null && ownsVenue(resource.data.venueId)) ||
+        resource.data.createdBy == request.auth.uid
       );
     }
 

@@ -85,11 +85,24 @@ const QuickMatches: React.FC = () => {
   const handleDeleteMatch = (matchId: string) => {
     openConfirm({
       title: 'Delete quick match?',
-      message: 'This cannot be undone.',
+      message: 'This removes the match from the admin panel and the mobile app.',
+      confirmLabel: 'Delete',
+      variant: 'danger',
       onConfirm: async () => {
         try {
           setProcessing(matchId);
-          await quickMatchesCollection.delete(matchId);
+          try {
+            await quickMatchesCollection.delete(matchId);
+          } catch (deleteError) {
+            // Fallback for legacy permission edge-cases: cancel so mobile hides it.
+            console.warn('Hard delete failed, cancelling match instead:', deleteError);
+            await quickMatchesCollection.update(matchId, {
+              status: 'Cancelled',
+              updatedAt: serverTimestamp(),
+            });
+            showSuccess('Quick match cancelled and hidden from the app');
+            return;
+          }
           showSuccess('Quick match deleted successfully');
         } catch (error: any) {
           console.error('Error deleting quick match:', error);
