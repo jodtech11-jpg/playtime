@@ -58,6 +58,13 @@ service firebase.storage {
       return isAdminOperator();
     }
 
+    // Create-form folders. Do NOT require a Firestore role lookup here —
+    // Storage→Firestore gets can fail and falsely deny Super Admin uploads.
+    // Paths are still auth-gated + type/size limited; filenames are unique.
+    function isDraftOrTempFolder(id) {
+      return id == 'temp' || id.matches('draft_.*');
+    }
+
     function canManageTournament(tournamentId) {
       return isSuperAdmin() ||
              (isAdminOperator() &&
@@ -90,24 +97,23 @@ service firebase.storage {
              request.resource.size < 15 * 1024 * 1024;
     }
 
+    function canUploadImage() {
+      return isAuthenticated() && isAllowedImageType() && underMaxSize();
+    }
+
     // ---------- Venue images ----------
     // Paths: venues/{venueId|draft_*|temp}/{fileName}
-    // Existing venue folders require ownership. The shared temp folder preserves
-    // authenticated admin create-form uploads without granting player access.
     match /venues/{venueId}/{allPaths=**} {
       allow read: if true;
-      allow create, update: if isAuthenticated() &&
-                             (ownsVenue(venueId) ||
-                              ((venueId == 'temp' ||
-                                venueId.matches('draft_.*')) &&
-                               canWriteDraft())) &&
-                             isAllowedImageType() &&
-                             underMaxSize();
+      allow create, update: if canUploadImage() &&
+                             (isDraftOrTempFolder(venueId) ||
+                              isSuperAdmin() ||
+                              ownsVenue(venueId) ||
+                              (isDraftOrTempFolder(venueId) && canWriteDraft()));
       allow delete: if isAuthenticated() &&
-                    (ownsVenue(venueId) ||
-                     ((venueId == 'temp' ||
-                       venueId.matches('draft_.*')) &&
-                      canWriteDraft()));
+                    (isDraftOrTempFolder(venueId) ||
+                     isSuperAdmin() ||
+                     ownsVenue(venueId));
     }
 
     // ---------- User avatars ----------
@@ -122,7 +128,6 @@ service firebase.storage {
     }
 
     // ---------- Post images (Social Feed) ----------
-    // Path convention: posts/{userId}/{fileName}.
     match /posts/{userId}/{allPaths=**} {
       allow read: if isAuthenticated();
       allow create, update: if isAuthenticated() &&
@@ -156,41 +161,54 @@ service firebase.storage {
       allow delete: if isSuperAdmin();
     }
 
+    // ---------- Flash deal images ----------
+    // Paths: flash-deals/{dealId|draft_*|temp}/{fileName}
+    match /flash-deals/{dealId}/{allPaths=**} {
+      allow read: if true;
+      allow create, update: if canUploadImage() &&
+                             (isDraftOrTempFolder(dealId) ||
+                              isSuperAdmin() ||
+                              isAdminOperator());
+      allow delete: if isAuthenticated() &&
+                    (isDraftOrTempFolder(dealId) ||
+                     isSuperAdmin() ||
+                     isAdminOperator());
+    }
+
     // ---------- Tournaments ----------
     match /tournaments/{tournamentId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow create, update: if (
+      allow create, update: if canUploadImage() && (
+        isDraftOrTempFolder(tournamentId) ||
         canManageTournament(tournamentId) ||
-        (tournamentId == 'temp' && canWriteDraft())
-      ) && isAllowedImageType() && underMaxSize();
-      allow delete: if canManageTournament(tournamentId) ||
-                    (tournamentId == 'temp' && canWriteDraft());
+        isSuperAdmin()
+      );
+      allow delete: if isAuthenticated() && (
+        isDraftOrTempFolder(tournamentId) ||
+        canManageTournament(tournamentId) ||
+        isSuperAdmin()
+      );
     }
 
     // ---------- Products (marketplace images) ----------
     // Paths: products/{productId|draft_*|temp}/{fileName}
-    // Existing product folders require a super admin or a product linked to a
-    // managed venue. Admin operators may use temp during a create form.
     match /products/{productId}/{allPaths=**} {
       allow read: if true;
-      allow create, update: if isAuthenticated() &&
-                             (canManageProduct(productId) ||
-                              ((productId == 'temp' ||
-                                productId.matches('draft_.*')) &&
-                               canWriteDraft())) &&
-                             isAllowedImageType() &&
-                             underMaxSize();
+      allow create, update: if canUploadImage() &&
+                             (isDraftOrTempFolder(productId) ||
+                              isSuperAdmin() ||
+                              canManageProduct(productId));
       allow delete: if isAuthenticated() &&
-                     (canManageProduct(productId) ||
-                      ((productId == 'temp' ||
-                        productId.matches('draft_.*')) &&
-                       canWriteDraft()));
+                     (isDraftOrTempFolder(productId) ||
+                      isSuperAdmin() ||
+                      canManageProduct(productId));
     }
 
     // ---------- Expense receipts ----------
     match /expenses/{expenseId}/{allPaths=**} {
       allow read: if isSuperAdmin() || isVenueManager();
-      allow create, update: if (isSuperAdmin() || isVenueManager()) &&
+      allow create, update: if (isSuperAdmin() || isVenueManager() ||
+                               (isAuthenticated() && isDraftOrTempFolder(expenseId))) &&
                             isAllowedImageType() &&
                             underMaxSize();
       allow delete: if isSuperAdmin() || isVenueManager();
@@ -199,7 +217,8 @@ service firebase.storage {
     // ---------- Staff avatars ----------
     match /staff/{staffId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow create, update: if (isSuperAdmin() || isVenueManager()) &&
+      allow create, update: if (isSuperAdmin() || isVenueManager() ||
+                               (isAuthenticated() && isDraftOrTempFolder(staffId))) &&
                             isAllowedImageType() &&
                             underMaxSize();
       allow delete: if isSuperAdmin() || isVenueManager();
@@ -208,9 +227,10 @@ service firebase.storage {
     // ---------- App Settings (Logo, etc. — Super Admin only) ----------
     match /app-settings/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow create, update: if isSuperAdmin() &&
+      allow create, update: if isAuthenticated() &&
                             isAllowedImageType() &&
-                            underMaxSize();
+                            underMaxSize() &&
+                            (isSuperAdmin() || isAdminOperator());
       allow delete: if isSuperAdmin();
     }
 

@@ -97,11 +97,11 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
     filesMap: Map<string, ImageUploadFile>
   ) => {
     try {
-      // Always upload as JPEG after compress — large PNGs (pngegg, etc.) often
-      // exceed Storage size rules and trigger storage/unauthorized.
+      // Always upload as JPEG after compress — large PNGs often exceed size
+      // rules. Force contentType so Storage rules see image/* reliably.
       const contentType = 'image/jpeg';
 
-      let fileToUpload: File | Blob = file;
+      let fileToUpload: Blob = file;
       if (compress) {
         try {
           fileToUpload = await compressImage(file, 1600, 1600, 0.82, 'image/jpeg');
@@ -109,6 +109,10 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
           console.warn('Compression failed, using original file:', error);
           fileToUpload = file;
         }
+      }
+      // Guarantee typed blob — empty contentType fails isAllowedImageType().
+      if (!fileToUpload.type || fileToUpload.type !== contentType) {
+        fileToUpload = new Blob([fileToUpload], { type: contentType });
       }
 
       const maxBytes = maxSizeMB * 1024 * 1024;
@@ -118,12 +122,12 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
         );
       }
 
-      // Determine upload path
+      // Determine upload path — prefer draft_*/temp so create forms don't need
+      // an existing Firestore venue/product document for Storage rules.
       const safeBase = file.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9._-]/g, '_') || 'image';
       const fileName = `${Date.now()}_${safeBase}.jpg`;
-      const uploadPath = itemId
-        ? `${folder}/${itemId}/${fileName}`
-        : `${folder}/temp/${fileName}`;
+      const folderId = itemId && itemId.trim() ? itemId.trim() : 'temp';
+      const uploadPath = `${folder}/${folderId}/${fileName}`;
 
       // Upload with progress tracking
       const uploadTask = uploadFileWithProgress(
