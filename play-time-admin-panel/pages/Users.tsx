@@ -253,13 +253,17 @@ const Users: React.FC = () => {
     } catch (err: any) {
       console.error('Error saving user:', err);
       setProcessing(null);
-      const message = getFirebaseErrorMessage(err) || 'Failed to save user';
-      if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
+      const raw = String(err?.message || '');
+      if (
+        /failed to fetch/i.test(raw) ||
+        /networkerror/i.test(raw) ||
+        /could not reach the admin service/i.test(raw)
+      ) {
         showError(
-          'Could not reach user provisioning service. Deploy Cloud Functions (createUserAccount) and try again.'
+          'Could not reach user create service. Hard-refresh the page, then try again. If it still fails, add playtime.jodtech.in under Firebase Auth → Authorized domains.'
         );
       } else {
-        showError(`Failed to save user: ${message}`);
+        showError(`Failed to save user: ${getFirebaseErrorMessage(err) || raw || 'Unknown error'}`);
       }
     }
   };

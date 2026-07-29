@@ -49,11 +49,21 @@ async function callAdminFunction<T>(path: string, body: object): Promise<T> {
     throw new Error('You must be signed in to perform this action.');
   }
 
-  const idToken = await currentUser.getIdToken();
+  let idToken: string;
+  try {
+    idToken = await currentUser.getIdToken(/* forceRefresh */ true);
+  } catch (error) {
+    console.error('Failed to refresh admin ID token:', error);
+    throw new Error(
+      'Your session could not be verified. Sign out and sign in again. Also ensure playtime.jodtech.in is listed in Firebase Auth → Authorized domains.'
+    );
+  }
+
   let response: Response;
   try {
     response = await fetch(`${baseUrl}/${path}`, {
       method: 'POST',
+      mode: 'cors',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${idToken}`,
@@ -61,9 +71,9 @@ async function callAdminFunction<T>(path: string, body: object): Promise<T> {
       body: JSON.stringify(body),
     });
   } catch (error) {
-    console.error(`Admin function ${path} unreachable:`, error);
+    console.error(`Admin function ${path} unreachable at ${baseUrl}:`, error);
     throw new Error(
-      'Could not reach the admin service. If this keeps happening, redeploy Cloud Functions with ALLOWED_ORIGINS including this site.'
+      'Could not reach the admin service. Hard-refresh and retry. If it continues, add playtime.jodtech.in to Firebase Auth authorized domains and redeploy Cloud Functions.'
     );
   }
 

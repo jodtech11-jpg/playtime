@@ -10,6 +10,7 @@
  */
 
 const functions = require('firebase-functions');
+const {onRequest} = require('firebase-functions/v2/https');
 const {
   onDocumentCreated,
   onDocumentUpdated,
@@ -28,6 +29,7 @@ admin.initializeApp();
 /** Built-in admin UI origins (custom hosting). Env ALLOWED_ORIGINS can add more. */
 const DEFAULT_ALLOWED_ORIGINS = [
   'https://playtime.jodtech.in',
+  'https://www.playtime.jodtech.in',
   'https://jodtech.playtime.com',
   'http://localhost:5173',
   'http://localhost:4173',
@@ -46,6 +48,7 @@ function applyCors(req, res) {
   const origin = req.get('origin') || '';
   if (allowed.includes(origin)) {
     res.set('Access-Control-Allow-Origin', origin);
+    res.set('Access-Control-Allow-Credentials', 'true');
   } else if (!origin) {
     // Non-browser clients (no Origin header)
     res.set('Access-Control-Allow-Origin', '*');
@@ -54,6 +57,39 @@ function applyCors(req, res) {
   res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
   res.set('Access-Control-Max-Age', '3600');
+}
+
+/**
+ * HTTPS admin endpoints with Firebase-managed CORS (reliable for custom domains).
+ */
+function adminHttpsOnRequest(handler) {
+  return onRequest(
+    {
+      region: 'us-central1',
+      cors: getAllowedOrigins(),
+      invoker: 'public',
+    },
+    async (req, res) => {
+      try {
+        if (req.method === 'OPTIONS') {
+          res.status(204).send('');
+          return;
+        }
+        if (req.method !== 'POST') {
+          res.status(405).json({error: 'Method not allowed. Use POST.'});
+          return;
+        }
+        await handler(req, res);
+      } catch (error) {
+        console.error('adminHttpsOnRequest error:', error);
+        if (!res.headersSent) {
+          res.status(error.status || 500).json({
+            error: error.message || 'Request failed',
+          });
+        }
+      }
+    },
+  );
 }
 
 /**
@@ -416,17 +452,7 @@ exports.registerTournamentPlayer = functions.https.onRequest(async (req, res) =>
  * Approve a vendor and atomically assign managed venues.
  * Super-admin only. POST body: {userId, venueId? | venueIds?, activateVenues?}
  */
-exports.approveVendorVenue = functions.https.onRequest(async (req, res) => {
-  applyCors(req, res);
-  if (req.method === 'OPTIONS') {
-    res.status(204).send('');
-    return;
-  }
-  if (req.method !== 'POST') {
-    res.status(405).json({error: 'Method not allowed. Use POST.'});
-    return;
-  }
-
+exports.approveVendorVenue = adminHttpsOnRequest(async (req, res) => {
   const auth = await requireAdmin(req, res);
   if (!auth) return;
   if (!auth.isSuperAdmin) {
@@ -1844,17 +1870,7 @@ async function generatePasswordResetLink(email) {
  * Requires an admin role (super_admin, venue_manager, or custom admin role).
  * POST body: { name, email, phone, role, status, managedVenues?, customPermissions? }
  */
-exports.createUserAccount = functions.https.onRequest(async (req, res) => {
-  applyCors(req, res);
-  if (req.method === 'OPTIONS') {
-    res.status(204).send('');
-    return;
-  }
-  if (req.method !== 'POST') {
-    res.status(405).json({error: 'Method not allowed. Use POST.'});
-    return;
-  }
-
+exports.createUserAccount = adminHttpsOnRequest(async (req, res) => {
   const authCtx = await requireAdmin(req, res);
   if (!authCtx) return;
 
@@ -1962,17 +1978,7 @@ exports.createUserAccount = functions.https.onRequest(async (req, res) => {
  * Requires super_admin or venue_manager.
  * POST body: { userId }
  */
-exports.provisionUserLogin = functions.https.onRequest(async (req, res) => {
-  applyCors(req, res);
-  if (req.method === 'OPTIONS') {
-    res.status(204).send('');
-    return;
-  }
-  if (req.method !== 'POST') {
-    res.status(405).json({error: 'Method not allowed. Use POST.'});
-    return;
-  }
-
+exports.provisionUserLogin = adminHttpsOnRequest(async (req, res) => {
   const authCtx = await requireAdmin(req, res);
   if (!authCtx) return;
 
