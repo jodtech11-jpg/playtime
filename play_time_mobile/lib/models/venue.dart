@@ -71,12 +71,8 @@ class Venue {
       amenities: json['amenities'] != null
           ? List<String>.from(json['amenities'] as List)
           : null,
-      locationLat: json['location'] != null && json['location'] is Map
-          ? (json['location'] as Map)['lat'] as double?
-          : null,
-      locationLng: json['location'] != null && json['location'] is Map
-          ? (json['location'] as Map)['lng'] as double?
-          : null,
+      locationLat: _coordFromLocation(json['location'], 'lat'),
+      locationLng: _coordFromLocation(json['location'], 'lng'),
       status: json['status'] as String?,
       courts: json['courts'] != null
           ? List<Map<String, dynamic>>.from(json['courts'] as List)
@@ -210,4 +206,11 @@ class Venue {
       courts: courts ?? this.courts,
     );
   }
+}
+
+double? _coordFromLocation(dynamic location, String key) {
+  if (location is! Map) return null;
+  final value = location[key];
+  if (value is num) return value.toDouble();
+  return null;
 }

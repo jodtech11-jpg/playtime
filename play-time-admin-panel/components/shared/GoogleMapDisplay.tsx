@@ -27,7 +27,6 @@ const GoogleMapDisplay: React.FC<GoogleMapDisplayProps> = ({
       mapRef.current = new window.google.maps.Map(containerRef.current, {
         center: position,
         zoom: 15,
-        mapId: 'PLAYTIME_MAP_ID',
         mapTypeControl: false,
         streetViewControl: false,
         fullscreenControl: true,
@@ -37,17 +36,16 @@ const GoogleMapDisplay: React.FC<GoogleMapDisplayProps> = ({
       mapRef.current.setCenter(position);
     }
 
-    if (window.google.maps.marker?.AdvancedMarkerElement) {
-      if (!markerRef.current) {
-        markerRef.current = new window.google.maps.marker.AdvancedMarkerElement({
-          map: mapRef.current,
-          position,
-          title: label,
-        });
-      } else {
-        markerRef.current.position = position;
-        markerRef.current.title = label;
-      }
+    // Classic Marker avoids requiring a Cloud Console Map ID (AdvancedMarker).
+    if (!markerRef.current) {
+      markerRef.current = new window.google.maps.Marker({
+        map: mapRef.current,
+        position,
+        title: label,
+      });
+    } else {
+      markerRef.current.setPosition(position);
+      markerRef.current.setTitle(label);
     }
   }, [isLoaded, lat, lng, label]);
 

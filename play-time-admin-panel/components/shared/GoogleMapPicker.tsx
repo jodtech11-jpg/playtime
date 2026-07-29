@@ -88,28 +88,26 @@ const GoogleMapPicker: React.FC<GoogleMapPickerProps> = ({
     }
   }, [mapLoaded, address, onAddressChange, onLocationChange]);
 
-  // Helper function to update or create marker using AdvancedMarkerElement
+  // Classic Marker — works without a Cloud Console Map ID.
   const updateMarker = (newLat: number, newLng: number) => {
-    if (!mapInstanceRef.current || !window.google?.maps?.marker) return;
+    if (!mapInstanceRef.current || !window.google?.maps?.Marker) return;
 
     if (markerRef.current) {
-      markerRef.current.position = { lat: newLat, lng: newLng };
+      markerRef.current.setPosition({ lat: newLat, lng: newLng });
     } else {
-      // Use AdvancedMarkerElement instead of deprecated Marker
-      markerRef.current = new window.google.maps.marker.AdvancedMarkerElement({
+      markerRef.current = new window.google.maps.Marker({
         map: mapInstanceRef.current,
         position: { lat: newLat, lng: newLng },
-        gmpDraggable: true
+        draggable: true,
       });
 
-      // Listen for drag end
       markerRef.current.addListener('dragend', () => {
-        const position = markerRef.current.position;
-        const dragLat = typeof position.lat === 'function' ? position.lat() : position.lat;
-        const dragLng = typeof position.lng === 'function' ? position.lng() : position.lng;
+        const position = markerRef.current.getPosition();
+        if (!position) return;
+        const dragLat = position.lat();
+        const dragLng = position.lng();
         onLocationChange(dragLat, dragLng);
 
-        // Reverse geocode to get address
         const geocoder = new window.google.maps.Geocoder();
         geocoder.geocode({ location: { lat: dragLat, lng: dragLng } }, (results: any[], status: string) => {
           if (status === 'OK' && results[0]) {
@@ -139,7 +137,6 @@ const GoogleMapPicker: React.FC<GoogleMapPickerProps> = ({
           mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
             center: { lat: initialLat, lng: initialLng },
             zoom: lat !== 0 && lng !== 0 ? 15 : 12,
-            mapId: 'PLAYTIME_MAP_ID', // Required for AdvancedMarkerElement
             mapTypeControl: false,
             streetViewControl: false,
             fullscreenControl: true

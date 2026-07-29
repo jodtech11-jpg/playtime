@@ -1,3 +1,4 @@
 // Copy to maps_config.js (ignored) or render this assignment at deploy time.
 // Restrict the key by HTTP referrer and to the Maps JavaScript API.
 window.GOOGLE_MAPS_API_KEY = 'YOUR_RESTRICTED_WEB_MAPS_KEY';
+

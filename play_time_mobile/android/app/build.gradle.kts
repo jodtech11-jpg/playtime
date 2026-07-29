@@ -25,7 +25,8 @@ if (localPropertiesFile.exists()) {
 val mapsApiKey: String = (
     System.getenv("MAPS_API_KEY")
         ?: localProperties.getProperty("MAPS_API_KEY")
-        ?: ""
+        // Client Maps keys are restricted by package/SHA in Google Cloud.
+        ?: "AIzaSyCLJKxLWvRyPakKliBRNjShZ0xD31tTs4E"
 )
 
 android {

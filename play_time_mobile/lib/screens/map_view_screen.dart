@@ -9,16 +9,18 @@ import '../theme/app_colors.dart';
 import '../providers/venue_provider.dart';
 import '../providers/location_provider.dart';
 import '../models/venue.dart';
+import '../utils/google_maps_web_ready.dart';
 
-// Web-specific: Wait for Google Maps API to be loaded (max 5 seconds)
+/// Default camera when user/venue location is unavailable (Madurai hub).
+const LatLng _kDefaultMapCenter = LatLng(9.9252, 78.1198);
+
+// Web-specific: wait until maps_config.js + Maps JS callback set googleMapsReady.
 Future<void> _waitForGoogleMapsApi() async {
   if (!kIsWeb) return;
 
-  // Wait up to 5 seconds for Google Maps API to load (polling every 100ms)
   for (int i = 0; i < 50; i++) {
+    if (isGoogleMapsJsReady()) return;
     await Future.delayed(const Duration(milliseconds: 100));
-    // The API is loaded when google.maps is defined
-    // The simple delay approach combined with async loading in index.html should work
   }
 }
 
@@ -238,11 +240,8 @@ class _MapViewScreenState extends State<MapViewScreen> {
       });
     }
 
-    // Determine initial camera position
-    LatLng initialPosition = const LatLng(
-      13.0827,
-      80.2707,
-    ); // Default to Chennai
+    // Prefer user location, then first venue pin, else Madurai (venue hub).
+    LatLng initialPosition = _kDefaultMapCenter;
 
     if (locationProvider.selectedLat != null &&
         locationProvider.selectedLng != null) {
@@ -263,7 +262,9 @@ class _MapViewScreenState extends State<MapViewScreen> {
             (v.locationLat != 0 || v.locationLng != 0),
         orElse: () => venueProvider.venues.first,
       );
-      if (firstVenue.locationLat != null && firstVenue.locationLng != null) {
+      if (firstVenue.locationLat != null &&
+          firstVenue.locationLng != null &&
+          (firstVenue.locationLat != 0 || firstVenue.locationLng != 0)) {
         initialPosition = LatLng(
           firstVenue.locationLat!,
           firstVenue.locationLng!,
@@ -311,6 +312,7 @@ class _MapViewScreenState extends State<MapViewScreen> {
                       markers: _isSelectingLocation ? {} : _markers,
                       mapType: MapType.normal,
                       style: _useDarkMapStyle ? _darkMapStyle : null,
+                      myLocationEnabled: true,
                       myLocationButtonEnabled: false,
                       zoomControlsEnabled: false,
                       onMapCreated: (GoogleMapController controller) {
@@ -476,10 +478,7 @@ class _MapViewScreenState extends State<MapViewScreen> {
                                 context,
                                 listen: false,
                               );
-                          LatLng targetPosition = const LatLng(
-                            13.0827,
-                            80.2707,
-                          );
+                          LatLng targetPosition = _kDefaultMapCenter;
                           if (locationProvider.selectedLat != null &&
                               locationProvider.selectedLng != null) {
                             targetPosition = LatLng(

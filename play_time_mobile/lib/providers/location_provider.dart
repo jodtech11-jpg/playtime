@@ -42,8 +42,8 @@ class LocationProvider with ChangeNotifier {
       if (userProfile != null) {
         _selectedCity = userProfile['city'] as String?;
         _selectedState = userProfile['state'] as String?;
-        _selectedLat = userProfile['latitude'] as double?;
-        _selectedLng = userProfile['longitude'] as double?;
+        _selectedLat = (userProfile['latitude'] as num?)?.toDouble();
+        _selectedLng = (userProfile['longitude'] as num?)?.toDouble();
         notifyListeners();
       }
     } catch (e) {

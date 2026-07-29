@@ -30,9 +30,11 @@ export const useGoogleMaps = () => {
       return;
     }
 
-    // Get API key from environment variable
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
-    
+    // Prefer env; fall back so GitHub/custom hosting builds still load Maps.
+    const apiKey =
+      import.meta.env.VITE_GOOGLE_MAPS_API_KEY ||
+      'AIzaSyCLJKxLWvRyPakKliBRNjShZ0xD31tTs4E';
+
     if (!apiKey) {
       setLoadError('Google Maps API key is not configured. Please set VITE_GOOGLE_MAPS_API_KEY in your .env file.');
       console.error('VITE_GOOGLE_MAPS_API_KEY is not set in environment variables');

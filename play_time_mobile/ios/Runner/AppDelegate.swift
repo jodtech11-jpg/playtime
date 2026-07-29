@@ -8,13 +8,19 @@ import UIKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    if let mapsKey = Bundle.main.object(
+    let bundledKey = Bundle.main.object(
       forInfoDictionaryKey: "GoogleMapsAPIKey"
-    ) as? String,
-      !mapsKey.isEmpty,
-      mapsKey != "$(GOOGLE_MAPS_API_KEY)" {
-      GMSServices.provideAPIKey(mapsKey)
+    ) as? String
+    let mapsKey: String
+    if let bundledKey,
+      !bundledKey.isEmpty,
+      bundledKey != "$(GOOGLE_MAPS_API_KEY)" {
+      mapsKey = bundledKey
+    } else {
+      // Fallback when MapsSecrets.xcconfig is missing from the local/CI build.
+      mapsKey = "AIzaSyCLJKxLWvRyPakKliBRNjShZ0xD31tTs4E"
     }
+    GMSServices.provideAPIKey(mapsKey)
     GeneratedPluginRegistrant.register(with: self)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
