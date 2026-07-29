@@ -1,17 +1,21 @@
 import React, { useMemo, useState } from 'react';
 import { Booking, Sport, Venue } from '../../types';
 import { formatTime } from '../../utils/dateUtils';
+import { resolveSportName } from '../../utils/formatUtils';
 import BookingEventCard from './BookingEventCard';
 import {
+  bookingDisplayPriority,
+  bookingsStartingInHour,
   calendarDate,
   getCalendarHours,
   getMonthDays,
   getWeekDays,
   layoutOverlaps,
-  MAX_VISIBLE_LANES,
   sameDay,
   type LayoutOverflow,
 } from './calendarUtils';
+
+const WEEK_VISIBLE_CHIPS = 2;
 
 type ViewMode = 'day' | 'week' | 'month';
 
@@ -124,19 +128,233 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({
             onBookingClick={onBookingClick}
             onDateClick={onDateClick}
           />
+        ) : viewMode === 'week' ? (
+          <WeekChipGrid
+            columns={columns}
+            hours={hours}
+            startHour={startHour}
+            sports={sports}
+            getUserName={getUserName}
+            onBookingClick={onBookingClick}
+          />
         ) : (
           <TimeGrid
             columns={columns}
             hours={hours}
             startHour={startHour}
             sports={sports}
-            maxVisibleLanes={viewMode === 'week' ? MAX_VISIBLE_LANES : 3}
+            maxVisibleLanes={3}
             getUserName={getUserName}
             onBookingClick={onBookingClick}
           />
         )}
       </div>
     </section>
+  );
+};
+
+/** Weekly overview: stack readable chips per hour instead of overlapping absolute cards. */
+const WeekChipGrid: React.FC<{
+  columns: CalendarColumn[];
+  hours: number[];
+  startHour: number;
+  sports: Sport[];
+  getUserName: (booking: Booking) => string;
+  onBookingClick: (booking: Booking) => void;
+}> = ({ columns, hours, startHour, sports, getUserName, onBookingClick }) => {
+  const [overflowMenu, setOverflowMenu] = useState<{
+    key: string;
+    bookings: Booking[];
+    top: number;
+  } | null>(null);
+
+  const safeColumns = columns.length
+    ? columns
+    : [{ id: 'empty', label: 'No courts', sublabel: 'Select a venue', bookings: [] }];
+  const gridTemplateColumns = `72px repeat(${safeColumns.length}, minmax(150px, 1fr))`;
+  const bodyHeight = Math.max(hours.length * SLOT_HEIGHT, 480);
+
+  return (
+    <div className="h-full max-h-[72vh] overflow-auto scrollbar-visible">
+      <div className="min-w-max" style={{ width: `max(100%, ${72 + safeColumns.length * 150}px)` }}>
+        <div
+          className="sticky top-0 z-40 grid border-b border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800"
+          style={{ gridTemplateColumns }}
+          role="row"
+        >
+          <div className="sticky left-0 z-50 flex h-16 items-center justify-center border-r border-slate-200 bg-slate-50 text-xs font-black uppercase text-slate-400 dark:border-slate-700 dark:bg-slate-900">
+            Time
+          </div>
+          {safeColumns.map((column) => (
+            <div
+              key={column.id}
+              role="columnheader"
+              className={`flex h-16 min-w-0 flex-col items-center justify-center border-r border-slate-100 px-2 text-center dark:border-slate-700 ${column.isToday ? 'bg-emerald-50 dark:bg-emerald-950/30' : ''}`}
+            >
+              <span className={`text-xs font-black uppercase ${column.isToday ? 'text-primary' : 'text-slate-700 dark:text-slate-200'}`}>
+                {column.label}
+              </span>
+              <span className="mt-1 max-w-full truncate text-xs font-semibold text-slate-400">
+                {column.sublabel}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid" style={{ gridTemplateColumns }} role="grid">
+          <div
+            className="sticky left-0 z-30 border-r border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900"
+            style={{ height: bodyHeight }}
+          >
+            {hours.map((hour) => (
+              <div
+                key={hour}
+                className="border-b border-slate-200 px-2 pt-2 text-right text-xs font-bold text-slate-400 dark:border-slate-800"
+                style={{ height: SLOT_HEIGHT }}
+              >
+                {new Date(2000, 0, 1, hour).toLocaleTimeString('en-US', { hour: 'numeric' })}
+              </div>
+            ))}
+          </div>
+
+          {safeColumns.map((column) => (
+            <div
+              key={column.id}
+              className="relative border-r border-slate-100 bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_63px,rgba(148,163,184,0.18)_64px)] dark:border-slate-700"
+              style={{ height: bodyHeight }}
+              role="gridcell"
+            >
+              {hours.map((hour) => {
+                const hourBookings = bookingsStartingInHour(column.bookings, hour);
+                if (!hourBookings.length) return null;
+
+                // Keep chips inside the hour row: 2 alone, or 1 + "+N more" when crowded.
+                const maxChips =
+                  hourBookings.length > WEEK_VISIBLE_CHIPS ? 1 : WEEK_VISIBLE_CHIPS;
+                const visible = hourBookings.slice(0, maxChips);
+                const hidden = hourBookings.slice(maxChips);
+                const top = (hour - startHour) * SLOT_HEIGHT + 2;
+                const menuKey = `${column.id}-${hour}`;
+                const isOpen = overflowMenu?.key === menuKey;
+
+                return (
+                  <div
+                    key={menuKey}
+                    className="absolute inset-x-0 z-10 flex flex-col gap-0.5 px-1"
+                    style={{ top, height: SLOT_HEIGHT - 4 }}
+                  >
+                    {visible.map((booking) => (
+                      <WeekBookingChip
+                        key={booking.id}
+                        booking={booking}
+                        sports={sports}
+                        userName={getUserName(booking)}
+                        onClick={() => {
+                          setOverflowMenu(null);
+                          onBookingClick(booking);
+                        }}
+                      />
+                    ))}
+                    {hidden.length > 0 && (
+                      <button
+                        type="button"
+                        title={`${hidden.length} more bookings at this hour`}
+                        aria-expanded={isOpen}
+                        onClick={() =>
+                          setOverflowMenu(
+                            isOpen ? null : { key: menuKey, bookings: hidden, top }
+                          )
+                        }
+                        className="h-5 shrink-0 rounded border border-slate-300 bg-white/95 px-1 text-[10px] font-black text-slate-700 hover:border-primary hover:text-primary dark:border-slate-600 dark:bg-slate-800/95 dark:text-slate-200"
+                      >
+                        +{hidden.length} more
+                      </button>
+                    )}
+
+                    {isOpen && (
+                      <div className="absolute left-1 right-1 top-full z-40 mt-1 rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-600 dark:bg-slate-800">
+                        <div className="mb-1 flex items-center justify-between px-1">
+                          <p className="text-[10px] font-black uppercase text-slate-400">
+                            {hidden.length} more
+                          </p>
+                          <button
+                            type="button"
+                            aria-label="Close"
+                            className="text-slate-400 hover:text-slate-700"
+                            onClick={() => setOverflowMenu(null)}
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <ul className="max-h-44 space-y-1 overflow-y-auto">
+                          {[...visible, ...hidden]
+                            .sort(
+                              (a, b) =>
+                                bookingDisplayPriority(a) - bookingDisplayPriority(b)
+                            )
+                            .map((booking) => (
+                              <li key={booking.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOverflowMenu(null);
+                                    onBookingClick(booking);
+                                  }}
+                                  className="flex w-full flex-col rounded-lg px-2 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-slate-700"
+                                >
+                                  <span className="truncate text-xs font-bold text-slate-800 dark:text-white">
+                                    {getUserName(booking)}
+                                  </span>
+                                  <span className="truncate text-[10px] font-semibold text-slate-500">
+                                    {formatTime(booking.startTime)} · {booking.court} ·{' '}
+                                    {booking.status}
+                                  </span>
+                                </button>
+                              </li>
+                            ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const WeekBookingChip: React.FC<{
+  booking: Booking;
+  sports: Sport[];
+  userName: string;
+  onClick: () => void;
+}> = ({ booking, sports, userName, onClick }) => {
+  const sportName = resolveSportName(booking.sport, sports);
+  const isCancelled = booking.status === 'Cancelled';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`${userName} · ${booking.court || sportName} · ${booking.status}`}
+      className={`flex h-[22px] min-h-0 w-full items-center gap-1 overflow-hidden rounded border px-1.5 text-left shadow-sm hover:brightness-95 ${
+        isCancelled
+          ? 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40'
+          : 'border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30'
+      }`}
+    >
+      <span
+        className={`h-2 w-2 shrink-0 rounded-full ${isCancelled ? 'bg-red-500' : 'bg-primary'}`}
+      />
+      <span className="min-w-0 flex-1 truncate text-[10px] font-black text-slate-800 dark:text-slate-100">
+        {userName}
+      </span>
+      <span className="max-w-[40%] shrink-0 truncate text-[9px] font-bold uppercase text-slate-500">
+        {booking.court || sportName}
+      </span>
+    </button>
   );
 };
 

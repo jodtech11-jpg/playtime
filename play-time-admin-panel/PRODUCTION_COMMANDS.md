@@ -1,6 +1,6 @@
 # Production commands – Play Time Admin Panel
 
-Use these on your **live server** or for **deploying** the admin panel.
+Use these on your **live server** or for **deploying** backend Firebase resources.
 
 ---
 
@@ -13,7 +13,8 @@ npm run build
 ```
 
 - Uses **Vite** to build.
-- Output: `dist/` (used by Firebase Hosting).
+- Output: `dist/` — deploy this folder to your own server/domain (e.g. `playtime.jodtech.in`).
+- Firebase Hosting is **not** used for the admin UI.
 
 ---
 
@@ -32,91 +33,77 @@ npm run preview:prod
 ```
 
 - Default URL: `http://localhost:4173` (or the port Vite prints).
-- Use this to test the production build before deploying.
+- Use this to test the production build before deploying to your server.
 
 ---
 
-## Deploy to Firebase
+## Deploy Firebase backend only
 
-**Full deploy** (builds + deploys Hosting + Firestore rules + Storage rules + Functions):
+**Firestore rules + Storage rules + Functions:**
 
 ```bash
 npm run deploy
 ```
 
-**Only Hosting** (admin panel app):
-
-```bash
-npm run deploy:hosting
-```
-
-**Only rules** (Firestore + Storage, no build):
+**Only rules** (Firestore + Storage):
 
 ```bash
 npm run deploy:rules
 ```
 
-**Only Cloud Functions** (no build):
+**Only Cloud Functions:**
 
 ```bash
 npm run deploy:functions
 ```
 
-- `deploy` and `deploy:hosting` run `npm run build` first, then deploy.
-- `deploy:rules` and `deploy:functions` do not run a build — they deploy backend config/code only.
+- These do **not** deploy the admin website.
 - Requires Firebase CLI: `npm i -g firebase-tools` and `firebase login`.
 
 ### Required Cloud Function secrets
 
-Before deploying `functions`, set:
+Before deploying `functions`, set env vars in `functions/.env` (or Secret Manager), for example:
 
-```bash
-# Razorpay webhook HMAC secret (match what you configure in the Razorpay dashboard)
-firebase functions:config:set razorpay.webhook_secret="<your-secret>"
-
-# (Optional) restrict allowed CORS origins for admin FCM endpoints
-firebase functions:config:set admin.allowed_origins="https://admin.yourdomain.com,https://your-admin.web.app"
-```
-
-Or set env vars `RAZORPAY_WEBHOOK_SECRET` / `ALLOWED_ORIGINS` in the functions runtime.
+- `RAZORPAY_KEY_ID`
+- `RAZORPAY_KEY_SECRET`
+- `RAZORPAY_WEBHOOK_SECRET`
+- `ALLOWED_ORIGINS` (optional CORS allow-list for admin endpoints)
 
 ---
 
-## Run in production mode on the server (Node)
+## Run on your production server
 
-To run the app in “production” on the server (e.g. with PM2 or plain Node), you still serve the **built** files. You do **not** run `npm run dev` in production.
+Serve the **built** files. Do **not** run `npm run dev` in production.
 
-1. Build once (or after each update):
+1. Build:
 
    ```bash
    npm run build
    ```
 
-2. Serve the `dist/` folder with a static server, e.g.:
+2. Serve `dist/` with your server (Nginx, Apache, IIS, PM2 + static server, etc.):
 
    ```bash
    npx serve -s dist -l 3000
    ```
 
-   Or use your server’s static hosting (Nginx, Apache, etc.) pointing to `dist/`.
-
 ---
 
 ## Summary table
 
-| Command                 | Purpose                                      |
-|-------------------------|----------------------------------------------|
-| `npm run build`         | Production build → `dist/`                   |
-| `npm run preview`       | Serve `dist/` locally (no build)             |
-| `npm run preview:prod`  | Build then serve `dist/` locally             |
-| `npm run deploy`        | Build + deploy Hosting, Firestore rules, Storage rules, Functions |
-| `npm run deploy:hosting`| Build + deploy only Hosting (admin app)       |
-| `npm run deploy:rules`  | Deploy only Firestore rules + Storage rules (no build) |
-| `npm run deploy:functions` | Deploy only Cloud Functions (no build)     |
+| Command                    | Purpose                                              |
+|----------------------------|------------------------------------------------------|
+| `npm run build`            | Production build → `dist/` (for your own host)       |
+| `npm run preview`          | Serve `dist/` locally (no build)                     |
+| `npm run preview:prod`     | Build then serve `dist/` locally                     |
+| `npm run deploy`           | Deploy Firestore rules, Storage rules, Functions     |
+| `npm run deploy:rules`     | Deploy only Firestore + Storage rules                |
+| `npm run deploy:functions` | Deploy only Cloud Functions                          |
 
 ---
 
 ## Development (reference)
 
-- **Local dev**: `npm run dev` (Vite dev server, e.g. http://localhost:3000)
-- **One-off scripts**: `npm run create-admin`, `npm run initialize-sports`, etc. (see `package.json` scripts).
+```bash
+npm run dev
+```

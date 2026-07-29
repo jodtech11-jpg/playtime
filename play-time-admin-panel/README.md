@@ -38,9 +38,9 @@ See [Documentation README](./docs/README.md) for complete documentation index.
 
 - **Build**: `npm run build` → output in `dist/`
 - **Preview build locally**: `npm run preview` or `npm run preview:prod`
-- **Deploy to Firebase**:
-  - `npm run deploy` — Build + deploy Hosting, Firestore rules, Storage rules, Functions
-  - `npm run deploy:hosting` — Build + deploy Hosting only
+- **Admin UI hosting**: serve `dist/` on your own server/domain (e.g. `playtime.jodtech.in`). Firebase Hosting is not used.
+- **Firebase backend only**:
+  - `npm run deploy` — Deploy Firestore rules, Storage rules, Functions
   - `npm run deploy:rules` — Deploy Firestore + Storage rules only
   - `npm run deploy:functions` — Deploy Cloud Functions only
 
@@ -53,7 +53,6 @@ From the **repository root** (Playtime):
 - **CI** (`.github/workflows/ci.yml`): On every push/PR to `main` or `develop`, runs:
   - **Admin**: `npm ci` and `npm run build` in `play-time-admin-panel`
   - **Mobile**: `flutter pub get`, `flutter analyze`, `flutter test` in `play_time_mobile`
-- **Deploy** (`.github/workflows/deploy.yml`): On push to `main`, builds the admin panel and deploys to Firebase Hosting. Requires repo secrets: `FIREBASE_TOKEN` (from `firebase login:ci`) and all `VITE_FIREBASE_*` vars (same as `.env.example`). Add them in GitHub → Settings → Secrets and variables → Actions.
 
 ## 📋 Project Status
 

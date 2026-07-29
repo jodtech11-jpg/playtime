@@ -38,8 +38,24 @@ export const getMonthDays = (selectedDate: Date): Date[] => {
   });
 };
 
-/** Side-by-side lanes stay readable; extras go into "+N more". */
+/** Day-view side-by-side lanes; week view uses hour chips instead. */
 export const MAX_VISIBLE_LANES = 2;
+
+/** Lower number = higher priority when choosing which booking stays visible. */
+export const bookingDisplayPriority = (booking: Booking): number => {
+  switch (booking.status) {
+    case 'Pending':
+      return 0;
+    case 'Confirmed':
+      return 1;
+    case 'Completed':
+      return 2;
+    case 'Cancelled':
+      return 3;
+    default:
+      return 2;
+  }
+};
 
 export interface LaidOutBooking {
   booking: Booking;
@@ -76,9 +92,11 @@ export const layoutOverlaps = (
   bookings: Booking[],
   maxVisibleLanes: number = MAX_VISIBLE_LANES
 ): OverlapLayout => {
-  const sorted = [...bookings].sort(
-    (a, b) => bookingInterval(a).start - bookingInterval(b).start
-  );
+  const sorted = [...bookings].sort((a, b) => {
+    const startDiff = bookingInterval(a).start - bookingInterval(b).start;
+    if (startDiff !== 0) return startDiff;
+    return bookingDisplayPriority(a) - bookingDisplayPriority(b);
+  });
   const groups: Booking[][] = [];
   let activeGroup: Booking[] = [];
   let groupEnd = -Infinity;
@@ -99,6 +117,7 @@ export const layoutOverlaps = (
   const overflows: LayoutOverflow[] = [];
 
   groups.forEach((group, groupIndex) => {
+    // Pack into lanes, then keep highest-priority bookings in the first N lanes.
     const laneEnds: number[] = [];
     const placed = group.map((booking) => {
       const { start, end } = bookingInterval(booking);
@@ -108,32 +127,60 @@ export const layoutOverlaps = (
       return { booking, lane, start, end };
     });
 
-    const totalLanes = Math.max(laneEnds.length, 1);
-    const visibleLaneCount = Math.min(totalLanes, Math.max(maxVisibleLanes, 1));
-    const hasOverflow = totalLanes > visibleLaneCount;
+    const prioritized = [...placed].sort((a, b) => {
+      const priorityDiff =
+        bookingDisplayPriority(a.booking) - bookingDisplayPriority(b.booking);
+      if (priorityDiff !== 0) return priorityDiff;
+      return a.start - b.start;
+    });
+
+    const visibleLaneCount = Math.min(
+      Math.max(laneEnds.length, 1),
+      Math.max(maxVisibleLanes, 1)
+    );
+    const visibleBookings = prioritized.slice(0, visibleLaneCount);
+    const hiddenBookings = prioritized.slice(visibleLaneCount);
+    const hasOverflow = hiddenBookings.length > 0;
     const displayLaneCount = visibleLaneCount + (hasOverflow ? 1 : 0);
 
-    const hidden = placed.filter((item) => item.lane >= visibleLaneCount);
-    placed
-      .filter((item) => item.lane < visibleLaneCount)
-      .forEach(({ booking, lane }) => {
-        items.push({ booking, lane, laneCount: displayLaneCount });
+    visibleBookings.forEach((item, index) => {
+      items.push({
+        booking: item.booking,
+        lane: index,
+        laneCount: displayLaneCount,
       });
+    });
 
-    if (hasOverflow && hidden.length) {
-      const overflowStart = Math.min(...hidden.map((item) => item.start));
-      const overflowEnd = Math.max(...hidden.map((item) => item.end));
+    if (hasOverflow) {
+      const overflowStart = Math.min(...hiddenBookings.map((item) => item.start));
+      const overflowEnd = Math.max(...hiddenBookings.map((item) => item.end));
       overflows.push({
         id: `overflow-${groupIndex}-${overflowStart}`,
         startMs: overflowStart,
         endMs: overflowEnd,
-        bookings: hidden.map((item) => item.booking),
+        bookings: hiddenBookings.map((item) => item.booking),
       });
     }
   });
 
   return { items, overflows };
 };
+
+/** Week-view helper: bookings that start inside an hour bucket. */
+export const bookingsStartingInHour = (
+  bookings: Booking[],
+  hour: number
+): Booking[] =>
+  bookings
+    .filter((booking) => {
+      if (!booking.startTime) return false;
+      return calendarDate(booking.startTime).getHours() === hour;
+    })
+    .sort((a, b) => {
+      const startDiff = bookingInterval(a).start - bookingInterval(b).start;
+      if (startDiff !== 0) return startDiff;
+      return bookingDisplayPriority(a) - bookingDisplayPriority(b);
+    });
 
 const parseHour = (value?: string): number | null => {
   if (!value) return null;

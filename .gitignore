@@ -16,9 +16,11 @@ play-time-admin-panel/*.json
 !play-time-admin-panel/package.json
 !play-time-admin-panel/package-lock.json
 !play-time-admin-panel/metadata.json
+!play-time-admin-panel/firebase.json
 !play-time-admin-panel/firestore.rules
 !play-time-admin-panel/firestore.indexes.json
 !play-time-admin-panel/tsconfig.json
+play-time-admin-panel/.firebase/
 play-time-admin-panel/*.jks
 play-time-admin-panel/keystore/
 play-time-admin-panel/*-firebase-adminsdk-*.json
