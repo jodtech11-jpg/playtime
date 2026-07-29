@@ -207,13 +207,17 @@ export const getFirebaseErrorMessage = (error: unknown, fallback?: string): stri
     return 'Payment server error. Please try again later.';
   }
 
-  // Network
+  // Browser blocked / Cloud Function unreachable (often CORS or undeployed endpoint)
   if (
-    /network/i.test(rawMessage) ||
     /failed to fetch/i.test(rawMessage) ||
     /networkerror/i.test(rawMessage) ||
-    err.name === 'NetworkError'
+    err.name === 'TypeError' && /fetch/i.test(rawMessage)
   ) {
+    return 'Could not reach the admin service. Check that Cloud Functions are deployed and this domain is allowed.';
+  }
+
+  // Generic network
+  if (/network/i.test(rawMessage) || err.name === 'NetworkError') {
     return 'Network error. Please check your internet connection.';
   }
 

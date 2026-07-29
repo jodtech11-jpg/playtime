@@ -50,14 +50,22 @@ async function callAdminFunction<T>(path: string, body: object): Promise<T> {
   }
 
   const idToken = await currentUser.getIdToken();
-  const response = await fetch(`${baseUrl}/${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${idToken}`,
-    },
-    body: JSON.stringify(body),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    console.error(`Admin function ${path} unreachable:`, error);
+    throw new Error(
+      'Could not reach the admin service. If this keeps happening, redeploy Cloud Functions with ALLOWED_ORIGINS including this site.'
+    );
+  }
 
   if (!response.ok) {
     const errBody = await response.text();

@@ -25,20 +25,30 @@ admin.initializeApp();
 // Auth helpers
 // ---------------------------------------------------------------------------
 
+/** Built-in admin UI origins (custom hosting). Env ALLOWED_ORIGINS can add more. */
+const DEFAULT_ALLOWED_ORIGINS = [
+  'https://playtime.jodtech.in',
+  'https://jodtech.playtime.com',
+  'http://localhost:5173',
+  'http://localhost:4173',
+];
+
 /** Allow-list of origins for admin-panel requests (env ALLOWED_ORIGINS = comma list). */
 function getAllowedOrigins() {
   const raw = process.env.ALLOWED_ORIGINS || '';
-  return raw.split(',').map((o) => o.trim()).filter(Boolean);
+  const fromEnv = raw.split(',').map((o) => o.trim()).filter(Boolean);
+  return [...new Set([...DEFAULT_ALLOWED_ORIGINS, ...fromEnv])];
 }
 
 /** Set CORS headers. Echoes the request Origin when it is in the allow-list. */
 function applyCors(req, res) {
   const allowed = getAllowedOrigins();
   const origin = req.get('origin') || '';
-  if (allowed.length === 0) {
-    res.set('Access-Control-Allow-Origin', origin || '*');
-  } else if (allowed.includes(origin)) {
+  if (allowed.includes(origin)) {
     res.set('Access-Control-Allow-Origin', origin);
+  } else if (!origin) {
+    // Non-browser clients (no Origin header)
+    res.set('Access-Control-Allow-Origin', '*');
   }
   res.set('Vary', 'Origin');
   res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
