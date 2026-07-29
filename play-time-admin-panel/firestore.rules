@@ -155,8 +155,8 @@ service cloud.firestore {
     }
 
     // ---------- Users ----------
-    // Venue managers may read user docs by ID (needed for customer lookup from
-    // bookings/memberships). Client hooks only fetch users linked to managed venues.
+    // Venue managers may read player profiles by ID (booking/membership customer
+    // names). userHasManagedVenueAffinity only helps for docs that store venueId(s).
     match /users/{userId} {
       allow read: if isAuthenticated() && (
         userId == request.auth.uid ||
@@ -165,6 +165,8 @@ service cloud.firestore {
         (request.auth.token.email != null &&
          resource.data.email == request.auth.token.email) ||
         isSuperAdmin() ||
+        (isVenueManager() &&
+         (!('role' in resource.data) || resource.data.role == 'player')) ||
         userHasManagedVenueAffinity()
       );
       // - Unauthenticated vendor signup: status=Pending, role=venue_manager, self-id.

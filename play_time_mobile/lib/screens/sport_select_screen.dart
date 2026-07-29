@@ -808,6 +808,7 @@ class _QuickBookModalState extends State<_QuickBookModal> {
             endTime: endTime,
             courtOverride: selectedCourt,
             venueImage: _selectedVenue!.image,
+            amount: bookingAmount,
           );
 
       final booking = Booking(

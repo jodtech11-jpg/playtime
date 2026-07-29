@@ -481,6 +481,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
         endTime: endTime,
         courtOverride: selectedCourt,
         venueImage: venue.image,
+        amount: bookingAmount,
       );
       bookingId = id;
       isFirstTimeBooking = isFirst;

@@ -47,11 +47,19 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
       .get(booking.userId)
       .then((doc) => {
         if (cancelled) return;
-        const user = doc as { name?: string; email?: string } | null;
-        setResolvedUserName(user?.name?.trim() || user?.email?.trim() || 'Unknown user');
+        const user = doc as { name?: string; email?: string; displayName?: string } | null;
+        setResolvedUserName(
+          user?.name?.trim() ||
+            user?.displayName?.trim() ||
+            user?.email?.trim() ||
+            'Unknown user'
+        );
       })
       .catch(() => {
-        if (!cancelled) setResolvedUserName('Unknown user');
+        // Venue managers often cannot read player user docs; booking.user is the fallback.
+        if (!cancelled) {
+          setResolvedUserName(resolveBookingUserName(booking) || 'Unknown user');
+        }
       });
 
     return () => {
@@ -138,7 +146,11 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
             </div>
             <div className="col-span-2">
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Amount</label>
-              <p className="text-2xl font-black text-primary">{formatCurrency(booking.amount)}</p>
+              <p className="text-2xl font-black text-primary">
+                {typeof booking.amount === 'number' && Number.isFinite(booking.amount)
+                  ? formatCurrency(booking.amount)
+                  : '—'}
+              </p>
             </div>
           </div>
 

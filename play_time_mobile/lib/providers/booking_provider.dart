@@ -64,6 +64,7 @@ class BookingProvider with ChangeNotifier {
     required DateTime endTime,
     Court? courtOverride,
     String? venueImage,
+    double? amount,
   }) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -99,6 +100,12 @@ class BookingProvider with ChangeNotifier {
         );
       }
 
+      final userName = (user.displayName?.trim().isNotEmpty == true)
+          ? user.displayName!.trim()
+          : (user.email?.trim().isNotEmpty == true
+              ? user.email!.trim()
+              : 'User');
+
       final bookingData = {
         'venueId': venueId,
         'venue': venueName,
@@ -107,6 +114,9 @@ class BookingProvider with ChangeNotifier {
         'court': courtName,
         'sport': sport,
         'userId': user.uid,
+        // Denormalized for admin/vendor booking lists (lookup can be denied by rules).
+        'user': userName,
+        if (amount != null) 'amount': amount,
         'startTime': Timestamp.fromDate(startTime),
         'endTime': Timestamp.fromDate(endTime),
         'duration': endTime.difference(startTime).inMinutes / 60.0,
