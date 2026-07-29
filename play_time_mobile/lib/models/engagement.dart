@@ -73,9 +73,12 @@ class FlashDealItem {
   final double discountValue;
   final double originalPrice;
   final double discountedPrice;
+  final DateTime? startTime;
   final DateTime? endTime;
   final String status;
   final String? imageUrl;
+  final int? maxBookings;
+  final int currentBookings;
 
   FlashDealItem({
     required this.id,
@@ -87,18 +90,43 @@ class FlashDealItem {
     required this.discountValue,
     required this.originalPrice,
     required this.discountedPrice,
+    this.startTime,
     this.endTime,
     required this.status,
     this.imageUrl,
+    this.maxBookings,
+    this.currentBookings = 0,
   });
 
   bool get isActive => status == 'Active';
 
+  /// True when the deal can be applied to a booking right now.
+  /// Uses the time window so stale "Upcoming" statuses still work after start.
+  bool get isRedeemable {
+    if (status == 'Cancelled' || status == 'Expired') return false;
+    final now = DateTime.now();
+    if (startTime != null && now.isBefore(startTime!)) return false;
+    if (endTime != null && now.isAfter(endTime!)) return false;
+    if (maxBookings != null && currentBookings >= maxBookings!) return false;
+    return status == 'Active' || status == 'Upcoming';
+  }
+
+  /// Apply this deal to a base court/slot amount.
+  double applyTo(double baseAmount) {
+    if (baseAmount <= 0) return 0;
+    if (discountType == 'Fixed') {
+      return (baseAmount - discountValue).clamp(0, baseAmount).toDouble();
+    }
+    final pct = discountValue.clamp(0, 100);
+    return baseAmount * (1 - (pct / 100));
+  }
+
   factory FlashDealItem.fromFirestore(String id, Map<String, dynamic> data) {
-    DateTime? endTime;
-    final raw = data['endTime'];
-    if (raw is Timestamp) endTime = raw.toDate();
-    if (raw is DateTime) endTime = raw;
+    DateTime? parseTime(dynamic raw) {
+      if (raw is Timestamp) return raw.toDate();
+      if (raw is DateTime) return raw;
+      return null;
+    }
 
     return FlashDealItem(
       id: id,
@@ -110,9 +138,12 @@ class FlashDealItem {
       discountValue: (data['discountValue'] as num?)?.toDouble() ?? 0,
       originalPrice: (data['originalPrice'] as num?)?.toDouble() ?? 0,
       discountedPrice: (data['discountedPrice'] as num?)?.toDouble() ?? 0,
-      endTime: endTime,
+      startTime: parseTime(data['startTime']),
+      endTime: parseTime(data['endTime']),
       status: data['status'] as String? ?? 'Upcoming',
       imageUrl: data['imageUrl'] as String?,
+      maxBookings: (data['maxBookings'] as num?)?.toInt(),
+      currentBookings: (data['currentBookings'] as num?)?.toInt() ?? 0,
     );
   }
 }

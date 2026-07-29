@@ -605,7 +605,15 @@ service cloud.firestore {
         (vendorCreatesOwn() &&
          vendorManagesVenueOnCreate())
       );
-      allow update, delete: if isAuthenticated() && (
+      // Players may only bump currentBookings by +1 after redeeming a deal.
+      allow update: if isAuthenticated() && (
+        isSuperAdmin() ||
+        (ownsVendorResource() && vendorManagesVenueOnResource()) ||
+        (request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['currentBookings', 'updatedAt']) &&
+         request.resource.data.currentBookings == resource.data.currentBookings + 1)
+      );
+      allow delete: if isAuthenticated() && (
         isSuperAdmin() ||
         (ownsVendorResource() && vendorManagesVenueOnResource())
       );

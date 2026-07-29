@@ -51,8 +51,9 @@ class EngagementProvider with ChangeNotifier {
   List<AppPoll> pollsForVenue(String venueId) =>
       _polls.where((p) => p.venueId == null || p.venueId == venueId).toList();
 
-  List<FlashDealItem> flashDealsForVenue(String venueId) =>
-      _flashDeals.where((d) => d.venueId == venueId).toList();
+  List<FlashDealItem> flashDealsForVenue(String venueId) => _flashDeals
+      .where((d) => d.venueId == venueId && d.isRedeemable)
+      .toList();
 
   EngagementProvider() {
     unawaited(loadAll());

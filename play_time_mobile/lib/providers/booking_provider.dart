@@ -65,6 +65,7 @@ class BookingProvider with ChangeNotifier {
     Court? courtOverride,
     String? venueImage,
     double? amount,
+    String? flashDealId,
   }) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -117,6 +118,8 @@ class BookingProvider with ChangeNotifier {
         // Denormalized for admin/vendor booking lists (lookup can be denied by rules).
         'user': userName,
         if (amount != null) 'amount': amount,
+        if (flashDealId != null && flashDealId.isNotEmpty)
+          'flashDealId': flashDealId,
         'startTime': Timestamp.fromDate(startTime),
         'endTime': Timestamp.fromDate(endTime),
         'duration': endTime.difference(startTime).inMinutes / 60.0,

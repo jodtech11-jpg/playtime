@@ -15,6 +15,7 @@ import '../providers/engagement_provider.dart';
 import '../models/venue.dart';
 import '../models/court.dart';
 import '../models/membership_plan.dart';
+import '../models/engagement.dart';
 import '../services/firestore_service.dart';
 import '../services/payment_service.dart';
 import '../models/booking.dart';
@@ -49,6 +50,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
   Venue? _venue;
   bool _isLoadingVenue = true;
   bool _isPurchasingSubscription = false;
+  FlashDealItem? _selectedFlashDeal;
 
   List<Map<String, dynamic>> get _dates {
     final days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -100,6 +102,12 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
     _loadVenue();
     _loadCourts();
     _loadFavoriteStatus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(
+        Provider.of<EngagementProvider>(context, listen: false).refresh(),
+      );
+    });
   }
 
   Future<void> _loadVenue() async {
@@ -158,11 +166,49 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
     return formatOperatingHours(avail.start, avail.end);
   }
 
-  double _priceForDuration(Court court) {
+  double _basePriceForDuration(Court court) {
     if (_bookingDurationMinutes == 30) {
       return court.pricePerHour / 2;
     }
     return court.pricePerHour;
+  }
+
+  double _priceForDuration(Court court) {
+    final base = _basePriceForDuration(court);
+    final deal = _selectedFlashDeal;
+    if (deal == null || !deal.isRedeemable) return base;
+    return deal.applyTo(base);
+  }
+
+  void _toggleFlashDeal(FlashDealItem deal) {
+    if (!deal.isRedeemable) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This flash deal is not available right now.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+    setState(() {
+      if (_selectedFlashDeal?.id == deal.id) {
+        _selectedFlashDeal = null;
+      } else {
+        _selectedFlashDeal = deal;
+      }
+    });
+    final selected = _selectedFlashDeal != null;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          selected
+              ? 'Flash deal applied — discounted price updated below.'
+              : 'Flash deal removed.',
+        ),
+        backgroundColor: selected ? AppColors.primary : Colors.grey[700],
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   String _formatPriceLabel(double amount) {
@@ -482,6 +528,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
         courtOverride: selectedCourt,
         venueImage: venue.image,
         amount: bookingAmount,
+        flashDealId: _selectedFlashDeal?.id,
       );
       bookingId = id;
       isFirstTimeBooking = isFirst;
@@ -562,10 +609,17 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
             bookingId: bookingId,
             amount: bookingAmount,
           );
+          final redeemedDealId = _selectedFlashDeal?.id;
+          if (redeemedDealId != null) {
+            unawaited(
+              FirestoreService.incrementFlashDealBooking(redeemedDealId),
+            );
+          }
           if (mounted) {
             setState(() {
               _isBooking = false;
               _bookingSuccess = true;
+              _selectedFlashDeal = null;
             });
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -790,18 +844,22 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
                   fontWeight: FontWeight.w700,
                 ),
               ),
+              const SizedBox(height: 4),
+              Text(
+                'Tap a deal to apply it to your booking price',
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               const SizedBox(height: 8),
               ...deals
-                  .take(2)
+                  .take(3)
                   .map(
                     (d) => Padding(
                       padding: const EdgeInsets.only(bottom: 8),
-                      child: _venueEventTile(
-                        icon: Icons.local_offer,
-                        title: d.title,
-                        subtitle: '₹${d.discountedPrice.toInt()}',
-                        onTap: () {},
-                      ),
+                      child: _flashDealTile(d),
                     ),
                   ),
             ],
@@ -854,6 +912,76 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
                 ),
               ),
               Icon(Icons.chevron_right, color: Colors.grey[600], size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _flashDealTile(FlashDealItem deal) {
+    final selected = _selectedFlashDeal?.id == deal.id;
+    final discountLabel = deal.discountType == 'Percentage'
+        ? '${deal.discountValue.toInt()}% OFF'
+        : '₹${deal.discountValue.toInt()} OFF';
+    return Material(
+      color: selected
+          ? AppColors.primary.withValues(alpha: 0.18)
+          : AppColors.surfaceDark,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: () => _toggleFlashDeal(deal),
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: selected
+                  ? AppColors.primary
+                  : Colors.white.withValues(alpha: 0.06),
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.local_offer,
+                color: selected ? AppColors.primary : AppColors.orange,
+                size: 22,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      deal.title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      selected
+                          ? 'Applied · $discountLabel · tap to remove'
+                          : '$discountLabel · was ₹${deal.originalPrice.toInt()} · now ₹${deal.discountedPrice.toInt()}',
+                      style: TextStyle(
+                        color: selected ? AppColors.primary : Colors.grey[400],
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                selected ? Icons.check_circle : Icons.add_circle_outline,
+                color: selected ? AppColors.primary : Colors.grey[600],
+                size: 22,
+              ),
             ],
           ),
         ),
@@ -1796,7 +1924,11 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
                             _formatPriceLabel(
                               _selectedCourt != null
                                   ? _priceForDuration(_selectedCourt!)
-                                  : (venue.price ?? 0),
+                                  : (_selectedFlashDeal != null
+                                        ? _selectedFlashDeal!.applyTo(
+                                            venue.price ?? 0,
+                                          )
+                                        : (venue.price ?? 0)),
                             ),
                             style: const TextStyle(
                               color: Colors.white,
@@ -1815,6 +1947,18 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
                           ),
                         ],
                       ),
+                      if (_selectedFlashDeal != null &&
+                          _selectedCourt != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Deal applied · was ${_formatPriceLabel(_basePriceForDuration(_selectedCourt!))}',
+                          style: TextStyle(
+                            color: AppColors.primary.withValues(alpha: 0.9),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                   const Spacer(),

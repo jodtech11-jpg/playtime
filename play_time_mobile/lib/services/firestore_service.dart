@@ -1424,19 +1424,33 @@ class FirestoreService {
     String? venueId,
   }) async {
     try {
+      // Include Upcoming: admin status sync only runs while the Flash Deals
+      // page is open, so deals past startTime can still be stuck as Upcoming.
       Query<Map<String, dynamic>> query = _firestore
           .collection('flashDeals')
-          .where('status', isEqualTo: 'Active');
+          .where('status', whereIn: ['Active', 'Upcoming']);
       if (venueId != null && venueId.isNotEmpty) {
         query = query.where('venueId', isEqualTo: venueId);
       }
       final snapshot = await query.limit(30).get();
       return snapshot.docs
           .map((doc) => FlashDealItem.fromFirestore(doc.id, doc.data()))
+          .where((deal) => deal.isRedeemable)
           .toList();
     } catch (e) {
       debugPrint('Error fetching flash deals: $e');
       return [];
+    }
+  }
+
+  static Future<void> incrementFlashDealBooking(String dealId) async {
+    try {
+      await _firestore.collection('flashDeals').doc(dealId).update({
+        'currentBookings': FieldValue.increment(1),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('Error incrementing flash deal bookings: $e');
     }
   }
 
