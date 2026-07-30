@@ -10,6 +10,7 @@ import '../widgets/bottom_nav.dart';
 import '../providers/booking_provider.dart';
 import '../providers/feed_provider.dart';
 import '../providers/venue_provider.dart';
+import '../providers/feature_flags_provider.dart';
 import '../models/match_feed_item.dart';
 import '../models/booking.dart';
 import '../models/venue.dart';
@@ -18,6 +19,7 @@ import '../services/firestore_service.dart';
 import '../widgets/loading_widget.dart';
 import '../widgets/error_widget.dart';
 import '../widgets/create_post_modal.dart';
+import '../utils/feature_navigation.dart';
 
 class SocialFeedScreen extends StatefulWidget {
   const SocialFeedScreen({super.key});
@@ -424,6 +426,15 @@ class _SocialFeedScreenState extends State<SocialFeedScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final feedFlags = context.watch<FeatureFlagsProvider>().feed;
+    if (feedFlags.isHidden || feedFlags.isComingSoon) {
+      return featureScreenGate(
+        context: context,
+        featureKey: 'feed',
+        child: const SizedBox.shrink(),
+      );
+    }
+
     final bookingProvider = Provider.of<BookingProvider>(context);
     final venueProvider = Provider.of<VenueProvider>(context);
     final upcomingBookings = bookingProvider.getUpcomingBookings();

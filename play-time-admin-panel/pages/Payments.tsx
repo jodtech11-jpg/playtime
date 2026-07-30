@@ -13,6 +13,7 @@ import SettlementConfirmationModal from '../components/modals/SettlementConfirma
 import { createOfflinePayment } from '../services/paymentService';
 import { useToast } from '../contexts/ToastContext';
 import { getFirebaseErrorMessage } from '../utils/errorUtils';
+import FeatureStatusPanel from '../components/shared/FeatureStatusPanel';
 
 const Payments: React.FC = () => {
   const { user, isSuperAdmin, isVenueManager } = useAuth();
@@ -139,6 +140,8 @@ const Payments: React.FC = () => {
           </p>
         </div>
       </div>
+
+      <FeatureStatusPanel moduleKey="wallet" compact />
 
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 sm:gap-6">

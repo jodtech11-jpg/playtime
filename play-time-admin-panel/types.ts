@@ -453,6 +453,40 @@ export interface Sport {
   updatedAt?: any;
 }
 
+export type FeatureMode = 'enabled' | 'disabled_hide' | 'disabled_coming_soon';
+
+export interface FeatureModuleConfig {
+  mode: FeatureMode;
+  comingSoonTitle?: string;
+  comingSoonMessage?: string;
+}
+
+export type FeatureModuleKey =
+  | 'tournament'
+  | 'wallet'
+  | 'teamUp'
+  | 'joinMatch'
+  | 'matches'
+  | 'communityPolls'
+  | 'feed'
+  | 'favourite'
+  | 'notifications';
+
+export interface FeatureFlags {
+  tournament: FeatureModuleConfig;
+  wallet: FeatureModuleConfig;
+  teamUp: FeatureModuleConfig;
+  joinMatch: FeatureModuleConfig;
+  matches: FeatureModuleConfig;
+  communityPolls: FeatureModuleConfig;
+  feed: FeatureModuleConfig;
+  favourite: FeatureModuleConfig;
+  notifications: FeatureModuleConfig;
+  /** Global default Coming Soon copy (overridable per module). */
+  defaultComingSoonTitle?: string;
+  defaultComingSoonMessage?: string;
+}
+
 export interface Tournament {
   id: string;
   name: string;
@@ -462,12 +496,21 @@ export interface Tournament {
   sportOptions?: Record<string, string>; // Selected values from sport-specific options
   venueId: string;
   venueName?: string;
+  venueAddress?: string;
   vendorId?: string;
+  bannerImage?: string;
+  organizer?: string;
+  rules?: string;
+  /** "HH:mm" local start time on startDate */
+  startTime?: string;
+  /** "HH:mm" local end time on endDate (or startDate if single-day) */
+  endTime?: string;
   startDate: any;
   endDate: any;
   registrationStartDate: any;
   registrationEndDate: any;
   entryFee: number;
+  prizePool?: number;
   prizeDetails?: {
     first?: number;
     second?: number;
@@ -855,6 +898,9 @@ export interface AppSettings {
   enableAnalytics?: boolean; // Enable analytics tracking
   enableErrorLogging?: boolean; // Enable error logging
   maxFileUploadSizeMB?: number; // Maximum file upload size
+
+  /** Customer-app module visibility (synced to appSettings/public). */
+  featureFlags?: FeatureFlags;
   
   // API Integrations
   integrations: {

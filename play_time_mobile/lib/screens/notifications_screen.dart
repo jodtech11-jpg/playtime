@@ -6,14 +6,25 @@ import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/app_colors.dart';
 import '../providers/notification_provider.dart';
+import '../providers/feature_flags_provider.dart';
 import '../widgets/loading_widget.dart';
 import '../widgets/error_widget.dart';
+import '../utils/feature_navigation.dart';
 
 class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final notif = context.watch<FeatureFlagsProvider>().notifications;
+    if (notif.isHidden || notif.isComingSoon) {
+      return featureScreenGate(
+        context: context,
+        featureKey: 'notifications',
+        child: const SizedBox.shrink(),
+      );
+    }
+
     return Consumer<NotificationProvider>(
       builder: (context, notificationProvider, child) {
         if (notificationProvider.isLoading) {

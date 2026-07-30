@@ -1370,23 +1370,89 @@ class FirestoreService {
     await QuickMatchParticipationService.join(matchId);
   }
 
+  static Future<Map<String, dynamic>> _venueLookupCache(
+    Set<String> venueIds,
+  ) async {
+    final cache = <String, dynamic>{};
+    for (final id in venueIds) {
+      if (id.isEmpty) continue;
+      try {
+        final doc = await _firestore.collection('venues').doc(id).get();
+        if (doc.exists) cache[id] = doc.data();
+      } catch (_) {}
+    }
+    return cache;
+  }
+
+  static TournamentSummary _tournamentWithVenue(
+    String id,
+    Map<String, dynamic> data,
+    Map<String, dynamic> venueCache,
+  ) {
+    final enriched = Map<String, dynamic>.from(data);
+    final venueId = enriched['venueId'] as String? ?? '';
+    final venue = venueCache[venueId] as Map<String, dynamic>?;
+    if (venue != null) {
+      if ((enriched['venueName'] as String?)?.trim().isNotEmpty != true) {
+        enriched['venueName'] = venue['name'];
+      }
+      if ((enriched['venueAddress'] as String?)?.trim().isNotEmpty != true) {
+        enriched['venueAddress'] =
+            venue['address'] ?? venue['location']?.toString();
+      }
+      final loc = venue['location'];
+      if (loc is Map) {
+        enriched['venueLat'] ??= loc['lat'] ?? loc['latitude'];
+        enriched['venueLng'] ??= loc['lng'] ?? loc['longitude'];
+      }
+    }
+    return TournamentSummary.fromFirestore(id, enriched);
+  }
+
   static Future<List<TournamentSummary>> getOpenTournaments({
     String? venueId,
   }) async {
     try {
       Query<Map<String, dynamic>> query = _firestore
           .collection('tournaments')
-          .where('status', whereIn: ['Open', 'Registration Closed', 'Ongoing']);
+          .where('status', whereIn: [
+            'Open',
+            'Registration Closed',
+            'Ongoing',
+            'Completed',
+          ]);
       if (venueId != null && venueId.isNotEmpty) {
         query = query.where('venueId', isEqualTo: venueId);
       }
       final snapshot = await query.limit(40).get();
+      final venueIds = snapshot.docs
+          .map((d) => d.data()['venueId'] as String? ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet();
+      final venueCache = await _venueLookupCache(venueIds);
       return snapshot.docs
-          .map((doc) => TournamentSummary.fromFirestore(doc.id, doc.data()))
+          .map((doc) => _tournamentWithVenue(doc.id, doc.data(), venueCache))
           .toList();
     } catch (e) {
       debugPrint('Error fetching tournaments: $e');
       return [];
+    }
+  }
+
+  static Future<TournamentSummary?> getTournament(String tournamentId) async {
+    try {
+      final doc = await _firestore
+          .collection('tournaments')
+          .doc(tournamentId)
+          .get();
+      if (!doc.exists || doc.data() == null) return null;
+      final data = doc.data()!;
+      final venueId = data['venueId'] as String? ?? '';
+      final venueCache = await _venueLookupCache({venueId});
+      return _tournamentWithVenue(doc.id, data, venueCache);
+    } catch (e) {
+      debugPrint('Error fetching tournament: $e');
+      return null;
     }
   }
 

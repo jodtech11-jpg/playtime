@@ -49,6 +49,9 @@ import 'providers/language_provider.dart';
 import 'providers/connectivity_provider.dart';
 import 'providers/engagement_provider.dart';
 import 'providers/order_provider.dart';
+import 'providers/feature_flags_provider.dart';
+import 'screens/coming_soon_screen.dart';
+import 'screens/tournament_detail_screen.dart';
 import 'widgets/offline_banner.dart';
 import 'utils/app_link_mapper.dart';
 import 'firebase_options.dart';
@@ -163,6 +166,7 @@ class _MyAppState extends State<MyApp> {
         // hid all matches/tournaments on Home after opening any venue card.
         ChangeNotifierProvider(create: (_) => EngagementProvider()),
         ChangeNotifierProvider(create: (_) => OrderProvider()),
+        ChangeNotifierProvider(create: (_) => FeatureFlagsProvider()),
       ],
       child: OfflineBannerWrapper(
         child: Consumer<LanguageProvider>(
@@ -280,8 +284,27 @@ GoRouter _createRouter(String initialLocation) => GoRouter(
       path: '/map-view',
       builder: (context, state) {
         final selectLocation = state.uri.queryParameters['select'] == 'true';
-        return MapViewScreen(selectLocation: selectLocation);
+        final venueId = state.uri.queryParameters['venueId'];
+        final showList = state.uri.queryParameters['list'] == 'true';
+        return MapViewScreen(
+          selectLocation: selectLocation,
+          initialVenueId: venueId,
+          openListView: showList,
+        );
       },
+    ),
+    GoRoute(
+      path: '/coming-soon',
+      builder: (context, state) {
+        final feature = state.uri.queryParameters['feature'] ?? 'tournament';
+        return ComingSoonScreen(featureKey: feature);
+      },
+    ),
+    GoRoute(
+      path: '/tournament/:id',
+      builder: (context, state) => TournamentDetailScreen(
+        tournamentId: state.pathParameters['id'] ?? '',
+      ),
     ),
     GoRoute(
       path: '/notifications',

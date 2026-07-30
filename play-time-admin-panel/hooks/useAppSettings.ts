@@ -4,6 +4,11 @@ import { AppSettings } from '../types';
 import { serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { getFirebaseErrorMessage } from '../utils/errorUtils';
+import {
+  DEFAULT_FEATURE_FLAGS,
+  mergeFeatureFlags,
+  toPublicFeatureFlags,
+} from '../utils/featureFlags';
 
 const DEFAULT_SETTINGS: AppSettings = {
   id: 'platform',
@@ -61,6 +66,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   enableAnalytics: true,
   enableErrorLogging: true,
   maxFileUploadSizeMB: 10,
+  featureFlags: DEFAULT_FEATURE_FLAGS,
   // API Integrations
   integrations: {
     razorpay: {
@@ -97,6 +103,7 @@ export const useAppSettings = (realtime: boolean = true) => {
               setSettings({
                 ...DEFAULT_SETTINGS,
                 ...data,
+                featureFlags: mergeFeatureFlags(data.featureFlags),
                 integrations: {
                   ...DEFAULT_SETTINGS.integrations,
                   ...data.integrations
@@ -118,6 +125,7 @@ export const useAppSettings = (realtime: boolean = true) => {
             setSettings({
               ...DEFAULT_SETTINGS,
               ...data,
+              featureFlags: mergeFeatureFlags(data.featureFlags),
               integrations: {
                 ...DEFAULT_SETTINGS.integrations,
                 ...data.integrations
@@ -186,13 +194,22 @@ export const useAppSettings = (realtime: boolean = true) => {
         });
       }
 
-      if (safeRazorpay || updates.allowVendorVenueSubscriptionManagement !== undefined) {
-        await appSettingsCollection.updatePublic({
-          ...(safeRazorpay ? { integrations: { razorpay: safeRazorpay } } : {}),
-          ...(updates.allowVendorVenueSubscriptionManagement !== undefined
-            ? { allowVendorVenueSubscriptionManagement: updates.allowVendorVenueSubscriptionManagement }
-            : {}),
-        });
+      const publicPatch: Record<string, unknown> = {};
+      if (safeRazorpay) {
+        publicPatch.integrations = { razorpay: safeRazorpay };
+      }
+      if (updates.allowVendorVenueSubscriptionManagement !== undefined) {
+        publicPatch.allowVendorVenueSubscriptionManagement =
+          updates.allowVendorVenueSubscriptionManagement;
+      }
+      if (updates.featureFlags) {
+        Object.assign(
+          publicPatch,
+          toPublicFeatureFlags(mergeFeatureFlags(updates.featureFlags))
+        );
+      }
+      if (Object.keys(publicPatch).length > 0) {
+        await appSettingsCollection.updatePublic(publicPatch);
       }
     } catch (err: any) {
       console.error('Error updating app settings:', err);

@@ -7,10 +7,13 @@ import '../widgets/bottom_nav.dart';
 import '../providers/team_provider.dart';
 import '../providers/venue_provider.dart';
 import '../providers/engagement_provider.dart';
+import '../providers/feature_flags_provider.dart';
 import '../providers/sport_provider.dart';
 import '../models/team.dart';
 import '../models/quick_match.dart';
+import '../models/tournament_summary.dart';
 import '../widgets/create_team_modal.dart';
+import '../utils/feature_navigation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
@@ -54,6 +57,15 @@ class _TeamUpScreenState extends State<TeamUpScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final teamUpFlags = context.watch<FeatureFlagsProvider>().teamUp;
+    if (teamUpFlags.isHidden || teamUpFlags.isComingSoon) {
+      return featureScreenGate(
+        context: context,
+        featureKey: 'teamUp',
+        child: const SizedBox.shrink(),
+      );
+    }
+
     final teamProvider = Provider.of<TeamProvider>(context);
     final venueProvider = Provider.of<VenueProvider>(context);
     final teams = teamProvider.teams;
@@ -475,6 +487,31 @@ class _TeamUpScreenState extends State<TeamUpScreen> {
   }
 
   Widget _buildQuickMatchesSection() {
+    final flags = context.watch<FeatureFlagsProvider>();
+    if (flags.joinMatch.isHidden && flags.matches.isHidden) {
+      return const SizedBox.shrink();
+    }
+    if (flags.joinMatch.isComingSoon || flags.matches.isComingSoon) {
+      return GestureDetector(
+        onTap: () => context.push('/coming-soon?feature=joinMatch'),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceDark,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Text(
+            'Matches · ${flags.comingSoonTitleFor('joinMatch')}',
+            style: const TextStyle(
+              color: AppColors.primary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      );
+    }
+
     return Consumer<EngagementProvider>(
       builder: (context, engagement, _) {
         if (engagement.isLoading && engagement.quickMatches.isEmpty) {
@@ -640,6 +677,43 @@ class _TeamUpScreenState extends State<TeamUpScreen> {
   }
 
   Widget _buildTournamentsSection() {
+    final flags = context.watch<FeatureFlagsProvider>();
+    if (flags.tournament.isHidden) return const SizedBox.shrink();
+    if (flags.tournament.isComingSoon) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Tournaments',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: () => context.push('/coming-soon?feature=tournament'),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceDark,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                flags.comingSoonTitleFor('tournament'),
+                style: const TextStyle(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     return Consumer<EngagementProvider>(
       builder: (context, engagement, _) {
         final tournaments = engagement.openTournaments;
@@ -657,146 +731,130 @@ class _TeamUpScreenState extends State<TeamUpScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            ...tournaments.take(5).map((t) {
-              final start = t.startDate != null
-                  ? DateFormat('d MMM').format(t.startDate!)
-                  : 'TBD';
-              return Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceDark,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.06),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.emoji_events,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            t.name,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 14,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${t.sport} • ${t.venueName ?? 'Venue'} • $start',
-                            style: TextStyle(
-                              color: Colors.grey[400],
-                              fontSize: 11,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            t.canRegister
-                                ? 'Registration open • ₹${t.entryFee.toInt()}'
-                                : t.status,
-                            style: TextStyle(
-                              color: t.canRegister
-                                  ? AppColors.primary
-                                  : Colors.grey[500],
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (engagement.isRegistered(t.id))
-                      const Text(
-                        'Registered',
-                        style: TextStyle(
-                          color: AppColors.primary,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      )
-                    else
-                      FilledButton(
-                        onPressed: t.canRegister
-                            ? () => _registerTournament(t.id, engagement)
-                            : null,
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                        ),
-                        child: const Text('Register'),
-                      ),
-                  ],
-                ),
-              );
-            }),
+            ...tournaments.take(8).map((t) => _buildTournamentCard(t, engagement)),
           ],
         );
       },
     );
   }
 
-  Future<void> _registerTournament(
-    String tournamentId,
+  Widget _buildTournamentCard(
+    TournamentSummary t,
     EngagementProvider engagement,
-  ) async {
-    final teams = context.read<TeamProvider>().teams;
-    String? teamId;
-    if (teams.isNotEmpty) {
-      teamId = await showDialog<String?>(
-        context: context,
-        builder: (dialogContext) => SimpleDialog(
-          title: const Text('Register tournament'),
+  ) {
+    final registered = engagement.isRegistered(t.id);
+    return GestureDetector(
+      onTap: () => context.push('/tournament/${t.id}'),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceDark,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(dialogContext, ''),
-              child: const Text('Register as an individual'),
-            ),
-            ...teams.map(
-              (team) => SimpleDialogOption(
-                onPressed: () => Navigator.pop(dialogContext, team.id),
-                child: Text('Register ${team.name}'),
+            Text(
+              t.name,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 16,
               ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              t.sport.isEmpty ? 'Sport TBA' : t.sport,
+              style: TextStyle(color: Colors.grey[300], fontSize: 13),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              t.displayVenueName,
+              style: const TextStyle(
+                color: AppColors.primary,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              t.formattedDate,
+              style: TextStyle(color: Colors.grey[400], fontSize: 12),
+            ),
+            Text(
+              t.formattedTimeRange,
+              style: TextStyle(color: Colors.grey[400], fontSize: 12),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              t.registrationStatusLabel,
+              style: TextStyle(
+                color: t.canRegister ? AppColors.primary : Colors.grey[500],
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'Entry Fee: ₹${t.entryFee.toInt()}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: registered
+                  ? const Text(
+                      'Registered',
+                      style: TextStyle(
+                        color: AppColors.primary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    )
+                  : FilledButton(
+                      onPressed: t.canRegister
+                          ? () => context.push('/tournament/${t.id}')
+                          : null,
+                      child: const Text('Register'),
+                    ),
             ),
           ],
         ),
-      );
-      if (!mounted) return;
-      if (teamId == null) return;
-    }
-    try {
-      await engagement.registerTournament(tournamentId, teamId: teamId);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tournament registration submitted')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.toString())));
-    }
+      ),
+    );
   }
 
   Widget _buildPollsSection() {
+    final pollsFlag = context.watch<FeatureFlagsProvider>().communityPolls;
+    if (pollsFlag.isHidden) return const SizedBox.shrink();
+    if (pollsFlag.isComingSoon) {
+      return GestureDetector(
+        onTap: () => context.push('/coming-soon?feature=communityPolls'),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          margin: const EdgeInsets.only(bottom: 8),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceDark,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Text(
+            'Community polls · ${context.read<FeatureFlagsProvider>().comingSoonTitleFor('communityPolls')}',
+            style: const TextStyle(
+              color: AppColors.primary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      );
+    }
+
     return Consumer<EngagementProvider>(
       builder: (context, engagement, _) {
         if (engagement.polls.isEmpty) return const SizedBox.shrink();

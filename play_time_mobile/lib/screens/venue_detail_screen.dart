@@ -23,6 +23,7 @@ import '../services/analytics_service.dart';
 import '../widgets/shimmer_box.dart';
 import '../providers/sport_provider.dart';
 import '../providers/connectivity_provider.dart';
+import '../providers/feature_flags_provider.dart';
 import '../utils/sport_utils.dart';
 import '../utils/error_utils.dart';
 import '../utils/booking_time_policy.dart';
@@ -237,6 +238,13 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
   }
 
   Future<void> _toggleFavorite() async {
+    final fav = context.read<FeatureFlagsProvider>().favourite;
+    if (fav.isHidden) return;
+    if (fav.isComingSoon) {
+      unawaited(context.push('/coming-soon?feature=favourite'));
+      return;
+    }
+
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -257,25 +265,23 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
       await FirestoreService.toggleFavoriteVenue(user.uid, widget.venueId);
       if (!mounted) return;
       final bottomInset = MediaQuery.of(context).padding.bottom;
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.hideCurrentSnackBar();
+      messenger.clearSnackBars();
+      messenger.showSnackBar(
         SnackBar(
           content: Text(
-            wasFavorited ? 'Removed from favorites' : 'Saved to favorites',
+            wasFavorited
+                ? 'Removed from Favorites'
+                : 'Saved to Favorites',
           ),
           backgroundColor: wasFavorited
               ? AppColors.surfaceDark
               : AppColors.success,
           behavior: SnackBarBehavior.floating,
           margin: EdgeInsets.fromLTRB(16, 0, 16, 24 + bottomInset),
-          duration: Duration(seconds: wasFavorited ? 2 : 4),
-          action: wasFavorited
-              ? null
-              : SnackBarAction(
-                  label: 'VIEW',
-                  textColor: Colors.white,
-                  onPressed: () => context.push('/favorites'),
-                ),
+          duration: const Duration(milliseconds: 1600),
+          dismissDirection: DismissDirection.down,
         ),
       );
     } catch (e) {
@@ -1456,20 +1462,21 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
                   }
                 },
               ),
-              IconButton(
-                icon: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(10),
+              if (context.watch<FeatureFlagsProvider>().favourite.isVisible)
+                IconButton(
+                  icon: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      _isFavorited ? Icons.favorite : Icons.favorite_border,
+                      color: _isFavorited ? AppColors.primary : Colors.white,
+                    ),
                   ),
-                  child: Icon(
-                    _isFavorited ? Icons.favorite : Icons.favorite_border,
-                    color: _isFavorited ? AppColors.primary : Colors.white,
-                  ),
+                  onPressed: _toggleFavorite,
                 ),
-                onPressed: _toggleFavorite,
-              ),
             ],
             flexibleSpace: FlexibleSpaceBar(
               background: Stack(

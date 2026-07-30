@@ -5,8 +5,10 @@ import 'package:provider/provider.dart';
 import '../theme/app_colors.dart';
 import '../models/venue.dart';
 import '../providers/venue_provider.dart';
+import '../providers/feature_flags_provider.dart';
 import '../services/firestore_service.dart';
 import '../widgets/error_widget.dart';
+import '../utils/feature_navigation.dart';
 
 class FavoritesScreen extends StatefulWidget {
   const FavoritesScreen({super.key});
@@ -75,12 +77,17 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     try {
       await FirestoreService.toggleFavoriteVenue(user.uid, venueId);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Removed from favorites'),
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.hideCurrentSnackBar();
+      messenger.clearSnackBars();
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Removed from Favorites'),
           backgroundColor: AppColors.surfaceDark,
           behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          margin: EdgeInsets.fromLTRB(16, 0, 16, 24),
+          duration: Duration(milliseconds: 1600),
+          dismissDirection: DismissDirection.down,
         ),
       );
     } catch (e) {
@@ -97,6 +104,15 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final fav = context.watch<FeatureFlagsProvider>().favourite;
+    if (fav.isHidden || fav.isComingSoon) {
+      return featureScreenGate(
+        context: context,
+        featureKey: 'favourite',
+        child: const SizedBox.shrink(),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.backgroundDark,
       appBar: AppBar(

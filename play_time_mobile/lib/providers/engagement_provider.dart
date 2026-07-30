@@ -38,7 +38,13 @@ class EngagementProvider with ChangeNotifier {
       .toList();
 
   List<TournamentSummary> get openTournaments => _tournaments
-      .where((t) => t.status == 'Open' || t.status == 'Ongoing')
+      .where(
+        (t) =>
+            t.status == 'Open' ||
+            t.status == 'Ongoing' ||
+            t.status == 'Registration Closed' ||
+            t.status == 'Completed',
+      )
       .toList();
 
   /// Venue-scoped helpers (does not change the global load).

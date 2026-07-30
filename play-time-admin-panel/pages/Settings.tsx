@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { AppSettings, IntegrationConfig } from '../types';
 import IntegrationConfigModal from '../components/modals/IntegrationConfigModal';
 import LandingPageManagementModal from '../components/modals/LandingPageManagementModal';
+import FeatureStatusPanel from '../components/shared/FeatureStatusPanel';
 import { uploadFile } from '../services/firebase';
 import { useToast } from '../contexts/ToastContext';
 import { getFirebaseErrorMessage } from '../utils/errorUtils';
@@ -298,6 +299,7 @@ const Settings: React.FC = () => {
 
   const sections = [
     { id: 'general', label: 'General', icon: 'settings' },
+    { id: 'features', label: 'Features', icon: 'tune' },
     { id: 'business', label: 'Business Rules', icon: 'rule' },
     { id: 'booking', label: 'Booking', icon: 'event' },
     { id: 'payment', label: 'Payment', icon: 'payments' },
@@ -453,6 +455,9 @@ const Settings: React.FC = () => {
             </div>
           </section>
         );
+
+      case 'features':
+        return <FeatureStatusPanel />;
 
       case 'business':
         return (

@@ -12,6 +12,7 @@ import QuickMatchFormModal from '../components/modals/QuickMatchFormModal';
 import { formatDate, formatTime } from '../utils/dateUtils';
 import { resolveSportName } from '../utils/formatUtils';
 import { getFirebaseErrorMessage } from '../utils/errorUtils';
+import FeatureStatusPanel from '../components/shared/FeatureStatusPanel';
 
 const QuickMatches: React.FC = () => {
   const { user, isVenueManager } = useAuth();
@@ -170,6 +171,10 @@ const QuickMatches: React.FC = () => {
           + New Match
         </button>
       </div>
+
+      <FeatureStatusPanel moduleKey="teamUp" compact />
+      <FeatureStatusPanel moduleKey="joinMatch" compact />
+      <FeatureStatusPanel moduleKey="matches" compact />
 
       {/* Filters */}
       <div className="flex gap-4">

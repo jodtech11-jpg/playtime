@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 import 'dart:async';
 import '../theme/app_colors.dart';
 import '../providers/venue_provider.dart';
@@ -13,6 +14,7 @@ import '../utils/google_maps_web_ready.dart';
 
 /// Default camera when user/venue location is unavailable (Madurai hub).
 const LatLng _kDefaultMapCenter = LatLng(9.9252, 78.1198);
+const double _kNearbyRadiusKm = 50;
 
 // Web-specific: wait until maps_config.js + Maps JS callback set googleMapsReady.
 Future<void> _waitForGoogleMapsApi() async {
@@ -26,8 +28,15 @@ Future<void> _waitForGoogleMapsApi() async {
 
 class MapViewScreen extends StatefulWidget {
   final bool selectLocation;
+  final String? initialVenueId;
+  final bool openListView;
 
-  const MapViewScreen({super.key, this.selectLocation = false});
+  const MapViewScreen({
+    super.key,
+    this.selectLocation = false,
+    this.initialVenueId,
+    this.openListView = false,
+  });
 
   @override
   State<MapViewScreen> createState() => _MapViewScreenState();
@@ -43,9 +52,231 @@ class _MapViewScreenState extends State<MapViewScreen> {
   bool _markersInitialized = false;
   bool _mapReady = false;
   bool _useDarkMapStyle = true;
+  bool _initialVenueFocused = false;
+  bool _listOpenedOnce = false;
 
   // Cache the Future to prevent recreating it on every build
   late Future<void> _mapLoadingFuture;
+
+  LatLng? _anchorLatLng(LocationProvider locationProvider) {
+    if (locationProvider.selectedLat != null &&
+        locationProvider.selectedLng != null) {
+      return LatLng(
+        locationProvider.selectedLat!,
+        locationProvider.selectedLng!,
+      );
+    }
+    if (locationProvider.currentPosition != null) {
+      return LatLng(
+        locationProvider.currentPosition!.latitude,
+        locationProvider.currentPosition!.longitude,
+      );
+    }
+    return null;
+  }
+
+  List<Venue> _nearbyVenues(
+    List<Venue> all,
+    LocationProvider locationProvider,
+  ) {
+    final anchor = _anchorLatLng(locationProvider);
+    if (anchor == null) {
+      // No GPS/manual location — still show venues that have pins, sorted as-is
+      return all
+          .where(
+            (v) =>
+                v.locationLat != null &&
+                v.locationLng != null &&
+                !(v.locationLat == 0 && v.locationLng == 0),
+          )
+          .toList();
+    }
+
+    final withDistance = <Venue>[];
+    for (final venue in all) {
+      if (venue.locationLat == null || venue.locationLng == null) continue;
+      if (venue.locationLat == 0 && venue.locationLng == 0) continue;
+      final meters = Geolocator.distanceBetween(
+        anchor.latitude,
+        anchor.longitude,
+        venue.locationLat!,
+        venue.locationLng!,
+      );
+      final km = meters / 1000;
+      if (km <= _kNearbyRadiusKm) {
+        withDistance.add(
+          venue.copyWith(
+            distance: km < 1
+                ? '${meters.round()}m away'
+                : '${km.toStringAsFixed(1)}km away',
+            distanceValue: km,
+          ),
+        );
+      }
+    }
+    withDistance.sort(
+      (a, b) => (a.distanceValue ?? 9999).compareTo(b.distanceValue ?? 9999),
+    );
+    return withDistance;
+  }
+
+  Future<void> _focusVenue(Venue venue, {double zoom = 15}) async {
+    if (venue.locationLat == null || venue.locationLng == null) return;
+    if (!mounted) return;
+    setState(() => _selectedVenue = venue);
+    final venueProvider = Provider.of<VenueProvider>(context, listen: false);
+    _createMarkers(venueProvider.venues);
+    if (_mapController != null) {
+      try {
+        await _mapController!.animateCamera(
+          CameraUpdate.newLatLngZoom(
+            LatLng(venue.locationLat!, venue.locationLng!),
+            zoom,
+          ),
+        );
+      } catch (e) {
+        debugPrint('Error focusing venue: $e');
+      }
+    }
+  }
+
+  void _showNearbyListSheet() {
+    final venueProvider = Provider.of<VenueProvider>(context, listen: false);
+    final locationProvider = Provider.of<LocationProvider>(
+      context,
+      listen: false,
+    );
+    final nearby = _nearbyVenues(venueProvider.venues, locationProvider);
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surfaceDark,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.55,
+          minChildSize: 0.35,
+          maxChildSize: 0.9,
+          builder: (context, scrollController) {
+            return Column(
+              children: [
+                const SizedBox(height: 10),
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Nearby Venues',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '${nearby.length}',
+                        style: TextStyle(color: Colors.grey[400], fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: nearby.isEmpty
+                      ? Center(
+                          child: Text(
+                            locationProvider.selectedLat == null &&
+                                    locationProvider.currentPosition == null
+                                ? 'Select a location to see nearby venues'
+                                : 'No venues nearby',
+                            style: TextStyle(color: Colors.grey[400]),
+                          ),
+                        )
+                      : ListView.separated(
+                          controller: scrollController,
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                          itemCount: nearby.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 10),
+                          itemBuilder: (context, index) {
+                            final venue = nearby[index];
+                            return ListTile(
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                side: BorderSide(
+                                  color: Colors.white.withValues(alpha: 0.08),
+                                ),
+                              ),
+                              tileColor: AppColors.backgroundDark,
+                              leading: ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: Image.network(
+                                  venue.image ?? '',
+                                  width: 52,
+                                  height: 52,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    width: 52,
+                                    height: 52,
+                                    color: AppColors.surfaceDark,
+                                    child: const Icon(
+                                      Icons.place,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              title: Text(
+                                venue.name,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              subtitle: Text(
+                                '${venue.address}${venue.distance != null ? ' • ${venue.distance}' : ''}',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.grey[400],
+                                  fontSize: 12,
+                                ),
+                              ),
+                              trailing: Text(
+                                '₹${(venue.price ?? 0).toInt()}',
+                                style: const TextStyle(
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              onTap: () async {
+                                Navigator.pop(sheetContext);
+                                await _focusVenue(venue);
+                              },
+                            );
+                          },
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
 
   void _createMarkers(List<Venue> venues) {
     if (!mounted) return;
@@ -86,15 +317,7 @@ class _MapViewScreenState extends State<MapViewScreen> {
             snippet: '${venue.address} • ₹${(venue.price ?? 0).toInt()}/hr',
           ),
           onTap: () {
-            // Update selection and recreate markers in next frame to avoid nested setState
-            _selectedVenue = venue;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) {
-                _createMarkers(
-                  venues,
-                ); // Re-run with full list, filtering will happen inside
-              }
-            });
+            unawaited(_focusVenue(venue));
           },
         ),
       );
@@ -186,6 +409,13 @@ class _MapViewScreenState extends State<MapViewScreen> {
     _isSelectingLocation = widget.selectLocation;
     // Initialize the Future once in initState to prevent recreating it on every build
     _mapLoadingFuture = _waitForGoogleMapsApi();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (widget.openListView && !_listOpenedOnce && !_isSelectingLocation) {
+        _listOpenedOnce = true;
+        _showNearbyListSheet();
+      }
+    });
   }
 
   @override
@@ -340,27 +570,46 @@ class _MapViewScreenState extends State<MapViewScreen> {
                             listen: false,
                           );
                           if (venueProvider.venues.isNotEmpty) {
+                            final initialId = widget.initialVenueId;
+                            if (initialId != null && initialId.isNotEmpty) {
+                              Venue? match;
+                              for (final v in venueProvider.venues) {
+                                if (v.id == initialId) {
+                                  match = v;
+                                  break;
+                                }
+                              }
+                              if (match != null) {
+                                _selectedVenue = match;
+                              }
+                            }
                             _createMarkers(venueProvider.venues);
 
                             // Fit bounds to show all venues on initial load
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              if (mounted && _mapController != null) {
-                                if (venueProvider.venues.length > 1) {
-                                  _fitBounds(venueProvider.venues);
-                                } else if (venueProvider.venues.isNotEmpty) {
-                                  final venue = venueProvider.venues.first;
-                                  if (venue.locationLat != null &&
-                                      venue.locationLng != null) {
-                                    _mapController?.animateCamera(
-                                      CameraUpdate.newLatLngZoom(
-                                        LatLng(
-                                          venue.locationLat!,
-                                          venue.locationLng!,
-                                        ),
-                                        14,
+                            WidgetsBinding.instance.addPostFrameCallback((_) async {
+                              if (!mounted || _mapController == null) return;
+                              if (!_initialVenueFocused &&
+                                  _selectedVenue != null &&
+                                  widget.initialVenueId != null) {
+                                _initialVenueFocused = true;
+                                await _focusVenue(_selectedVenue!, zoom: 15);
+                                return;
+                              }
+                              if (venueProvider.venues.length > 1) {
+                                _fitBounds(venueProvider.venues);
+                              } else if (venueProvider.venues.isNotEmpty) {
+                                final venue = venueProvider.venues.first;
+                                if (venue.locationLat != null &&
+                                    venue.locationLng != null) {
+                                  await _mapController?.animateCamera(
+                                    CameraUpdate.newLatLngZoom(
+                                      LatLng(
+                                        venue.locationLat!,
+                                        venue.locationLng!,
                                       ),
-                                    );
-                                  }
+                                      14,
+                                    ),
+                                  );
                                 }
                               }
                             });
@@ -1065,7 +1314,7 @@ class _MapViewScreenState extends State<MapViewScreen> {
                         ],
                       )
                     : ElevatedButton.icon(
-                        onPressed: () => context.pop(),
+                        onPressed: _showNearbyListSheet,
                         icon: const Icon(Icons.list, size: 18),
                         label: const Text(
                           'LIST VIEW',

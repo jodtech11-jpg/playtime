@@ -14,6 +14,7 @@ import '../providers/sport_provider.dart';
 import '../providers/engagement_provider.dart';
 import '../providers/booking_provider.dart';
 import '../providers/notification_provider.dart';
+import '../providers/feature_flags_provider.dart';
 import '../widgets/loading_widget.dart';
 import '../widgets/error_widget.dart';
 import '../widgets/shimmer_box.dart';
@@ -22,6 +23,7 @@ import '../services/analytics_service.dart';
 import '../services/notification_service.dart';
 import '../app_route_observer.dart';
 import '../widgets/home/for_you_section.dart';
+import '../utils/feature_navigation.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -149,21 +151,19 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
   }
 
   void _showFavoriteSnackBar({required bool saved}) {
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
       SnackBar(
-        content: Text(saved ? 'Saved to favorites' : 'Removed from favorites'),
+        content: Text(
+          saved ? 'Saved to Favorites' : 'Removed from Favorites',
+        ),
         backgroundColor: saved ? AppColors.success : AppColors.surfaceDark,
         behavior: SnackBarBehavior.floating,
         margin: _snackBarMargin,
-        duration: Duration(seconds: saved ? 4 : 2),
-        action: saved
-            ? SnackBarAction(
-                label: 'VIEW',
-                textColor: Colors.white,
-                onPressed: () => context.push('/favorites'),
-              )
-            : null,
+        duration: const Duration(milliseconds: 1600),
+        dismissDirection: DismissDirection.down,
       ),
     );
   }
@@ -201,6 +201,17 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
   }
 
   Future<void> _toggleFavorite(String venueId) async {
+    final favFlags = context.read<FeatureFlagsProvider>().favourite;
+    if (favFlags.isHidden) return;
+    if (favFlags.isComingSoon) {
+      navigateFeature(
+        context,
+        featureKey: 'favourite',
+        route: '/favorites',
+      );
+      return;
+    }
+
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -397,8 +408,13 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                   ),
                   const Spacer(),
                   const SizedBox(width: 8),
+                  if (context.watch<FeatureFlagsProvider>().notifications.isVisible)
                   IconButton(
-                    onPressed: () => context.push('/notifications'),
+                    onPressed: () => navigateFeature(
+                      context,
+                      featureKey: 'notifications',
+                      route: '/notifications',
+                    ),
                     icon: Stack(
                       children: [
                         Container(
@@ -868,13 +884,25 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                                       category: 'Tournament',
                                       title: tournament.name,
                                       subtitle:
-                                          '${tournament.sport} • ${tournament.venueName ?? 'Venue'}',
-                                      meta: tournament.entryFee > 0
-                                          ? 'Entry ₹${tournament.entryFee.toInt()}'
-                                          : 'Free registration',
+                                          '${tournament.sport} • ${tournament.displayVenueName}',
+                                      meta:
+                                          '${tournament.formattedDate} • ${tournament.formattedTimeRange}',
                                       icon: Icons.emoji_events_rounded,
                                       accent: AppColors.warning,
-                                      onTap: () => context.push('/team-up'),
+                                      onTap: () {
+                                        final flags = context
+                                            .read<FeatureFlagsProvider>();
+                                        if (flags.tournament.isHidden) return;
+                                        if (flags.tournament.isComingSoon) {
+                                          context.push(
+                                            '/coming-soon?feature=tournament',
+                                          );
+                                          return;
+                                        }
+                                        context.push(
+                                          '/tournament/${tournament.id}',
+                                        );
+                                      },
                                     ),
                                   ),
                               ...engagement.flashDeals
@@ -943,6 +971,10 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                                     ),
                                   ),
                                 ),
+                                if (context
+                                    .watch<FeatureFlagsProvider>()
+                                    .favourite
+                                    .isVisible)
                                 Semantics(
                                   button: true,
                                   label: _showFavoritesOnly
@@ -1074,7 +1106,7 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                                 final maxPriceFilter = _maxPrice < 1500
                                     ? _maxPrice
                                     : null;
-                                final filteredVenues = venueProvider
+                                var filteredVenues = venueProvider
                                     .getFilteredVenues(
                                       searchQuery: searchQuery.isNotEmpty
                                           ? searchQuery
@@ -1086,6 +1118,37 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                                       sport: sportFilter,
                                       sortBy: _sortBy,
                                     );
+
+                                // Nearby Arenas: prefer venues near selected/GPS location
+                                final locationProvider =
+                                    context.read<LocationProvider>();
+                                final anchorLat =
+                                    locationProvider.selectedLat ??
+                                    locationProvider
+                                        .currentPosition
+                                        ?.latitude;
+                                final anchorLng =
+                                    locationProvider.selectedLng ??
+                                    locationProvider
+                                        .currentPosition
+                                        ?.longitude;
+                                if (!_showFavoritesOnly &&
+                                    anchorLat != null &&
+                                    anchorLng != null &&
+                                    searchQuery.isEmpty) {
+                                  final nearbyIds = venueProvider
+                                      .nearbyVenues(
+                                        lat: anchorLat,
+                                        lng: anchorLng,
+                                      )
+                                      .map((v) => v.id)
+                                      .toSet();
+                                  if (nearbyIds.isNotEmpty) {
+                                    filteredVenues = filteredVenues
+                                        .where((v) => nearbyIds.contains(v.id))
+                                        .toList();
+                                  }
+                                }
 
                                 final venues = _showFavoritesOnly
                                     ? filteredVenues

@@ -14,6 +14,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import { useAuth } from '../contexts/AuthContext';
 import { getFirebaseErrorMessage } from '../utils/errorUtils';
+import FeatureStatusPanel from '../components/shared/FeatureStatusPanel';
 
 const Tournaments: React.FC = () => {
   const navigate = useNavigate();
@@ -319,6 +320,8 @@ const Tournaments: React.FC = () => {
             </button>
           </div>
         </div>
+
+        <FeatureStatusPanel moduleKey="tournament" compact />
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           {[

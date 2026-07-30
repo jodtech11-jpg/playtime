@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import '../providers/feature_flags_provider.dart';
 import '../theme/app_colors.dart';
+import '../utils/feature_navigation.dart';
 
 class BottomNav extends StatelessWidget {
   final int currentIndex;
@@ -9,6 +12,41 @@ class BottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final flags = context.watch<FeatureFlagsProvider>();
+
+    final items = <_NavSpec>[
+      const _NavSpec(
+        icon: Icons.home,
+        label: 'Home',
+        index: 0,
+        route: '/home',
+      ),
+      if (flags.teamUp.isVisible)
+        _NavSpec(
+          icon: Icons.groups,
+          label: 'Team Up',
+          index: 1,
+          route: '/team-up',
+          featureKey: 'teamUp',
+          comingSoon: flags.teamUp.isComingSoon,
+        ),
+      if (flags.feed.isVisible)
+        _NavSpec(
+          icon: Icons.sports_soccer,
+          label: 'Feed',
+          index: 2,
+          route: '/social-feed',
+          featureKey: 'feed',
+          comingSoon: flags.feed.isComingSoon,
+        ),
+      const _NavSpec(
+        icon: Icons.person,
+        label: 'Profile',
+        index: 3,
+        route: '/profile',
+      ),
+    ];
+
     return Container(
       decoration: BoxDecoration(
         color: AppColors.backgroundDark.withValues(alpha: 0.95),
@@ -23,43 +61,12 @@ class BottomNav extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              Expanded(
-                child: _buildNavItem(
-                  context,
-                  icon: Icons.home,
-                  label: 'Home',
-                  index: 0,
-                  route: '/home',
+              for (final item in items)
+                Expanded(
+                  child: _buildNavItem(context, item),
                 ),
-              ),
-              Expanded(
-                child: _buildNavItem(
-                  context,
-                  icon: Icons.groups,
-                  label: 'Team Up',
-                  index: 1,
-                  route: '/team-up',
-                ),
-              ),
-              const SizedBox(width: 8), // Small gap for FAB
-              Expanded(
-                child: _buildNavItem(
-                  context,
-                  icon: Icons.sports_soccer,
-                  label: 'Feed',
-                  index: 2,
-                  route: '/social-feed',
-                ),
-              ),
-              Expanded(
-                child: _buildNavItem(
-                  context,
-                  icon: Icons.person,
-                  label: 'Profile',
-                  index: 3,
-                  route: '/profile',
-                ),
-              ),
+              // Keep FAB gap when Team Up + Feed both visible (4 tabs)
+              if (items.length >= 4) const SizedBox(width: 8),
             ],
           ),
         ),
@@ -67,30 +74,35 @@ class BottomNav extends StatelessWidget {
     );
   }
 
-  Widget _buildNavItem(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required int index,
-    required String route,
-  }) {
-    final isActive = currentIndex == index;
+  Widget _buildNavItem(BuildContext context, _NavSpec item) {
+    final isActive = currentIndex == item.index;
     return Semantics(
-      label: label,
+      label: item.label,
       button: true,
       child: GestureDetector(
-        onTap: () => context.go(route),
+        onTap: () {
+          if (item.featureKey != null) {
+            navigateFeature(
+              context,
+              featureKey: item.featureKey!,
+              route: item.route,
+              replace: true,
+            );
+            return;
+          }
+          context.go(item.route);
+        },
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              icon,
+              item.comingSoon ? Icons.hourglass_top_rounded : item.icon,
               color: isActive ? AppColors.primary : Colors.grey[400],
               size: 26,
             ),
             const SizedBox(height: 4),
             Text(
-              label,
+              item.label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
@@ -107,4 +119,22 @@ class BottomNav extends StatelessWidget {
       ),
     );
   }
+}
+
+class _NavSpec {
+  final IconData icon;
+  final String label;
+  final int index;
+  final String route;
+  final String? featureKey;
+  final bool comingSoon;
+
+  const _NavSpec({
+    required this.icon,
+    required this.label,
+    required this.index,
+    required this.route,
+    this.featureKey,
+    this.comingSoon = false,
+  });
 }

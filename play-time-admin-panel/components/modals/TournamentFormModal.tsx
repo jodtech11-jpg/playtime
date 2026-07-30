@@ -8,6 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { withVendorId } from '../../utils/vendorScope';
 import { getSportsForVenue, findSport, cleanSportOptions } from '../../utils/sportUtils';
 import SportOptionsFields from '../shared/SportOptionsFields';
+import ImageUpload from '../shared/ImageUpload';
 import { getFirebaseErrorMessage } from '../../utils/errorUtils';
 
 interface TournamentFormModalProps {
@@ -49,9 +50,12 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
     venueId: '',
     startDate: '',
     endDate: '',
+    startTime: '09:00',
+    endTime: '18:00',
     registrationStartDate: '',
     registrationEndDate: '',
     entryFee: 0,
+    prizePool: '',
     prizeFirst: '',
     prizeSecond: '',
     prizeThird: '',
@@ -59,6 +63,9 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
     maxTeams: '',
     minTeamSize: '',
     maxTeamSize: '',
+    organizer: '',
+    rules: '',
+    bannerImage: '',
     status: 'Draft' as Tournament['status'],
     bracketType: 'Single Elimination' as Tournament['bracketType']
   });
@@ -96,9 +103,12 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
         venueId: tournament.venueId || '',
         startDate,
         endDate,
+        startTime: tournament.startTime || '09:00',
+        endTime: tournament.endTime || '18:00',
         registrationStartDate: regStart,
         registrationEndDate: regEnd,
         entryFee: tournament.entryFee || 0,
+        prizePool: tournament.prizePool?.toString() || '',
         prizeFirst: tournament.prizeDetails?.first?.toString() || '',
         prizeSecond: tournament.prizeDetails?.second?.toString() || '',
         prizeThird: tournament.prizeDetails?.third?.toString() || '',
@@ -106,6 +116,9 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
         maxTeams: tournament.maxTeams?.toString() || '',
         minTeamSize: tournament.minTeamSize?.toString() || '',
         maxTeamSize: tournament.maxTeamSize?.toString() || '',
+        organizer: tournament.organizer || '',
+        rules: tournament.rules || '',
+        bannerImage: tournament.bannerImage || '',
         status: tournament.status || 'Draft',
         bracketType: tournament.bracketType || 'Single Elimination'
       });
@@ -118,9 +131,12 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
         venueId: '',
         startDate: '',
         endDate: '',
+        startTime: '09:00',
+        endTime: '18:00',
         registrationStartDate: '',
         registrationEndDate: '',
         entryFee: 0,
+        prizePool: '',
         prizeFirst: '',
         prizeSecond: '',
         prizeThird: '',
@@ -128,6 +144,9 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
         maxTeams: '',
         minTeamSize: '',
         maxTeamSize: '',
+        organizer: '',
+        rules: '',
+        bannerImage: '',
         status: 'Draft',
         bracketType: 'Single Elimination'
       });
@@ -172,6 +191,7 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
       if (formData.prizeDescription) prizeDetails.description = formData.prizeDescription;
 
       const selectedSport = allSports.find(s => s.id === formData.sport);
+      const venue = venues.find((v) => v.id === formData.venueId);
       
       const tournamentData: any = {
         name: formData.name,
@@ -181,11 +201,20 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
         // Empty object (not undefined) so edits clear stale options in Firestore
         sportOptions: cleanSportOptions(sportOptions) ?? {},
         venueId: formData.venueId,
+        venueName: venue?.name || '',
+        venueAddress: venue?.address || '',
+        venueLat: venue?.location?.lat ?? null,
+        venueLng: venue?.location?.lng ?? null,
         startDate,
         endDate,
+        startTime: formData.startTime || '09:00',
+        endTime: formData.endTime || '18:00',
         registrationStartDate,
         registrationEndDate,
         entryFee: parseFloat(formData.entryFee.toString()),
+        organizer: formData.organizer || '',
+        rules: formData.rules || '',
+        bannerImage: formData.bannerImage || '',
         status: formData.status,
         bracketType: formData.bracketType,
         updatedAt: serverTimestamp()
@@ -193,6 +222,16 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
 
       if (Object.keys(prizeDetails).length > 0) {
         tournamentData.prizeDetails = prizeDetails;
+      }
+
+      if (formData.prizePool) {
+        tournamentData.prizePool = parseFloat(formData.prizePool);
+      } else if (Object.keys(prizeDetails).length > 0) {
+        const computed =
+          (prizeDetails.first || 0) +
+          (prizeDetails.second || 0) +
+          (prizeDetails.third || 0);
+        if (computed > 0) tournamentData.prizePool = computed;
       }
 
       if (formData.maxTeams) tournamentData.maxTeams = parseInt(formData.maxTeams);
@@ -378,6 +417,19 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
 
             <div>
               <label className={labelClass}>
+                Start Time *
+              </label>
+              <input
+                type="time"
+                value={formData.startTime}
+                onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                className={inputClass}
+                required
+              />
+            </div>
+
+            <div>
+              <label className={labelClass}>
                 End Date *
               </label>
               <input
@@ -386,6 +438,46 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
                 onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
                 className={inputClass}
                 required
+              />
+            </div>
+
+            <div>
+              <label className={labelClass}>
+                End Time *
+              </label>
+              <input
+                type="time"
+                value={formData.endTime}
+                onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                className={inputClass}
+                required
+              />
+            </div>
+
+            <div>
+              <label className={labelClass}>
+                Organizer
+              </label>
+              <input
+                type="text"
+                value={formData.organizer}
+                onChange={(e) => setFormData({ ...formData, organizer: e.target.value })}
+                className={inputClass}
+                placeholder="e.g. Auro Pool Club"
+              />
+            </div>
+
+            <div>
+              <label className={labelClass}>
+                Prize Pool (₹)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={formData.prizePool}
+                onChange={(e) => setFormData({ ...formData, prizePool: e.target.value })}
+                className={inputClass}
+                placeholder="Auto-sums place prizes if empty"
               />
             </div>
 
@@ -502,6 +594,31 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               className={inputClass}
               rows={3}
+            />
+          </div>
+
+          <div>
+            <label className={labelClass}>Banner Image</label>
+            <ImageUpload
+              value={formData.bannerImage ? [formData.bannerImage] : []}
+              onChange={(urls) =>
+                setFormData({ ...formData, bannerImage: urls[0] || '' })
+              }
+              folder="tournaments"
+              itemId={tournament?.id || 'new'}
+              maxImages={1}
+              multiple={false}
+            />
+          </div>
+
+          <div>
+            <label className={labelClass}>Tournament Rules</label>
+            <textarea
+              value={formData.rules}
+              onChange={(e) => setFormData({ ...formData, rules: e.target.value })}
+              className={inputClass}
+              rows={4}
+              placeholder="Knockout Format&#10;Best of 5&#10;Reporting Time: 8:30 AM"
             />
           </div>
 

@@ -15,11 +15,13 @@ import '../providers/membership_provider.dart';
 import '../providers/language_provider.dart';
 import '../providers/sport_provider.dart';
 import '../providers/connectivity_provider.dart';
+import '../providers/feature_flags_provider.dart';
 import '../models/booking.dart';
 import '../services/storage_service.dart';
 import '../services/firestore_service.dart';
 import '../services/wallet_payment_service.dart';
 import '../services/notification_service.dart';
+import '../utils/feature_navigation.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -1398,101 +1400,129 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 icon: Icons.insights_rounded,
                               ),
                               const SizedBox(height: 12),
-                              Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  onTap: _isWalletProcessing
-                                      ? null
-                                      : () => _showWalletTopUpDialog(context),
-                                  borderRadius: BorderRadius.circular(20),
-                                  child: Ink(
-                                    padding: const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        colors: [
-                                          AppColors.primary.withValues(
-                                            alpha: 0.18,
-                                          ),
-                                          AppColors.surfaceDark,
-                                        ],
-                                      ),
-                                      borderRadius: BorderRadius.circular(20),
-                                      border: Border.all(
-                                        color: AppColors.primary.withValues(
-                                          alpha: 0.24,
-                                        ),
-                                      ),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Container(
-                                          width: 44,
-                                          height: 44,
+                              Consumer<FeatureFlagsProvider>(
+                                builder: (context, flags, _) {
+                                  final wallet = flags.wallet;
+                                  if (wallet.isHidden) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 12),
+                                    child: Material(
+                                      color: Colors.transparent,
+                                      child: InkWell(
+                                        onTap: () {
+                                          if (wallet.isComingSoon) {
+                                            navigateFeature(
+                                              context,
+                                              featureKey: 'wallet',
+                                              route: '/profile',
+                                            );
+                                            return;
+                                          }
+                                          if (!_isWalletProcessing) {
+                                            _showWalletTopUpDialog(context);
+                                          }
+                                        },
+                                        borderRadius: BorderRadius.circular(20),
+                                        child: Ink(
+                                          padding: const EdgeInsets.all(16),
                                           decoration: BoxDecoration(
-                                            color: AppColors.primary.withValues(
-                                              alpha: 0.14,
+                                            gradient: LinearGradient(
+                                              colors: [
+                                                AppColors.primary.withValues(
+                                                  alpha: 0.18,
+                                                ),
+                                                AppColors.surfaceDark,
+                                              ],
                                             ),
                                             borderRadius: BorderRadius.circular(
-                                              14,
+                                              20,
+                                            ),
+                                            border: Border.all(
+                                              color: AppColors.primary
+                                                  .withValues(alpha: 0.24),
                                             ),
                                           ),
-                                          child: const Icon(
-                                            Icons
-                                                .account_balance_wallet_rounded,
-                                            color: AppColors.primary,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 14),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
+                                          child: Row(
                                             children: [
-                                              Text(
-                                                languageProvider.translate(
-                                                  'wallet',
+                                              Container(
+                                                width: 44,
+                                                height: 44,
+                                                decoration: BoxDecoration(
+                                                  color: AppColors.primary
+                                                      .withValues(alpha: 0.14),
+                                                  borderRadius:
+                                                      BorderRadius.circular(14),
                                                 ),
-                                                style: const TextStyle(
-                                                  color:
-                                                      AppColors.textSecondary,
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w700,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 3),
-                                              Text(
-                                                '₹${_walletBalance.toInt()}',
-                                                style: const TextStyle(
-                                                  color: AppColors.textPrimary,
-                                                  fontSize: 20,
-                                                  fontWeight: FontWeight.w900,
+                                                child: const Icon(
+                                                  Icons
+                                                      .account_balance_wallet_rounded,
+                                                  color: AppColors.primary,
                                                 ),
                                               ),
+                                              const SizedBox(width: 14),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      languageProvider
+                                                          .translate('wallet'),
+                                                      style: const TextStyle(
+                                                        color: AppColors
+                                                            .textSecondary,
+                                                        fontSize: 11,
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 3),
+                                                    Text(
+                                                      wallet.isComingSoon
+                                                          ? flags
+                                                                .comingSoonTitleFor(
+                                                                  'wallet',
+                                                                )
+                                                          : '₹${_walletBalance.toInt()}',
+                                                      style: const TextStyle(
+                                                        color: AppColors
+                                                            .textPrimary,
+                                                        fontSize: 20,
+                                                        fontWeight:
+                                                            FontWeight.w900,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              if (!wallet.isComingSoon) ...[
+                                                Text(
+                                                  _isWalletProcessing
+                                                      ? 'Processing…'
+                                                      : 'Add money',
+                                                  style: const TextStyle(
+                                                    color: AppColors.primary,
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w800,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 4),
+                                                const Icon(
+                                                  Icons.arrow_forward_rounded,
+                                                  color: AppColors.primary,
+                                                  size: 18,
+                                                ),
+                                              ],
                                             ],
                                           ),
                                         ),
-                                        Text(
-                                          _isWalletProcessing
-                                              ? 'Processing…'
-                                              : 'Add money',
-                                          style: TextStyle(
-                                            color: AppColors.primary,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        const Icon(
-                                          Icons.arrow_forward_rounded,
-                                          color: AppColors.primary,
-                                          size: 18,
-                                        ),
-                                      ],
+                                      ),
                                     ),
-                                  ),
-                                ),
+                                  );
+                                },
                               ),
-                              const SizedBox(height: 12),
                               if (_isLoadingStats)
                                 const SizedBox(
                                   height: 120,
@@ -1786,13 +1816,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 onTap: () => _showNotificationSettings(context),
                               ),
                               const SizedBox(height: 12),
-                              _buildSettingsItem(
-                                icon: Icons.inbox_outlined,
-                                title: 'Notification activity',
-                                subtitle: 'View updates and booking alerts',
-                                onTap: () => context.push('/notifications'),
+                              Consumer<FeatureFlagsProvider>(
+                                builder: (context, flags, _) {
+                                  if (flags.notifications.isHidden) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return Column(
+                                    children: [
+                                      _buildSettingsItem(
+                                        icon: Icons.inbox_outlined,
+                                        title: 'Notification activity',
+                                        subtitle:
+                                            'View updates and booking alerts',
+                                        onTap: () => navigateFeature(
+                                          context,
+                                          featureKey: 'notifications',
+                                          route: '/notifications',
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                    ],
+                                  );
+                                },
                               ),
-                              const SizedBox(height: 12),
                               _buildSettingsItem(
                                 icon: Icons.receipt_long_outlined,
                                 title: 'My orders',
@@ -1800,25 +1846,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 onTap: () => context.push('/orders'),
                               ),
                               const SizedBox(height: 12),
-                              _buildSettingsItem(
-                                icon: Icons.favorite_outline_rounded,
-                                title: 'Favorite venues',
-                                subtitle: _favoriteCount == 0
-                                    ? 'Save arenas you love'
-                                    : '$_favoriteCount saved venue${_favoriteCount == 1 ? '' : 's'}',
-                                onTap: () async {
-                                  await context.push('/favorites');
-                                  if (!mounted) return;
-                                  final user =
-                                      FirebaseAuth.instance.currentUser;
-                                  if (user == null) return;
-                                  final favorites =
-                                      await FirestoreService.getUserFavorites(
-                                        user.uid,
+                              Consumer<FeatureFlagsProvider>(
+                                builder: (context, flags, _) {
+                                  if (flags.favourite.isHidden) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return _buildSettingsItem(
+                                    icon: Icons.favorite_outline_rounded,
+                                    title: 'Favorite venues',
+                                    subtitle: flags.favourite.isComingSoon
+                                        ? flags.comingSoonTitleFor('favourite')
+                                        : (_favoriteCount == 0
+                                              ? 'Save arenas you love'
+                                              : '$_favoriteCount saved venue${_favoriteCount == 1 ? '' : 's'}'),
+                                    onTap: () async {
+                                      navigateFeature(
+                                        context,
+                                        featureKey: 'favourite',
+                                        route: '/favorites',
                                       );
-                                  if (!mounted) return;
-                                  setState(
-                                    () => _favoriteCount = favorites.length,
+                                      if (!mounted) return;
+                                      final user =
+                                          FirebaseAuth.instance.currentUser;
+                                      if (user == null) return;
+                                      final favorites = await FirestoreService
+                                          .getUserFavorites(user.uid);
+                                      if (!mounted) return;
+                                      setState(
+                                        () =>
+                                            _favoriteCount = favorites.length,
+                                      );
+                                    },
                                   );
                                 },
                               ),

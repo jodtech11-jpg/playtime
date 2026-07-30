@@ -236,4 +236,37 @@ class VenueProvider with ChangeNotifier {
     _isLoading = false;
     notifyListeners();
   }
+
+  /// Venues within [radiusKm] of the given point (uses distanceValue when set).
+  List<Venue> nearbyVenues({
+    required double lat,
+    required double lng,
+    double radiusKm = 50,
+  }) {
+    final result = <Venue>[];
+    for (final venue in _venues) {
+      if (venue.locationLat == null || venue.locationLng == null) continue;
+      final meters = Geolocator.distanceBetween(
+        lat,
+        lng,
+        venue.locationLat!,
+        venue.locationLng!,
+      );
+      final km = meters / 1000;
+      if (km <= radiusKm) {
+        result.add(
+          venue.copyWith(
+            distance: km < 1
+                ? '${meters.round()}m away'
+                : '${km.toStringAsFixed(1)}km away',
+            distanceValue: km,
+          ),
+        );
+      }
+    }
+    result.sort(
+      (a, b) => (a.distanceValue ?? 9999).compareTo(b.distanceValue ?? 9999),
+    );
+    return result;
+  }
 }
