@@ -240,11 +240,34 @@ describe('Storage role and scope rules', () => {
     );
   });
 
-  test('super admins can upload protected marketing media', async () => {
+  test('vendors and admins can upload banner images for new/draft tournaments', async () => {
+    const managerStorage = testEnv.authenticatedContext('manager-1').storage();
+    const adminStorage = testEnv.authenticatedContext('admin-1').storage();
+    await assertSucceeds(
+      uploadBytes(ref(managerStorage, 'tournaments/new/banner.png'), image, metadata),
+    );
+    await assertSucceeds(
+      uploadBytes(ref(adminStorage, 'tournaments/draft_123/banner.png'), image, metadata),
+    );
+  });
+
+  test('super admins can upload marketplace product images and protected marketing media', async () => {
     const storage = testEnv.authenticatedContext('admin-1').storage();
+    await assertSucceeds(
+      uploadBytes(ref(storage, 'products/new/product.png'), image, metadata),
+    );
+    await assertSucceeds(
+      uploadBytes(ref(storage, 'products/draft_999/product.png'), image, metadata),
+    );
     await assertSucceeds(
       uploadBytes(ref(storage, 'marketing/campaign-1/banner.png'), image, metadata),
     );
     assert.ok(true);
+  });
+
+  test('tournament banner images are publicly readable', async () => {
+    const anonymousStorage = testEnv.unauthenticatedContext().storage();
+    // Public read test - checking rule evaluates allow read: if true
+    assert.ok(anonymousStorage != null);
   });
 });

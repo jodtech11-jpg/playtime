@@ -43,6 +43,7 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [sportOptions, setSportOptions] = useState<Record<string, string>>({});
 
+  const [draftUploadId, setDraftUploadId] = useState<string>('draft_temp');
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -124,6 +125,7 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
       });
       setSportOptions(tournament.sportOptions || {});
     } else {
+      setDraftUploadId(`draft_${Date.now()}`);
       setFormData({
         name: '',
         description: '',
@@ -605,7 +607,7 @@ const TournamentFormModal: React.FC<TournamentFormModalProps> = ({
                 setFormData({ ...formData, bannerImage: urls[0] || '' })
               }
               folder="tournaments"
-              itemId={tournament?.id || 'new'}
+              itemId={tournament?.id || draftUploadId}
               maxImages={1}
               multiple={false}
             />

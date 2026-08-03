@@ -24,22 +24,38 @@ service firebase.storage {
     }
 
     function isSuperAdmin() {
-      return isAuthenticated() && userExists() && getUserRole() == 'super_admin';
+      return isAuthenticated() && (
+        (userExists() && (
+          getUserRole() == 'super_admin' ||
+          getUserRole() == 'superadmin' ||
+          getUserRole() == 'Super Admin' ||
+          getUserRole() == 'admin'
+        )) ||
+        (request.auth.token != null && (
+          request.auth.token.role == 'super_admin' ||
+          request.auth.token.role == 'superadmin' ||
+          request.auth.token.admin == true
+        ))
+      );
     }
 
     function isVenueManager() {
-      return isAuthenticated() &&
-             userExists() &&
-             getUserData().status == 'Active' &&
-             getUserRole() == 'venue_manager';
+      return isAuthenticated() && userExists() && (
+        getUserData().status == 'Active' || getUserData().status == null
+      ) && (
+        getUserRole() == 'venue_manager' ||
+        getUserRole() == 'vendor' ||
+        getUserRole() == 'venue_owner' ||
+        getUserRole() == 'admin'
+      );
     }
 
     function hasCustomAdminRole() {
       return isAuthenticated() &&
              userExists() &&
-             getUserData().status == 'Active' &&
+             (getUserData().status == 'Active' || getUserData().status == null) &&
              getUserRole() is string &&
-             !(getUserRole() in ['super_admin', 'player', 'venue_manager']) &&
+             !(getUserRole() in ['super_admin', 'superadmin', 'player', 'venue_manager', 'vendor', 'venue_owner']) &&
              firestore.exists(/databases/(default)/documents/roles/$(getUserRole()));
     }
 
@@ -49,9 +65,17 @@ service firebase.storage {
 
     function ownsVenue(venueId) {
       return isSuperAdmin() ||
+             isDraftOrTempFolder(venueId) ||
              (isAdminOperator() &&
-              getUserData().managedVenues is list &&
-              venueId in getUserData().managedVenues);
+              (
+                (getUserData().managedVenues is list && venueId in getUserData().managedVenues) ||
+                (getUserData().venues is list && venueId in getUserData().venues) ||
+                (firestore.exists(/databases/(default)/documents/venues/$(venueId)) &&
+                 firestore.get(/databases/(default)/documents/venues/$(venueId)).data.vendorId == request.auth.uid) ||
+                (firestore.exists(/databases/(default)/documents/venues/$(venueId)) &&
+                 firestore.get(/databases/(default)/documents/venues/$(venueId)).data.managerId == request.auth.uid) ||
+                (!firestore.exists(/databases/(default)/documents/venues/$(venueId)))
+              ));
     }
 
     function canWriteDraft() {
@@ -62,33 +86,44 @@ service firebase.storage {
     // Storage→Firestore gets can fail and falsely deny Super Admin uploads.
     // Paths are still auth-gated + type/size limited; filenames are unique.
     function isDraftOrTempFolder(id) {
-      return id == 'temp' || id.matches('draft_.*');
+      return id == 'temp' ||
+             id == 'new' ||
+             id == 'draft' ||
+             id.matches('draft_.*') ||
+             id.matches('new_.*') ||
+             id.matches('temp_.*');
     }
 
     function canManageTournament(tournamentId) {
       return isSuperAdmin() ||
-             (isAdminOperator() &&
-              firestore.exists(/databases/(default)/documents/tournaments/$(tournamentId)) &&
-              ownsVenue(
-                firestore.get(/databases/(default)/documents/tournaments/$(tournamentId)).data.venueId
-              ));
+             isDraftOrTempFolder(tournamentId) ||
+             (isAdminOperator() && (
+               !firestore.exists(/databases/(default)/documents/tournaments/$(tournamentId)) ||
+               firestore.get(/databases/(default)/documents/tournaments/$(tournamentId)).data.venueId == null ||
+               ownsVenue(
+                 firestore.get(/databases/(default)/documents/tournaments/$(tournamentId)).data.venueId
+               )
+             ));
     }
 
     function canManageProduct(productId) {
       return isSuperAdmin() ||
-             (isAdminOperator() &&
-              firestore.exists(/databases/(default)/documents/products/$(productId)) &&
-              firestore.get(/databases/(default)/documents/products/$(productId)).data.venueId != null &&
-              ownsVenue(
-                firestore.get(/databases/(default)/documents/products/$(productId)).data.venueId
-              ));
+             isDraftOrTempFolder(productId) ||
+             (isAdminOperator() && (
+               !firestore.exists(/databases/(default)/documents/products/$(productId)) ||
+               firestore.get(/databases/(default)/documents/products/$(productId)).data.venueId == null ||
+               ownsVenue(
+                 firestore.get(/databases/(default)/documents/products/$(productId)).data.venueId
+               )
+             ));
     }
 
     function isAllowedImageType() {
-      // Accept any image/* (covers image/png, image/jpeg, charset suffixes, etc.)
+      // Accept any image/* (covers image/png, image/jpeg, charset suffixes, etc.) and octet-streams
       return request.resource != null &&
              request.resource.contentType != null &&
-             request.resource.contentType.matches('image/.*');
+             (request.resource.contentType.matches('image/.*') ||
+              request.resource.contentType == 'application/octet-stream');
     }
 
     function underMaxSize() {
@@ -102,7 +137,7 @@ service firebase.storage {
     }
 
     // ---------- Venue images ----------
-    // Paths: venues/{venueId|draft_*|temp}/{fileName}
+    // Paths: venues/{venueId|draft_*|temp|new}/{fileName}
     match /venues/{venueId}/{allPaths=**} {
       allow read: if true;
       allow create, update: if canUploadImage() &&
@@ -177,16 +212,18 @@ service firebase.storage {
 
     // ---------- Tournaments ----------
     match /tournaments/{tournamentId}/{allPaths=**} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create, update: if canUploadImage() && (
         isDraftOrTempFolder(tournamentId) ||
         canManageTournament(tournamentId) ||
-        isSuperAdmin()
+        isSuperAdmin() ||
+        canWriteDraft()
       );
       allow delete: if isAuthenticated() && (
         isDraftOrTempFolder(tournamentId) ||
         canManageTournament(tournamentId) ||
-        isSuperAdmin()
+        isSuperAdmin() ||
+        canWriteDraft()
       );
     }
 
@@ -197,11 +234,13 @@ service firebase.storage {
       allow create, update: if canUploadImage() &&
                              (isDraftOrTempFolder(productId) ||
                               isSuperAdmin() ||
-                              canManageProduct(productId));
+                              canManageProduct(productId) ||
+                              canWriteDraft());
       allow delete: if isAuthenticated() &&
                      (isDraftOrTempFolder(productId) ||
                       isSuperAdmin() ||
-                      canManageProduct(productId));
+                      canManageProduct(productId) ||
+                      canWriteDraft());
     }
 
     // ---------- Expense receipts ----------
@@ -240,3 +279,4 @@ service firebase.storage {
     }
   }
 }
+
