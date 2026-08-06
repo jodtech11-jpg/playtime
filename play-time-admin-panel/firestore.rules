@@ -83,24 +83,23 @@ service cloud.firestore {
 
     function isSafePendingBookingCreate() {
       return request.resource.data.keys().hasOnly([
-               'userId', 'venueId', 'venue', 'venueImage', 'courtId', 'court',
+               'userId', 'user', 'userPhone', 'userEmail', 'venueId', 'venue', 'venueImage', 'courtId', 'court',
                'sport', 'startTime', 'endTime', 'duration', 'date', 'time',
-               'status', 'paymentStatus', 'slotLockId', 'createdAt', 'updatedAt'
+               'status', 'paymentStatus', 'slotLockId', 'amount', 'flashDealId',
+               'createdAt', 'updatedAt'
              ]) &&
              request.resource.data.status == 'Pending' &&
-             request.resource.data.paymentStatus == 'Pending' &&
-             hasNoPaymentOrPricingFields();
+             request.resource.data.paymentStatus == 'Pending';
     }
 
     function isSafePendingMembershipCreate() {
       return request.resource.data.keys().hasOnly([
-               'userId', 'venueId', 'planId', 'planName', 'planType',
-               'startDate', 'endDate', 'status', 'paymentStatus',
+               'userId', 'user', 'userPhone', 'userEmail', 'venueId', 'planId', 'planName', 'planType',
+               'amount', 'startDate', 'endDate', 'status', 'paymentStatus',
                'createdAt', 'updatedAt'
              ]) &&
              request.resource.data.status == 'Pending' &&
-             request.resource.data.paymentStatus == 'Pending' &&
-             hasNoPaymentOrPricingFields();
+             request.resource.data.paymentStatus == 'Pending';
     }
 
     function isSafePendingOrderCreate() {
