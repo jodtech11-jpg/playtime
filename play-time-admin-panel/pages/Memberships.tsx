@@ -87,7 +87,17 @@ const Memberships: React.FC<MembershipsProps> = ({ mode = 'venue' }) => {
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  // Filter memberships
+  const getEffectiveStatus = (m: Membership): string => {
+    if (m.status === 'Cancelled') return 'Cancelled';
+    if (m.status === 'Active') {
+      const end = m.endDate?.toDate ? m.endDate.toDate() : (m.endDate ? new Date(m.endDate) : null);
+      if (end && end < new Date()) {
+        return 'Expired';
+      }
+    }
+    return m.status;
+  };
+
   // Filter memberships and group by user+venue to show only the current status
   const filteredMemberships = useMemo(() => {
     // 1. Group memberships to show only the latest record for each member per venue
@@ -113,7 +123,7 @@ const Memberships: React.FC<MembershipsProps> = ({ mode = 'venue' }) => {
     let filtered = Array.from(membershipGroups.values());
 
     if (statusFilter !== 'All') {
-      filtered = filtered.filter(m => m.status === statusFilter);
+      filtered = filtered.filter(m => getEffectiveStatus(m) === statusFilter);
     }
 
     if (planFilter !== 'All') {
@@ -634,14 +644,25 @@ const Memberships: React.FC<MembershipsProps> = ({ mode = 'venue' }) => {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${member.status === 'Active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                        member.status === 'Pending' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-50 text-slate-400 border-slate-100'
-                        }`}>
-                        <span className={`size-1.5 rounded-full ${member.status === 'Active' ? 'bg-emerald-500' :
-                          member.status === 'Pending' ? 'bg-amber-500' : 'bg-slate-400'
-                          }`}></span>
-                        {member.status}
-                      </div>
+                      {(() => {
+                        const effStatus = getEffectiveStatus(member);
+                        return (
+                          <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${
+                            effStatus === 'Active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                            effStatus === 'Pending' ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                            effStatus === 'Expired' ? 'bg-rose-50 text-rose-600 border-rose-100' :
+                            'bg-slate-50 text-slate-400 border-slate-100'
+                          }`}>
+                            <span className={`size-1.5 rounded-full ${
+                              effStatus === 'Active' ? 'bg-emerald-500' :
+                              effStatus === 'Pending' ? 'bg-amber-500' :
+                              effStatus === 'Expired' ? 'bg-rose-500' :
+                              'bg-slate-400'
+                            }`}></span>
+                            {effStatus}
+                          </div>
+                        );
+                      })()}
                     </td>
                     {canManagePlans && (
                     <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>

@@ -135,7 +135,13 @@ class CourtAvailability {
 
     final slotTime = hour * 60 + minute;
     final startTime = startHour * 60 + startMinute;
-    final endTime = endHour * 60 + endMinute;
+    var endTime = endHour * 60 + endMinute;
+
+    if (endTime <= startTime) {
+      endTime += 1440;
+      final slotTimeEffective = slotTime < startTime ? slotTime + 1440 : slotTime;
+      return slotTimeEffective >= startTime && slotTimeEffective < endTime;
+    }
 
     return slotTime >= startTime && slotTime < endTime;
   }

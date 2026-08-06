@@ -546,7 +546,13 @@ export interface TournamentTeam {
   }>;
   division?: string; // e.g., 'Div A', 'Div B'
   status: 'Pending' | 'Approved' | 'Rejected' | 'Paid' | 'Unpaid';
-  paymentStatus: 'Pending' | 'Paid' | 'Refunded';
+  paymentStatus: 'Pending' | 'Paid' | 'Partial' | 'Unpaid' | 'Refunded';
+  playerId?: string;
+  registrationFee?: number;
+  amountPaid?: number;
+  pendingAmount?: number;
+  paymentMethod?: 'Cash' | 'Online' | string;
+  transactionId?: string;
   paymentDate?: any;
   createdAt?: any;
   updatedAt?: any;

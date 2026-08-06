@@ -442,7 +442,10 @@ class FirestoreService {
       }
 
       final courtStartMinutes = startHour * 60 + startMinute;
-      final courtEndMinutes = endHour * 60 + endMinute;
+      var courtEndMinutes = endHour * 60 + endMinute;
+      if (courtEndMinutes <= courtStartMinutes) {
+        courtEndMinutes += 1440;
+      }
       final interval = slotDurationMinutes.clamp(15, 120);
 
       final slots = <Map<String, dynamic>>[];
@@ -451,12 +454,15 @@ class FirestoreService {
         totalMinutes + interval <= courtEndMinutes;
         totalMinutes += interval
       ) {
-        final hour = totalMinutes ~/ 60;
-        final minute = totalMinutes % 60;
+        final daysOffset = totalMinutes ~/ 1440;
+        final minuteOfDay = totalMinutes % 1440;
+        final hour = minuteOfDay ~/ 60;
+        final minute = minuteOfDay % 60;
+        final baseDate = DateTime(date.year, date.month, date.day).add(Duration(days: daysOffset));
         final slotStart = DateTime(
-          date.year,
-          date.month,
-          date.day,
+          baseDate.year,
+          baseDate.month,
+          baseDate.day,
           hour,
           minute,
         );
@@ -477,7 +483,7 @@ class FirestoreService {
             '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
 
         slots.add({
-          'id': 'slot_${hour}_${minute}_$interval',
+          'id': 'slot_${totalMinutes}_$interval',
           'time': formatDisplayTime(hour, minute),
           'time24': time24,
           'hour': hour,

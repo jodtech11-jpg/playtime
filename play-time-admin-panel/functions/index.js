@@ -123,7 +123,7 @@ async function requireAdmin(req, res) {
   const role = userDoc.data().role;
   // System admin roles are always allowed. Custom roles are allowed when a
   // matching roles/{roleId} document exists (they are venue-scoped admins).
-  let isAdminRole = role === 'super_admin' || role === 'venue_manager';
+  let isAdminRole = role === 'super_admin' || role === 'venue_manager' || role === 'vendor';
   if (!isAdminRole && role && role !== 'player') {
     const roleDoc = await admin.firestore().collection('roles').doc(role).get();
     isAdminRole = roleDoc.exists;

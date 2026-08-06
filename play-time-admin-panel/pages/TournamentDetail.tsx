@@ -64,16 +64,62 @@ const TournamentDetail: React.FC = () => {
   }, [tournament, matchStatusFilter]);
 
   const stats = useMemo(() => {
-    if (!tournament) return { totalTeams: 0, pendingFees: 0, totalMatches: 0, totalRevenue: 0 };
+    if (!tournament) {
+      return {
+        totalRegistrations: 0,
+        totalRegistrationAmount: 0,
+        totalAmountCollected: 0,
+        totalPendingAmount: 0,
+        totalCashPayments: 0,
+        totalOnlinePayments: 0,
+        cashCollectionAmount: 0,
+        onlineCollectionAmount: 0,
+        totalMatches: 0,
+      };
+    }
     const teams = tournament.teams || [];
-    const paidTeams = teams.filter(t => t.paymentStatus === 'Paid').length;
-    const pendingTeams = teams.filter(t => t.paymentStatus === 'Pending').length;
+    const entryFee = tournament.entryFee || 0;
     const matches = tournament.matches || [];
+
+    let totalAmountCollected = 0;
+    let totalPendingAmount = 0;
+    let totalCashPayments = 0;
+    let totalOnlinePayments = 0;
+    let cashCollectionAmount = 0;
+    let onlineCollectionAmount = 0;
+
+    teams.forEach((t) => {
+      const regFee = t.registrationFee ?? entryFee;
+      const isPaid = t.paymentStatus === 'Paid' || t.status === 'Paid';
+      const isPartial = t.paymentStatus === 'Partial';
+      const isCash = (t.paymentMethod || '').toLowerCase() === 'cash';
+      const isOnline = (t.paymentMethod || '').toLowerCase() === 'online' || (!isCash && (t.transactionId || isPaid));
+
+      const collected = t.amountPaid ?? (isPaid ? regFee : 0);
+      const pending = t.pendingAmount ?? (isPaid ? 0 : Math.max(0, regFee - collected));
+
+      totalAmountCollected += collected;
+      totalPendingAmount += pending;
+
+      if (isCash) {
+        totalCashPayments++;
+        cashCollectionAmount += collected;
+      } else if (isOnline) {
+        totalOnlinePayments++;
+        onlineCollectionAmount += collected;
+      }
+    });
+
     return {
-      totalTeams: teams.length,
-      pendingFees: pendingTeams * (tournament.entryFee || 0),
+      totalRegistrations: teams.length,
+      totalRegistrationAmount: teams.length * entryFee,
+      totalAmountCollected,
+      totalPendingAmount,
+      totalCashPayments,
+      totalOnlinePayments,
+      cashCollectionAmount,
+      onlineCollectionAmount,
       totalMatches: matches.length,
-      totalRevenue: paidTeams * (tournament.entryFee || 0)
     };
   }, [tournament]);
   const bracketPreview = useMemo(
@@ -284,13 +330,17 @@ const TournamentDetail: React.FC = () => {
           </div>
         </div>
 
-        {/* Stats */}
+        {/* Dashboard Summary Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {[
-            { label: "Total Teams", val: stats.totalTeams.toString(), icon: "groups", color: "text-blue-600", bg: "bg-blue-50" },
-            { label: "Pending Fees", val: formatCurrency(stats.pendingFees), icon: "pending_actions", color: "text-orange-600", bg: "bg-orange-50", badge: stats.pendingFees > 0 ? "Action" : undefined },
-            { label: "Matches Scheduled", val: stats.totalMatches.toString(), icon: "scoreboard", color: "text-purple-600", bg: "bg-purple-50" },
-            { label: "Total Revenue", val: formatCurrency(stats.totalRevenue), icon: "payments", color: "text-green-600", bg: "bg-green-50" },
+            { label: "Total Registrations", val: stats.totalRegistrations.toString(), icon: "groups", color: "text-blue-600", bg: "bg-blue-50" },
+            { label: "Total Reg Amount", val: formatCurrency(stats.totalRegistrationAmount), icon: "local_atm", color: "text-indigo-600", bg: "bg-indigo-50" },
+            { label: "Amount Collected", val: formatCurrency(stats.totalAmountCollected), icon: "payments", color: "text-emerald-600", bg: "bg-emerald-50" },
+            { label: "Pending Amount", val: formatCurrency(stats.totalPendingAmount), icon: "pending_actions", color: "text-amber-600", bg: "bg-amber-50", badge: stats.totalPendingAmount > 0 ? "Action" : undefined },
+            { label: "Cash Payments", val: `${stats.totalCashPayments} payment(s)`, icon: "payments", color: "text-teal-600", bg: "bg-teal-50" },
+            { label: "Online Payments", val: `${stats.totalOnlinePayments} payment(s)`, icon: "credit_card", color: "text-purple-600", bg: "bg-purple-50" },
+            { label: "Cash Collection", val: formatCurrency(stats.cashCollectionAmount), icon: "point_of_sale", color: "text-cyan-600", bg: "bg-cyan-50" },
+            { label: "Online Collection", val: formatCurrency(stats.onlineCollectionAmount), icon: "account_balance_wallet", color: "text-violet-600", bg: "bg-violet-50" },
           ].map((s, i) => (
             <div key={i} className="bg-white dark:bg-surface-dark p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm hover:border-primary/50 transition-all flex flex-col justify-between h-40">
               <div className="flex justify-between items-start">
@@ -298,12 +348,12 @@ const TournamentDetail: React.FC = () => {
                   <span className="material-symbols-outlined">{s.icon}</span>
                 </div>
                 {s.badge && (
-                  <span className="text-[10px] font-black text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 px-2 py-1 rounded-full uppercase tracking-widest">{s.badge}</span>
+                  <span className="text-[10px] font-black text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded-full uppercase tracking-widest">{s.badge}</span>
                 )}
               </div>
               <div>
                 <p className="text-gray-400 dark:text-gray-500 text-[10px] font-black uppercase tracking-widest">{s.label}</p>
-                <p className="text-3xl font-black text-gray-900 dark:text-gray-100 mt-1">{s.val}</p>
+                <p className="text-2xl font-black text-gray-900 dark:text-gray-100 mt-1">{s.val}</p>
               </div>
             </div>
           ))}

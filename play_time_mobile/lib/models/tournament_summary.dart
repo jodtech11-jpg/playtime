@@ -119,9 +119,15 @@ class TournamentSummary {
     }
 
     final teams = data['teams'];
-    final teamCount = teams is List
-        ? teams.length
-        : (data['teamCount'] as num?)?.toInt() ?? 0;
+    final teamCount = (data['registrationCount'] as num?)?.toInt() ??
+        (data['registeredCount'] as num?)?.toInt() ??
+        (data['registeredPlayers'] as num?)?.toInt() ??
+        (data['teamCount'] as num?)?.toInt() ??
+        (teams is List ? teams.length : 0);
+
+    final maxTeams = (data['maxTeams'] as num?)?.toInt() ??
+        (data['maxPlayers'] as num?)?.toInt() ??
+        (data['capacity'] as num?)?.toInt();
 
     double? prizePool;
     if (data['prizePool'] is num) {
@@ -154,7 +160,7 @@ class TournamentSummary {
       entryFee: (data['entryFee'] as num?)?.toDouble() ?? 0,
       prizePool: prizePool,
       status: data['status'] as String? ?? 'Draft',
-      maxTeams: (data['maxTeams'] as num?)?.toInt(),
+      maxTeams: maxTeams,
       teamCount: teamCount,
       venueLat: (data['venueLat'] as num?)?.toDouble(),
       venueLng: (data['venueLng'] as num?)?.toDouble(),
