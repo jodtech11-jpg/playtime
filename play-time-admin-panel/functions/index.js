@@ -2089,6 +2089,7 @@ exports.razorpayWebhook = paymentBackend.razorpayWebhook;
 exports.createBookingPaymentOrder = paymentBackend.createBookingPaymentOrder;
 exports.createMembershipPaymentOrder = paymentBackend.createMembershipPaymentOrder;
 exports.createMarketplacePaymentOrder = paymentBackend.createMarketplacePaymentOrder;
+exports.verifyAndFulfillPayment = paymentBackend.verifyAndFulfillPayment;
 exports.spendWallet = paymentBackend.spendWallet;
 exports.adjustWallet = paymentBackend.adjustWallet;
 exports.createRazorpayRefund = paymentBackend.createRazorpayRefund;

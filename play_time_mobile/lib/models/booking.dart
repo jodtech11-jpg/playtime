@@ -73,8 +73,9 @@ class Booking {
       time: time,
       amount: (data['amount'] as num?)?.toDouble() ?? 0.0,
       sport: data['sport'] as String? ?? '',
-      courtName: data['court'] as String? ?? data['courtName'] as String?,
-      status: BookingStatus.fromString(data['status'] as String? ?? 'Pending'),
+      status: (data['paymentStatus'] == 'Paid' && (data['status'] == 'Pending' || data['status'] == null))
+          ? BookingStatus.confirmed
+          : BookingStatus.fromString(data['status'] as String? ?? 'Pending'),
       isFirstTimeBooking: data['isFirstTimeBooking'] as bool? ?? false,
     );
   }

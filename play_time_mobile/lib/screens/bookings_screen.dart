@@ -278,17 +278,17 @@ class _BookingCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          booking.status == BookingStatus.pending
-                              ? 'PAYMENT PENDING'
-                              : booking.status == BookingStatus.cancelled
-                              ? 'CANCELLED'
-                              : 'PAID',
+                          (booking.status == BookingStatus.confirmed || booking.status == BookingStatus.completed)
+                              ? 'PAID'
+                              : (booking.status == BookingStatus.cancelled
+                                  ? 'CANCELLED'
+                                  : 'PAYMENT PENDING'),
                           style: TextStyle(
-                            color: booking.status == BookingStatus.pending
-                                ? AppColors.warning
-                                : booking.status == BookingStatus.cancelled
-                                ? AppColors.error
-                                : AppColors.textTertiary,
+                            color: (booking.status == BookingStatus.confirmed || booking.status == BookingStatus.completed)
+                                ? AppColors.success
+                                : (booking.status == BookingStatus.cancelled
+                                    ? AppColors.error
+                                    : AppColors.warning),
                             fontSize: 9,
                             fontWeight: FontWeight.w900,
                             letterSpacing: 0.25,

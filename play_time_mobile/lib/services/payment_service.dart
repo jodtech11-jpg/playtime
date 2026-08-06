@@ -76,7 +76,34 @@ class PaymentService {
         );
       }
 
-      initialize(onSuccess: onSuccess, onError: onError);
+      initialize(
+        onSuccess: (paymentId) async {
+          try {
+            final sourceType = functionName.contains('Booking')
+                ? 'Booking'
+                : (functionName.contains('Membership')
+                    ? 'Membership'
+                    : 'Order');
+            final sourceId =
+                request['bookingId'] ??
+                request['membershipId'] ??
+                request['orderId'] ??
+                '';
+            if (sourceId.toString().isNotEmpty) {
+              await BackendFunctionClient.post('verifyAndFulfillPayment', {
+                'sourceType': sourceType,
+                'sourceId': sourceId.toString(),
+                'paymentId': paymentId,
+                'razorpayOrderId': gatewayOrderId,
+              });
+            }
+          } catch (e) {
+            debugPrint('verifyAndFulfillPayment notice: $e');
+          }
+          onSuccess(paymentId);
+        },
+        onError: onError,
+      );
       _razorpay.open({
         'key': keyId,
         'amount': amountPaise,
