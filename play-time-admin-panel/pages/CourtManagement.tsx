@@ -477,7 +477,9 @@ const CourtManagement: React.FC = () => {
                                 <span className="text-gray-600 dark:text-slate-400">{day.substring(0, 3)}</span>
                                 {schedule.available ? (
                                   <span className="text-gray-900 dark:text-white font-bold">
-                                    {schedule.start} - {schedule.end}
+                                    {schedule.slots && schedule.slots.length > 0
+                                      ? schedule.slots.map((s) => `${s.start}-${s.end}`).join(', ')
+                                      : `${schedule.start} - ${schedule.end}`}
                                   </span>
                                 ) : (
                                   <span className="text-red-500 font-bold">Closed</span>

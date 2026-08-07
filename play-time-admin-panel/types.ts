@@ -180,6 +180,18 @@ export interface Venue {
   updatedAt?: any;
 }
 
+export interface TimeSlotRange {
+  start: string;
+  end: string;
+}
+
+export interface DayAvailability {
+  start: string;
+  end: string;
+  available: boolean;
+  slots?: TimeSlotRange[];
+}
+
 export interface Court {
   id: string;
   venueId: string;
@@ -189,11 +201,7 @@ export interface Court {
   type: string;
   pricePerHour: number;
   availability: {
-    [key: string]: { // day of week
-      start: string;
-      end: string;
-      available: boolean;
-    };
+    [key: string]: DayAvailability;
   };
   status: 'Active' | 'Maintenance' | 'Inactive';
   createdAt?: any;

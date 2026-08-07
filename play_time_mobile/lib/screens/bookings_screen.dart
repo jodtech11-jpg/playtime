@@ -197,16 +197,30 @@ class _BookingCard extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          Text(
-                            booking.sport.toUpperCase(),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: AppColors.primary,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.25,
-                            ),
+                          Row(
+                            children: [
+                              Text(
+                                booking.displaySport.toUpperCase(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: AppColors.primary,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.25,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '• ${booking.referenceId}',
+                                style: TextStyle(
+                                  color: Colors.grey[400],
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.25,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),

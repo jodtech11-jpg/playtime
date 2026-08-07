@@ -6,7 +6,7 @@
 import jsPDF from 'jspdf';
 import { Booking, Membership, Transaction, Invoice, User, Venue } from '../types';
 import { formatDate, formatTime, formatDateTime } from './dateUtils';
-import { formatCurrency } from './formatUtils';
+import { formatCurrency, formatBookingReference } from './formatUtils';
 
 // jsPDF Helvetica font does not support the ₹ Unicode glyph — use ASCII prefix instead
 const formatCurrencyPDF = (amount: number): string => {
@@ -68,6 +68,7 @@ export const exportBookingsToCSV = (bookings: Booking[], venues: Venue[] = []): 
   const venueMap = new Map(venues.map(v => [v.id, v.name]));
 
   const data = bookings.map(booking => ({
+    'Booking Ref': formatBookingReference(booking.id),
     'Booking ID': booking.id,
     'Venue': venueMap.get(booking.venueId) || booking.venueId,
     'Court': booking.court || booking.courtId,

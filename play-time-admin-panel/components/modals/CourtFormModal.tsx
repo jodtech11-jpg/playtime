@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Court } from '../../types';
+import { Court, TimeSlotRange } from '../../types';
 import { useSports } from '../../hooks/useSports';
 import { useVenues } from '../../hooks/useVenues';
 import { getSportsForVenue } from '../../utils/sportUtils';
@@ -25,8 +25,6 @@ const CourtFormModal: React.FC<CourtFormModalProps> = ({
   const { sports: allSports } = useSports({ activeOnly: true, realtime: false });
   const availableSports = useMemo(() => {
     const venueScoped = getSportsForVenue(venue, allSports);
-    // Keep the current court's sport selectable when editing a legacy court
-    // whose sport is no longer assigned to the venue.
     const currentField = court?.sportId || court?.sport;
     if (currentField) {
       const current = allSports.find(
@@ -46,13 +44,13 @@ const CourtFormModal: React.FC<CourtFormModalProps> = ({
     type: '',
     pricePerHour: 0,
     availability: {
-      'Monday': { start: '08:00', end: '22:00', available: true },
-      'Tuesday': { start: '08:00', end: '22:00', available: true },
-      'Wednesday': { start: '08:00', end: '22:00', available: true },
-      'Thursday': { start: '08:00', end: '22:00', available: true },
-      'Friday': { start: '08:00', end: '22:00', available: true },
-      'Saturday': { start: '08:00', end: '22:00', available: true },
-      'Sunday': { start: '08:00', end: '22:00', available: true }
+      'Monday': { start: '08:00', end: '22:00', available: true, slots: [{ start: '08:00', end: '22:00' }] },
+      'Tuesday': { start: '08:00', end: '22:00', available: true, slots: [{ start: '08:00', end: '22:00' }] },
+      'Wednesday': { start: '08:00', end: '22:00', available: true, slots: [{ start: '08:00', end: '22:00' }] },
+      'Thursday': { start: '08:00', end: '22:00', available: true, slots: [{ start: '08:00', end: '22:00' }] },
+      'Friday': { start: '08:00', end: '22:00', available: true, slots: [{ start: '08:00', end: '22:00' }] },
+      'Saturday': { start: '08:00', end: '22:00', available: true, slots: [{ start: '08:00', end: '22:00' }] },
+      'Sunday': { start: '08:00', end: '22:00', available: true, slots: [{ start: '08:00', end: '22:00' }] }
     },
     status: 'Active'
   });
@@ -74,13 +72,13 @@ const CourtFormModal: React.FC<CourtFormModalProps> = ({
         type: court.type || '',
         pricePerHour: court.pricePerHour || 0,
         availability: court.availability || {
-          'Monday': { start: '08:00', end: '22:00', available: true },
-          'Tuesday': { start: '08:00', end: '22:00', available: true },
-          'Wednesday': { start: '08:00', end: '22:00', available: true },
-          'Thursday': { start: '08:00', end: '22:00', available: true },
-          'Friday': { start: '08:00', end: '22:00', available: true },
-          'Saturday': { start: '08:00', end: '22:00', available: true },
-          'Sunday': { start: '08:00', end: '22:00', available: true }
+          'Monday': { start: '08:00', end: '22:00', available: true, slots: [{ start: '08:00', end: '22:00' }] },
+          'Tuesday': { start: '08:00', end: '22:00', available: true, slots: [{ start: '08:00', end: '22:00' }] },
+          'Wednesday': { start: '08:00', end: '22:00', available: true, slots: [{ start: '08:00', end: '22:00' }] },
+          'Thursday': { start: '08:00', end: '22:00', available: true, slots: [{ start: '08:00', end: '22:00' }] },
+          'Friday': { start: '08:00', end: '22:00', available: true, slots: [{ start: '08:00', end: '22:00' }] },
+          'Saturday': { start: '08:00', end: '22:00', available: true, slots: [{ start: '08:00', end: '22:00' }] },
+          'Sunday': { start: '08:00', end: '22:00', available: true, slots: [{ start: '08:00', end: '22:00' }] }
         },
         status: court.status || 'Active'
       });
@@ -92,13 +90,13 @@ const CourtFormModal: React.FC<CourtFormModalProps> = ({
         type: '',
         pricePerHour: 0,
         availability: {
-          'Monday': { start: '08:00', end: '22:00', available: true },
-          'Tuesday': { start: '08:00', end: '22:00', available: true },
-          'Wednesday': { start: '08:00', end: '22:00', available: true },
-          'Thursday': { start: '08:00', end: '22:00', available: true },
-          'Friday': { start: '08:00', end: '22:00', available: true },
-          'Saturday': { start: '08:00', end: '22:00', available: true },
-          'Sunday': { start: '08:00', end: '22:00', available: true }
+          'Monday': { start: '08:00', end: '22:00', available: true, slots: [{ start: '08:00', end: '22:00' }] },
+          'Tuesday': { start: '08:00', end: '22:00', available: true, slots: [{ start: '08:00', end: '22:00' }] },
+          'Wednesday': { start: '08:00', end: '22:00', available: true, slots: [{ start: '08:00', end: '22:00' }] },
+          'Thursday': { start: '08:00', end: '22:00', available: true, slots: [{ start: '08:00', end: '22:00' }] },
+          'Friday': { start: '08:00', end: '22:00', available: true, slots: [{ start: '08:00', end: '22:00' }] },
+          'Saturday': { start: '08:00', end: '22:00', available: true, slots: [{ start: '08:00', end: '22:00' }] },
+          'Sunday': { start: '08:00', end: '22:00', available: true, slots: [{ start: '08:00', end: '22:00' }] }
         },
         status: 'Active'
       });
@@ -109,27 +107,82 @@ const CourtFormModal: React.FC<CourtFormModalProps> = ({
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleAvailabilityChange = (day: string, field: 'start' | 'end' | 'available', value: any) => {
-    setFormData(prev => ({
+  const getDaySlots = (day: string): TimeSlotRange[] => {
+    const dayData = formData.availability?.[day];
+    if (dayData?.slots && dayData.slots.length > 0) {
+      return dayData.slots;
+    }
+    return [{ start: dayData?.start || '08:00', end: dayData?.end || '22:00' }];
+  };
+
+  const updateDaySlots = (day: string, available: boolean, newSlots: TimeSlotRange[]) => {
+    const sorted = [...newSlots].sort((a, b) => a.start.localeCompare(b.start));
+    const earliestStart = sorted[0]?.start || '08:00';
+    const latestEnd = sorted[sorted.length - 1]?.end || '22:00';
+
+    setFormData((prev) => ({
       ...prev,
       availability: {
         ...prev.availability,
         [day]: {
-          ...prev.availability?.[day],
-          [field]: value
-        }
-      }
+          available,
+          start: earliestStart,
+          end: latestEnd,
+          slots: sorted,
+        },
+      },
     }));
+  };
+
+  const handleToggleDayAvailable = (day: string, available: boolean) => {
+    const currentSlots = getDaySlots(day);
+    updateDaySlots(day, available, currentSlots);
+  };
+
+  const handleSlotTimeChange = (
+    day: string,
+    slotIndex: number,
+    field: 'start' | 'end',
+    val: string
+  ) => {
+    const slots = getDaySlots(day);
+    const updated = slots.map((s, idx) => (idx === slotIndex ? { ...s, [field]: val } : s));
+    updateDaySlots(day, true, updated);
+  };
+
+  const handleAddSlot = (day: string) => {
+    const currentSlots = getDaySlots(day);
+    const lastSlot = currentSlots[currentSlots.length - 1];
+    let defaultStart = '16:00';
+    let defaultEnd = '22:00';
+    if (lastSlot) {
+      defaultStart = lastSlot.end;
+      defaultEnd = '22:00';
+    }
+    const updated = [...currentSlots, { start: defaultStart, end: defaultEnd }];
+    updateDaySlots(day, true, updated);
+  };
+
+  const handleRemoveSlot = (day: string, slotIndex: number) => {
+    const currentSlots = getDaySlots(day);
+    if (currentSlots.length <= 1) return;
+    const updated = currentSlots.filter((_, idx) => idx !== slotIndex);
+    updateDaySlots(day, true, updated);
   };
 
   const handleSetAllDays = (start: string, end: string, available: boolean) => {
     const newAvailability: any = {};
-    daysOfWeek.forEach(day => {
-      newAvailability[day] = { start, end, available };
+    daysOfWeek.forEach((day) => {
+      newAvailability[day] = {
+        start,
+        end,
+        available,
+        slots: available ? [{ start, end }] : [],
+      };
     });
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      availability: newAvailability
+      availability: newAvailability,
     }));
   };
 
@@ -279,38 +332,69 @@ const CourtFormModal: React.FC<CourtFormModalProps> = ({
               </div>
             </div>
             <div className="space-y-3">
-              {daysOfWeek.map(day => (
-                <div key={day} className="flex items-center gap-4 p-3 bg-gray-50 rounded-xl">
-                  <div className="w-24">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={formData.availability?.[day]?.available ?? true}
-                        onChange={(e) => handleAvailabilityChange(day, 'available', e.target.checked)}
-                        className="rounded"
-                      />
-                      <span className="text-sm font-bold text-gray-700">{day}</span>
-                    </label>
+              {daysOfWeek.map((day) => {
+                const isAvailable = formData.availability?.[day]?.available ?? true;
+                const slots = getDaySlots(day);
+
+                return (
+                  <div key={day} className="p-3 bg-gray-50 rounded-xl space-y-2 border border-gray-100">
+                    <div className="flex items-center justify-between">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isAvailable}
+                          onChange={(e) => handleToggleDayAvailable(day, e.target.checked)}
+                          className="rounded text-primary focus:ring-primary size-4"
+                        />
+                        <span className="text-sm font-bold text-gray-800">{day}</span>
+                      </label>
+                      {isAvailable && (
+                        <button
+                          type="button"
+                          onClick={() => handleAddSlot(day)}
+                          className="text-xs px-2.5 py-1 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg font-bold flex items-center gap-1 transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-sm">add</span>
+                          Add Shift
+                        </button>
+                      )}
+                    </div>
+
+                    {isAvailable && (
+                      <div className="pl-6 space-y-2">
+                        {slots.map((slot, slotIndex) => (
+                          <div key={slotIndex} className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-gray-400 w-12">Shift {slotIndex + 1}:</span>
+                            <input
+                              type="time"
+                              value={slot.start}
+                              onChange={(e) => handleSlotTimeChange(day, slotIndex, 'start', e.target.value)}
+                              className="px-3 py-1 border border-gray-200 rounded-lg text-sm"
+                            />
+                            <span className="text-gray-400 text-xs font-bold">to</span>
+                            <input
+                              type="time"
+                              value={slot.end}
+                              onChange={(e) => handleSlotTimeChange(day, slotIndex, 'end', e.target.value)}
+                              className="px-3 py-1 border border-gray-200 rounded-lg text-sm"
+                            />
+                            {slots.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveSlot(day, slotIndex)}
+                                className="size-7 flex items-center justify-center text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                                title="Remove shift"
+                              >
+                                <span className="material-symbols-outlined text-base">delete</span>
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  {formData.availability?.[day]?.available && (
-                    <>
-                      <input
-                        type="time"
-                        value={formData.availability?.[day]?.start || '08:00'}
-                        onChange={(e) => handleAvailabilityChange(day, 'start', e.target.value)}
-                        className="px-3 py-1 border border-gray-200 rounded-lg text-sm"
-                      />
-                      <span className="text-gray-400">to</span>
-                      <input
-                        type="time"
-                        value={formData.availability?.[day]?.end || '22:00'}
-                        onChange={(e) => handleAvailabilityChange(day, 'end', e.target.value)}
-                        className="px-3 py-1 border border-gray-200 rounded-lg text-sm"
-                      />
-                    </>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 

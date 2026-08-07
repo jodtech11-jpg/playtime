@@ -13,6 +13,21 @@ class Booking {
   final BookingStatus status;
   final bool isFirstTimeBooking;
 
+  String get shortId =>
+      id.length >= 8 ? id.substring(0, 8).toUpperCase() : id.toUpperCase();
+
+  String get referenceId => id.isEmpty ? '—' : '#$shortId';
+
+  /// Display-safe sport name (guards against unhandled raw Firestore document IDs like MLVW5RGFTOXW5V1GMV4M)
+  String get displaySport {
+    final s = sport.trim();
+    if (s.isEmpty) return 'SPORT';
+    if (RegExp(r'^[a-zA-Z0-9]{15,28}$').hasMatch(s)) {
+      return 'SPORT';
+    }
+    return s;
+  }
+
   Booking({
     required this.id,
     this.venueId,
@@ -73,7 +88,7 @@ class Booking {
       time: time,
       amount: (data['amount'] as num?)?.toDouble() ?? 0.0,
       sport: data['sport'] as String? ?? '',
-      status: (data['paymentStatus'] == 'Paid' && (data['status'] == 'Pending' || data['status'] == null))
+      status: (data['paymentStatus'] == 'Paid' || data['status'] == 'Confirmed')
           ? BookingStatus.confirmed
           : BookingStatus.fromString(data['status'] as String? ?? 'Pending'),
       isFirstTimeBooking: data['isFirstTimeBooking'] as bool? ?? false,

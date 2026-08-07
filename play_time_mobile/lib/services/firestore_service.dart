@@ -210,6 +210,23 @@ class FirestoreService {
     }
   }
 
+  static Future<void> confirmBookingPayment(
+    String bookingId,
+    String paymentId,
+  ) async {
+    try {
+      await _firestore.collection('bookings').doc(bookingId).update({
+        'status': 'Confirmed',
+        'paymentStatus': 'Paid',
+        'paymentId': paymentId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('Error confirming booking payment: $e');
+      rethrow;
+    }
+  }
+
   static Future<void> cancelBooking(
     String bookingId, {
     bool paymentFailed = false,

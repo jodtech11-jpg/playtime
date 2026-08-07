@@ -967,7 +967,10 @@ const Bookings: React.FC = () => {
                           className="rounded border-slate-300 text-primary focus:ring-primary size-4 shrink-0"
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{getBookingUserName(booking)}</p>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-mono font-bold text-slate-400">{formatBookingReference(booking.id)}</span>
+                            <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{getBookingUserName(booking)}</p>
+                          </div>
                           <p className="text-[10px] text-slate-500 dark:text-slate-400">
                             {formatTime(booking.startTime)} • {venue?.name || '—'} • {formatCurrency(booking.amount)}
                           </p>

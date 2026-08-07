@@ -5,7 +5,7 @@ import { useMemberships } from '../../hooks/useMemberships';
 import { useVenues } from '../../hooks/useVenues';
 import { useUsers } from '../../hooks/useUsers';
 import { useToast } from '../../contexts/ToastContext';
-import { formatCurrency } from '../../utils/formatUtils';
+import { formatCurrency, formatBookingReference } from '../../utils/formatUtils';
 import { formatDate } from '../../utils/dateUtils';
 import { generateInvoicePDFFile, getInvoiceVenueName } from '../../services/invoiceService';
 import { getFirebaseErrorMessage } from '../../utils/errorUtils';
@@ -334,7 +334,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({
                       const venue = venues.find(v => v.id === booking.venueId);
                       return (
                         <option key={booking.id} value={booking.id}>
-                          {venue?.name || booking.venueId} — {formatCurrency(booking.amount || 0)} — {formatDate(booking.startTime)}
+                          {formatBookingReference(booking.id)} — {venue?.name || booking.venueId} — {formatCurrency(booking.amount || 0)} — {formatDate(booking.startTime)}
                         </option>
                       );
                     })}

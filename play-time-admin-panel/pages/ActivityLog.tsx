@@ -144,7 +144,7 @@ const ActivityLog: React.FC = () => {
                   </td>
                   <td className="p-3">
                     <span className="text-foreground-light dark:text-foreground-dark">{entry.targetType}</span>
-                    <span className="text-muted-light dark:text-muted-dark ml-1">#{entry.targetId.slice(0, 8)}</span>
+                    <span className="text-muted-light dark:text-muted-dark ml-1">#{entry.targetId.slice(0, 8).toUpperCase()}</span>
                   </td>
                   <td className="p-3 max-w-xs truncate text-muted-light dark:text-muted-dark">
                     {Object.keys(entry.details ?? {}).length > 0

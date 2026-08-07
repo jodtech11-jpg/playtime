@@ -2369,7 +2369,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                       child: Text(
-                        booking.sport.toUpperCase(),
+                        '${booking.displaySport.toUpperCase()} • ${booking.referenceId}',
                         style: const TextStyle(
                           color: AppColors.primary,
                           fontSize: 10,

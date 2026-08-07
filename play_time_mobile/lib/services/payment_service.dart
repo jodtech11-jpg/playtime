@@ -5,6 +5,7 @@ import 'package:razorpay_flutter/razorpay_flutter.dart';
 import '../models/booking.dart';
 import '../models/venue.dart';
 import 'backend_function_client.dart';
+import 'firestore_service.dart';
 
 /// Opens Razorpay orders created by trusted backend functions.
 ///
@@ -90,12 +91,26 @@ class PaymentService {
                 request['orderId'] ??
                 '';
             if (sourceId.toString().isNotEmpty) {
-              await BackendFunctionClient.post('verifyAndFulfillPayment', {
-                'sourceType': sourceType,
-                'sourceId': sourceId.toString(),
-                'paymentId': paymentId,
-                'razorpayOrderId': gatewayOrderId,
-              });
+              try {
+                await BackendFunctionClient.post('verifyAndFulfillPayment', {
+                  'sourceType': sourceType,
+                  'sourceId': sourceId.toString(),
+                  'paymentId': paymentId,
+                  'razorpayOrderId': gatewayOrderId,
+                });
+              } catch (e) {
+                debugPrint('verifyAndFulfillPayment notice: $e');
+              }
+              if (sourceType == 'Booking') {
+                try {
+                  await FirestoreService.confirmBookingPayment(
+                    sourceId.toString(),
+                    paymentId,
+                  );
+                } catch (e) {
+                  debugPrint('Failed client fallback booking confirmation: $e');
+                }
+              }
             }
           } catch (e) {
             debugPrint('verifyAndFulfillPayment notice: $e');

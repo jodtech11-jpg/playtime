@@ -199,7 +199,7 @@ const Dashboard: React.FC = () => {
           color = 'text-green-600';
           bg = 'bg-green-100';
           title = `Payment received: ${formatCurrency(booking.amount)}`;
-          sub = `Booking #${booking.id.substring(0, 8)}`;
+          sub = `Booking #${booking.id.substring(0, 8).toUpperCase()}`;
         } else {
           title = `Booking for ${booking.court}`;
           sub = `${booking.user} • ${formatTime(booking.startTime)}`;

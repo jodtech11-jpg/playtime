@@ -223,7 +223,7 @@ class _BookingPassScreenState extends State<BookingPassScreen> {
                       Icon(Icons.sports, color: Colors.grey[400], size: 18),
                       const SizedBox(width: 8),
                       Text(
-                        b.sport,
+                        b.displaySport,
                         style: TextStyle(color: Colors.grey[300], fontSize: 14),
                       ),
                     ],
@@ -251,7 +251,7 @@ class _BookingPassScreenState extends State<BookingPassScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'Code: ${b.id.length >= 8 ? b.id.substring(0, 8).toUpperCase() : b.id.toUpperCase()}',
+                    'Booking Ref: ${b.referenceId}',
                     style: const TextStyle(
                       color: AppColors.textTertiary,
                       fontSize: 13,

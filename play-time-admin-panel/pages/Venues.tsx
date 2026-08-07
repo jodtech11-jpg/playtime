@@ -628,7 +628,7 @@ const Venues: React.FC = () => {
                   <div>
                     <div className="flex justify-between items-start">
                       <h3 className="text-lg font-black text-gray-900 dark:text-white">{venue.name}</h3>
-                      <p className="text-[10px] font-mono font-bold text-gray-400 dark:text-slate-500">{venue.id.substring(0, 8)}</p>
+                      <p className="text-[10px] font-mono font-bold text-gray-400 dark:text-slate-500">#{venue.id.substring(0, 8).toUpperCase()}</p>
                     </div>
                     <p className="text-xs text-gray-500 dark:text-slate-400 mt-1 flex items-center gap-1">
                       <span className="material-symbols-outlined text-sm">location_on</span>

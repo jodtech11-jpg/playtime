@@ -30,9 +30,11 @@ export const capitalizeFirst = (text: string): string => {
 };
 
 /** Short, human-readable booking reference from a Firestore document ID. */
-export const formatBookingReference = (bookingId: string): string => {
-  if (!bookingId) return '—';
-  return `#${bookingId.slice(0, 8).toUpperCase()}`;
+export const formatBookingReference = (bookingId: string | null | undefined): string => {
+  if (!bookingId || typeof bookingId !== 'string') return '—';
+  const cleanId = bookingId.trim().replace(/^#/, '');
+  if (!cleanId) return '—';
+  return `#${cleanId.slice(0, 8).toUpperCase()}`;
 };
 
 import { resolveSportName as resolveSportNameCore } from './sportUtils';
