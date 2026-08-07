@@ -847,11 +847,7 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
                               ...upcomingBookings.map(
                                 (booking) => ForYouItem(
                                   category: 'Up next',
-                                  title: booking.courtName?.isNotEmpty == true
-                                      ? booking.courtName!
-                                      : (booking.sport.isNotEmpty
-                                            ? booking.sport
-                                            : 'Court booking'),
+                                  title: booking.displayTitle,
                                   subtitle:
                                       '${booking.venueName} • ${booking.date} ${booking.time}',
                                   meta: 'View your booking',

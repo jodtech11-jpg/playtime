@@ -2168,7 +2168,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            booking.sport.toUpperCase(),
+                            booking.displaySport.toUpperCase(),
                             style: TextStyle(
                               color: AppColors.primary,
                               fontSize: 10,
