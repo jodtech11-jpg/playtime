@@ -93,28 +93,64 @@ export const getTargetFCMTokens = async (
   const tokens: string[] = [];
 
   try {
+    const userIds = await getTargetUserIds(
+      targetAudience,
+      targetUserIds,
+      targetVenueId
+    );
+
     if (targetAudience === 'All Users') {
-      const allTokens = await fcmTokensCollection.getAll([['isActive', '==', true]]);
-      tokens.push(...allTokens.map((token: FCMToken) => token.token));
-    } else {
-      const userIds = await getTargetUserIds(
-        targetAudience,
-        targetUserIds,
-        targetVenueId
-      );
+      try {
+        const allTokens = await fcmTokensCollection.getAll();
+        const validTokens = allTokens
+          .filter((tokenData: any) => tokenData.isActive !== false && typeof tokenData.token === 'string' && tokenData.token.trim().length > 0)
+          .map((tokenData: any) => tokenData.token.trim());
+        tokens.push(...validTokens);
+      } catch (e) {
+        console.warn('Error querying all FCM tokens:', e);
+      }
+    } else if (userIds.length > 0) {
       for (let index = 0; index < userIds.length; index += 30) {
-        const userTokens = await fcmTokensCollection.getAll([
-          ['isActive', '==', true],
-          ['userId', 'in', userIds.slice(index, index + 30)],
-        ]);
-        tokens.push(...userTokens.map((token: FCMToken) => token.token));
+        const batchIds = userIds.slice(index, index + 30);
+        try {
+          const userTokens = await fcmTokensCollection.getAll([
+            ['userId', 'in', batchIds],
+          ]);
+          const validTokens = userTokens
+            .filter((tokenData: any) => tokenData.isActive !== false && typeof tokenData.token === 'string' && tokenData.token.trim().length > 0)
+            .map((tokenData: any) => tokenData.token.trim());
+          tokens.push(...validTokens);
+        } catch (e) {
+          console.warn('Error querying fcmTokens for batch:', e);
+        }
+      }
+    }
+
+    // Fallback: check target users' documents in users collection for fcmToken / fcmTokens
+    if (userIds.length > 0) {
+      const userDocs = await Promise.all(
+        userIds.map((uid) => usersCollection.get(uid).catch(() => null))
+      );
+      for (const u of userDocs) {
+        if (u) {
+          if (typeof u.fcmToken === 'string' && u.fcmToken.trim().length > 0) {
+            tokens.push(u.fcmToken.trim());
+          }
+          if (Array.isArray(u.fcmTokens)) {
+            for (const t of u.fcmTokens) {
+              if (typeof t === 'string' && t.trim().length > 0) {
+                tokens.push(t.trim());
+              }
+            }
+          }
+        }
       }
     }
 
     return Array.from(new Set(tokens));
   } catch (error: any) {
     console.error('Error getting FCM tokens:', error);
-    throw error;
+    return Array.from(new Set(tokens));
   }
 };
 
@@ -123,6 +159,7 @@ const createUserNotificationDocuments = async (
   userIds: string[]
 ): Promise<number> => {
   try {
+    const currentUserId = auth.currentUser?.uid || '';
     const BATCH_SIZE = 500;
     const batches: string[][] = [];
     for (let i = 0; i < userIds.length; i += BATCH_SIZE) {
@@ -138,6 +175,9 @@ const createUserNotificationDocuments = async (
           type: notification.type,
           read: false,
           isRead: false,
+          createdBy: notification.createdBy || currentUserId,
+          targetAudience: notification.targetAudience || 'Venue Users',
+          ...(notification.targetVenueId ? { targetVenueId: notification.targetVenueId } : {}),
           ...(notification.actionUrl ? { actionUrl: notification.actionUrl } : {}),
           ...(notification.actionText ? { actionText: notification.actionText } : {}),
           ...(notification.imageUrl ? { imageUrl: notification.imageUrl } : {}),
@@ -182,14 +222,16 @@ const getTargetUserIds = async (
         .filter(
           (user: any) =>
             user.venueIds?.includes(targetVenueId) ||
-            user.managedVenues?.includes(targetVenueId)
+            user.managedVenues?.includes(targetVenueId) ||
+            user.venueId === targetVenueId ||
+            user.primaryVenueId === targetVenueId
         )
         .map((user: any) => user.id);
       const venueBookings = await bookingsCollection.getAll([
         ['venueId', '==', targetVenueId],
       ]);
       const customerIds = venueBookings
-        .map((booking: any) => booking.userId)
+        .map((booking: any) => booking.userId || booking.user?.id)
         .filter((userId: unknown): userId is string => typeof userId === 'string' && userId.length > 0);
       userIds = [...profileUserIds, ...customerIds];
     }

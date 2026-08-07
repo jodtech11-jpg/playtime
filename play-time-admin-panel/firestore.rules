@@ -755,8 +755,26 @@ service cloud.firestore {
       allow create, update, delete: if isAuthenticated() && isSuperAdmin();
     }
 
+    // ---------- FCM Tokens ----------
+    match /fcmTokens/{tokenId} {
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isVenueManager() ||
+        (resource != null && resource.data.userId == request.auth.uid)
+      );
+      allow create, update: if isAuthenticated() && (
+        request.resource.data.userId == request.auth.uid ||
+        isSuperAdmin() ||
+        isVenueManager()
+      );
+      allow delete: if isAuthenticated() && (
+        (resource != null && resource.data.userId == request.auth.uid) ||
+        isSuperAdmin()
+      );
+    }
+
     // ---------- Notifications ----------
-    // Super admins: all. Venue managers: only notifications they created.
+    // System & blast notifications are written at the top-level collection.
     // Recipients can always read their own per-user notification docs.
     match /notifications/{notificationId} {
       allow read: if isAuthenticated() && (
@@ -770,19 +788,19 @@ service cloud.firestore {
         isSuperAdmin() ||
         (isVenueManager() &&
          request.resource.data.createdBy == request.auth.uid &&
-         request.resource.data.targetAudience == 'Venue Users' &&
-         request.resource.data.targetVenueId != null &&
-         ownsVenue(request.resource.data.targetVenueId))
+         (
+           (request.resource.data.targetAudience == 'Venue Users' &&
+            request.resource.data.targetVenueId != null &&
+            ownsVenue(request.resource.data.targetVenueId)) ||
+           (request.resource.data.userId != null)
+         ))
       );
       allow update: if isAuthenticated() && (
         isSuperAdmin() ||
         (isVenueManager() &&
          resource.data.createdBy != null &&
          resource.data.createdBy == request.auth.uid &&
-         request.resource.data.createdBy == request.auth.uid &&
-         request.resource.data.targetAudience == 'Venue Users' &&
-         request.resource.data.targetVenueId != null &&
-         ownsVenue(request.resource.data.targetVenueId)) ||
+         request.resource.data.createdBy == request.auth.uid) ||
         (resource.data.userId == request.auth.uid &&
          request.resource.data.diff(resource.data).affectedKeys()
            .hasOnly(['isRead', 'read', 'readAt', 'updatedAt']))
